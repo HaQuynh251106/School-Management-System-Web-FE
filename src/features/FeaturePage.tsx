@@ -1,21 +1,19 @@
 import type React from 'react';
 import type { ModuleItem, RoleDefinition } from '../types';
-import {
-  AdminAcademicFeature,
-  AdminAuditFeature,
-  AdminExtracurricularFeature,
-  AdminTimetableFeature,
-  AdminUsersFeature,
-  FinanceFeature,
-  NotificationTemplateFeature,
-  ReportsFeature,
-  ScoreConfigFeature,
-} from './admin/AdminFeatures';
-import { TeacherAttendanceFeature, TeacherClassesFeature, TeacherGradesFeature } from './teacher/TeacherFeatures';
-import { StudentAcademicFeature, StudentAttendanceFeature, StudentProfileFeature } from './student/StudentFeatures';
-import { ParentInvoiceFeature, ParentMonitorFeature, ParentSwitchFeature } from './parent/ParentFeatures';
-import { AssignmentFeature, CommunicationFeature, ExtracurricularFeature, NotificationFeature } from './shared/FeatureWidgets';
 import { GeneralDashboard } from './dashboard/GeneralDashboard';
+import { AdminReportsLive } from './live/AdminReportsLive';
+import { AdminAuditLive } from './live/AdminAuditLive';
+import { AdminTimetableLive } from './live/AdminTimetableLive';
+import { ChatLive } from './live/ChatLive';
+// Live (nối backend thật)
+import {
+  AdminUsersLive, AdminAcademicLive, AdminExamCategoriesLive,
+  AdminFinanceLive, AdminTemplatesLive, AdminClubsLive,
+} from './live/AdminLive';
+import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive } from './live/TeacherLive';
+import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
+import { ParentSwitchLive, ParentMonitorLive, ParentInvoiceLive, ParentExtracurricularLive } from './live/ParentLive';
+import { MyTimetableLive, AssignmentsLive, ExtracurricularLive, NotificationsLive } from './live/SharedLive';
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -41,59 +39,36 @@ export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleD
 
 export function FeatureBody({ code }: { code: string }) {
   switch (code) {
-    case 'A1':
-      return <AdminUsersFeature />;
-    case 'A2':
-      return <AdminAcademicFeature />;
-    case 'A3':
-      return <AdminTimetableFeature />;
-    case 'A4':
-      return <ScoreConfigFeature />;
-    case 'A5':
-      return <AdminExtracurricularFeature />;
-    case 'A6':
-      return <AdminAuditFeature />;
-    case 'A7':
-      return <FinanceFeature />;
-    case 'A8':
-      return <ReportsFeature />;
-    case 'A9':
-      return <NotificationTemplateFeature />;
-    case 'B1':
-      return <TeacherClassesFeature />;
-    case 'B2':
-      return <AdminTimetableFeature title="TKB cá nhân" subtitle="Lịch dạy theo tuần của giáo viên" />;
-    case 'B3':
-      return <TeacherAttendanceFeature />;
-    case 'B4':
-      return <TeacherGradesFeature />;
-    case 'B5':
-      return <AssignmentFeature actor="teacher" />;
-    case 'B6':
-      return <CommunicationFeature actor="teacher" />;
-    case 'C1':
-      return <StudentProfileFeature />;
-    case 'C2':
-      return <StudentAcademicFeature />;
-    case 'C3':
-      return <StudentAttendanceFeature />;
-    case 'C4':
-      return <AssignmentFeature actor="student" />;
-    case 'C5':
-      return <NotificationFeature />;
-    case 'C6':
-      return <ExtracurricularFeature actor="student" />;
-    case 'D1':
-      return <ParentSwitchFeature />;
-    case 'D2':
-      return <ParentMonitorFeature />;
-    case 'D3':
-      return <CommunicationFeature actor="parent" />;
-    case 'D4':
-      return <ParentInvoiceFeature />;
-    case 'D5':
-      return <ExtracurricularFeature actor="parent" />;
-    default:
-      return <GeneralDashboard roleId="admin" />;
+    // ---- Admin ----
+    case 'A1': return <AdminUsersLive />;
+    case 'A2': return <AdminAcademicLive />;
+    case 'A3': return <AdminTimetableLive />;
+    case 'A4': return <AdminExamCategoriesLive />;
+    case 'A5': return <AdminClubsLive />;
+    case 'A6': return <AdminAuditLive />;
+    case 'A7': return <AdminFinanceLive />;
+    case 'A8': return <AdminReportsLive />;
+    case 'A9': return <AdminTemplatesLive />;
+    // ---- Teacher ----
+    case 'B1': return <TeacherClassesLive />;
+    case 'B2': return <MyTimetableLive />;
+    case 'B3': return <TeacherAttendanceLive />;
+    case 'B4': return <TeacherGradesLive />;
+    case 'B5': return <AssignmentsLive actor="teacher" />;
+    case 'B6': return <ChatLive />;
+    // ---- Student ----
+    case 'C1': return <StudentProfileLive />;
+    case 'C2': return <StudentAcademicLive />;
+    case 'C3': return <StudentAttendanceLive />;
+    case 'C4': return <AssignmentsLive actor="student" />;
+    case 'C5': return <NotificationsLive />;
+    case 'C6': return <ExtracurricularLive actor="student" />;
+    // ---- Parent ----
+    case 'D1': return <ParentSwitchLive />;
+    case 'D2': return <ParentMonitorLive />;
+    case 'D3': return <ChatLive />;
+    case 'D4': return <ParentInvoiceLive />;
+    case 'D5': return <ParentExtracurricularLive />;
+    default: return <GeneralDashboard roleId="admin" />;
   }
 }

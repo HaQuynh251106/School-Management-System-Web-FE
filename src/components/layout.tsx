@@ -3,7 +3,7 @@ import { BarChart3, ChevronRight } from 'lucide-react';
 import { modules, roles } from '../data/mockData';
 import type { PageId, RoleDefinition, RoleId } from '../types';
 
-export function SessionCard({ role }: { role: RoleDefinition }) {
+export function SessionCard({ role, name }: { role: RoleDefinition; name?: string }) {
   return (
     <div className="session-card" style={{ '--role-color': role.color } as React.CSSProperties}>
       <div className="session-avatar">
@@ -11,7 +11,7 @@ export function SessionCard({ role }: { role: RoleDefinition }) {
       </div>
       <div>
         <span>Phiên đăng nhập</span>
-        <strong>{role.sessionName}</strong>
+        <strong>{name ?? role.sessionName}</strong>
         <small>{role.label}</small>
       </div>
     </div>

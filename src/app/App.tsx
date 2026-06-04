@@ -1,69 +1,78 @@
-import { useState } from 'react';
-import { Bell, Filter, School, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { LogOut, School } from 'lucide-react';
 import { roles, modules } from '../data/mockData';
 import type { PageId, RoleId } from '../types';
-import { SessionCard, SidebarMenu, RoleSwitcher } from '../components/layout';
+import { SessionCard, SidebarMenu } from '../components/layout';
 import { GeneralDashboard } from '../features/dashboard/GeneralDashboard';
 import { FeaturePage } from '../features/FeaturePage';
+import { useAuth } from '../api/auth';
+import { LoginPage } from '../features/auth/LoginPage';
+import { ActiveChildProvider } from '../api/activeChild';
 
 export default function App() {
-  const [activeRole, setActiveRole] = useState<RoleId>('admin');
+  const { user, loading, logout } = useAuth();
   const [activePage, setActivePage] = useState<PageId>('dashboard');
-  const role = roles.find((item) => item.id === activeRole) ?? roles[0];
+
+  // Reset về Dashboard mỗi khi đổi người đăng nhập (tránh giữ trang của vai trò cũ).
+  useEffect(() => {
+    setActivePage('dashboard');
+  }, [user?.id]);
+
+  if (loading) {
+    return <div className="login-screen"><div className="login-loading">Đang tải phiên đăng nhập…</div></div>;
+  }
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  const roleId = user.role.toLowerCase() as RoleId;
+  const role = roles.find((item) => item.id === roleId) ?? roles[0];
   const activeModule = modules[role.id].find((item) => item.code === activePage);
   const pageTitle = activePage === 'dashboard' ? `Dashboard ${role.label}` : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
 
-  const switchRole = (nextRole: RoleId) => {
-    setActiveRole(nextRole);
-    setActivePage('dashboard');
-  };
-
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">
-            <School size={24} />
+    <ActiveChildProvider>
+      <div className="app-shell">
+        <aside className="sidebar">
+          <div className="brand">
+            <div className="brand-mark">
+              <School size={24} />
+            </div>
+            <div>
+              <strong>SSE</strong>
+              <span>Smart School Ecosystem</span>
+            </div>
           </div>
-          <div>
-            <strong>SSE</strong>
-            <span>Smart School Ecosystem</span>
-          </div>
-        </div>
 
-        <SessionCard role={role} />
-        <SidebarMenu role={role} activePage={activePage} onSelect={setActivePage} />
-      </aside>
+          <SessionCard role={role} name={user.fullName} />
+          <SidebarMenu role={role} activePage={activePage} onSelect={setActivePage} />
+        </aside>
 
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">ReactJS Web Console</span>
-            <h1>{pageTitle}</h1>
-            <p>{pageSubtitle}</p>
-          </div>
-          <div className="topbar-actions">
-            <RoleSwitcher activeRole={activeRole} onChange={switchRole} />
-            <label className="search-box">
-              <Search size={18} />
-              <input aria-label="Tìm kiếm" placeholder="Tìm học sinh, lớp, hóa đơn..." />
-            </label>
-            <button className="icon-button" aria-label="Lọc dữ liệu" title="Lọc dữ liệu">
-              <Filter size={18} />
-            </button>
-            <button className="icon-button has-dot" aria-label="Thông báo" title="Thông báo">
-              <Bell size={18} />
-            </button>
-          </div>
-        </header>
+        <main className="workspace">
+          <header className="topbar">
+            <div>
+              <h1>{pageTitle}</h1>
+              <p>{pageSubtitle}</p>
+            </div>
+            <div className="topbar-actions">
+              <div style={{ textAlign: 'right', marginRight: 4 }}>
+                <strong style={{ display: 'block', fontSize: 14 }}>{user.fullName}</strong>
+                <small style={{ color: 'var(--muted)' }}>@{user.username} · {user.role}</small>
+              </div>
+              <button className="logout-btn" onClick={logout} title="Đăng xuất">
+                <LogOut size={16} /> Đăng xuất
+              </button>
+            </div>
+          </header>
 
-        {activePage === 'dashboard' ? (
-          <GeneralDashboard roleId={role.id} />
-        ) : (
-          <FeaturePage module={activeModule} role={role} />
-        )}
-      </main>
-    </div>
+          {activePage === 'dashboard' ? (
+            <GeneralDashboard roleId={role.id} />
+          ) : (
+            <FeaturePage module={activeModule} role={role} />
+          )}
+        </main>
+      </div>
+    </ActiveChildProvider>
   );
 }
