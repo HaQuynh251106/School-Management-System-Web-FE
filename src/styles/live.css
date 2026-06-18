@@ -6,6 +6,30 @@
   padding: 24px;
   background: radial-gradient(1200px 600px at 20% -10%, #dbe7ff 0%, #f5f7fb 55%);
 }
+.login-split {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  width: 100%;
+  max-width: 980px;
+}
+.login-art {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.login-art-caption { text-align: center; margin-top: 4px; }
+.login-art-caption strong { display: block; font-size: 20px; color: var(--ink); }
+.login-art-caption span { color: var(--muted); font-size: 13px; }
+.login-split .login-card { flex: 0 0 420px; }
+@media (max-width: 880px) {
+  .login-art { display: none; }
+  .login-split { max-width: 420px; gap: 0; }
+  .login-split .login-card { flex: 1 1 auto; }
+}
 .login-card {
   width: 100%;
   max-width: 420px;
