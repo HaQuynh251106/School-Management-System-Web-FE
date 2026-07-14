@@ -33,12 +33,14 @@
 }
 .login-field input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
 .login-error { background: #fef2f2; color: var(--red); border: 1px solid #fecaca; padding: 9px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
+.login-success { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 9px 12px; border-radius: 10px; font-size: 13px; margin-bottom: 12px; }
 .login-submit {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 12px; border: none; border-radius: 12px; color: #fff; font-weight: 600;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
 }
 .login-submit:disabled { opacity: 0.6; }
+.link-button { display: block; margin: 12px auto 0; border: 0; background: transparent; color: var(--blue); cursor: pointer; font-weight: 600; }
 .login-divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 16px; color: var(--muted); font-size: 12px; }
 .login-divider::before, .login-divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .demo-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

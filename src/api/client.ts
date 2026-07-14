@@ -6,6 +6,7 @@ const BASE: string =
 
 let accessToken: string | null = localStorage.getItem('sse_token');
 let refreshToken: string | null = localStorage.getItem('sse_refresh');
+let refreshInFlight: Promise<boolean> | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -31,7 +32,11 @@ export function hasToken() {
   return !!accessToken;
 }
 
-async function tryRefresh(): Promise<boolean> {
+export function getRefreshToken() {
+  return refreshToken;
+}
+
+async function performRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
@@ -45,6 +50,28 @@ async function tryRefresh(): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function parseResponse(res: Response): Promise<unknown> {
+  if (res.status === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(res.status, 'Máy chủ trả về dữ liệu JSON không hợp lệ');
   }
 }
 
@@ -62,10 +89,12 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
     setTokens(null, null);
   }
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = await parseResponse(res);
   if (!res.ok) {
-    throw new ApiError(res.status, (data && data.error) || res.statusText);
+    const message = typeof data === 'object' && data !== null && 'error' in data
+      ? String((data as { error: unknown }).error)
+      : res.statusText;
+    throw new ApiError(res.status, message);
   }
   return data as T;
 }

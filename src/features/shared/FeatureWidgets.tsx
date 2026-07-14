@@ -1,6 +1,6 @@
 import type React from 'react';
 import { BarChart3, Bell, BookOpenCheck, CheckCircle2, ClipboardCheck, LockKeyhole, MessageSquareText, MoreHorizontal, Plus, RefreshCcw, Send, Settings, Smartphone, Upload, WalletCards, type LucideIcon } from 'lucide-react';
-import { assignments, attendanceTimeline, chatThreads, children, classes, currency, extracurricularCourses, initialGrades, invoices, notificationFeed, notificationRows, roster, studentAssignments, subjectScores, teacherClasses, timetable, users } from '../../data/mockData';
+import { assignments, attendanceTimeline, chatThreads, children, classes, currency, extracurricularCourses, invoices, notificationFeed, notificationRows, roster, studentAssignments, subjectScores, teacherClasses, timetable, users } from '../../data/mockData';
 import type { AttendanceStatus } from '../../types';
 import { Badge, CommandButton, FormPreview, FunctionTabs, InfoGrid, ProcessList, Section, StatusPill } from '../../components/ui';
 

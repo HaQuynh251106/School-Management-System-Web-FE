@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Send, Plus, CheckCircle2, Upload, Bell, RefreshCw } from 'lucide-react';
+import { Plus, CheckCircle2, Upload, Bell } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { TimetableSlot, Assignment, Submission, Club, ClubRegistration, Notification, SchoolClass, Subject } from '../../api/types';

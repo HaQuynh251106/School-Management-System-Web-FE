@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Send, RefreshCw, School, ClipboardCheck, BarChart3, Users } from 'lucide-react';
+import { Send, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { ApiUser, SchoolClass, Subject, Semester, ExamCategory, TimetableSlot, Grade } from '../../api/types';
-import { Section, FunctionTabs, Badge, StatusPill } from '../../components/ui';
+import { Section } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, DAY_LABEL } from './common';
 
 const TODAY = new Date().toISOString().slice(0, 10);

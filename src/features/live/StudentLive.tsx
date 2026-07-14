@@ -5,7 +5,7 @@ import type { Grade, Semester, AttendanceRecord } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, InfoGrid } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
-import { CalendarDays, BookOpen, User } from 'lucide-react';
+import { CalendarDays, BookOpen } from 'lucide-react';
 
 /* ===== C1 — Hồ sơ ===== */
 export function StudentProfileLive() {

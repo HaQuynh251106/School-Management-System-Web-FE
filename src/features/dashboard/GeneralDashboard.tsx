@@ -1,227 +1,138 @@
-import {
-  AlertTriangle,
-  BarChart3,
-  Bell,
-  BookOpenCheck,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  MessageSquareText,
-  School,
-  Users,
-  WalletCards,
-} from 'lucide-react';
-import {
-  assignments,
-  attendanceTrend,
-  chatThreads,
-  children,
-  classes,
-  currency,
-  eventFlow,
-  gradeBands,
-  initialGrades,
-  invoiceStatus,
-  invoices,
-  roleDistribution,
-  roster,
-  subjectScores,
-  teacherClasses,
-} from '../../data/mockData';
+import { BarChart3, Bell, BookOpenCheck, CalendarDays, School, Users, WalletCards } from 'lucide-react';
+import { useActiveChild } from '../../api/activeChild';
+import { useApi } from '../../api/useApi';
+import type { ApiUser, Assignment, AttendanceRecord, Grade, Invoice, Notification, TimetableSlot } from '../../api/types';
+import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
 import type { Metric, RoleId } from '../../types';
-import { BarList, ChartCard, ColumnChart, MetricCard, SplitDashboard } from '../../components/charts';
-import { InfoGrid, ProcessList, StatusPill } from '../../components/ui';
+
+type Overview = { students: number; teachers: number; parents: number; admins: number; classes: number; subjects: number };
+type AttendanceSummary = { present: number; late: number; absentExcused: number; absentUnexcused: number; total: number; attendanceRate: number };
+type Revenue = { invoiceCount: number; paidCount: number; totalAmount: number; paidAmount: number; outstanding: number };
+type GradeBand = { band: string; count: number };
+
+const money = (value: number) => `${new Intl.NumberFormat('vi-VN').format(value)} ₫`;
 
 export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
-  const metrics = dashboardMetricsByRole[roleId];
+  const { childId } = useActiveChild();
+  const children = useApi<ApiUser[]>(roleId === 'parent' ? '/me/children' : null);
+  const selectedChild = childId || children.data?.[0]?.id || null;
+  const studentQuery = roleId === 'student' ? '' : selectedChild ? `?studentId=${encodeURIComponent(selectedChild)}` : null;
+
+  const overview = useApi<Overview>(roleId === 'admin' ? '/reports/overview' : null);
+  const revenue = useApi<Revenue>(roleId === 'admin' ? '/reports/revenue' : null);
+  const gradeBands = useApi<GradeBand[]>(roleId === 'admin' || roleId === 'teacher' ? '/reports/grade-distribution' : null);
+  const attendanceSummary = useApi<AttendanceSummary>(roleId === 'admin' || roleId === 'teacher' ? '/reports/attendance-summary' : null);
+  const grades = useApi<Grade[]>(roleId === 'student' ? '/grades' : roleId === 'parent' && studentQuery ? `/grades${studentQuery}` : null);
+  const attendance = useApi<AttendanceRecord[]>(roleId === 'student' ? '/attendance' : roleId === 'parent' && studentQuery ? `/attendance${studentQuery}` : null);
+  const timetable = useApi<TimetableSlot[]>(roleId === 'teacher' || roleId === 'student' ? '/me/timetable' : null);
+  const assignments = useApi<Assignment[]>(roleId === 'teacher' ? '/assignments' : roleId === 'student' ? '/me/assignments' : null);
+  const invoices = useApi<Invoice[]>(roleId === 'student' ? '/invoices' : roleId === 'parent' && studentQuery ? `/invoices${studentQuery}` : null);
+  const notifications = useApi<Notification[]>('/notifications');
+
+  const unread = notifications.data?.filter((item) => !item.read).length ?? 0;
+  const metrics = buildMetrics(roleId, {
+    overview: overview.data,
+    revenue: revenue.data,
+    attendanceSummary: attendanceSummary.data,
+    grades: grades.data,
+    attendance: attendance.data,
+    timetable: timetable.data,
+    assignments: assignments.data,
+    invoices: invoices.data,
+    children: children.data,
+    unread,
+  });
+  const error = [overview, revenue, gradeBands, attendanceSummary, grades, attendance, timetable, assignments, invoices, notifications]
+    .map((result) => result.error).find(Boolean);
 
   return (
     <div className="dashboard">
+      {error && <div className="error-banner">Không thể tải một phần dashboard: {error}</div>}
       <section className="metric-grid">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.label} metric={metric} />
-        ))}
+        {metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
       </section>
 
-      {roleId === 'admin' && <AdminDashboard />}
-      {roleId === 'teacher' && <TeacherDashboard />}
-      {roleId === 'student' && <StudentDashboard />}
-      {roleId === 'parent' && <ParentDashboard />}
+      {(roleId === 'admin' || roleId === 'teacher') && (
+        <div className="dashboard-grid">
+          <ChartCard title="Phân bố điểm" subtitle="Dữ liệu trực tiếp từ sổ điểm">
+            <ColumnChart data={(gradeBands.data ?? []).map((item) => ({ label: item.band, value: item.count }))} max={Math.max(1, ...(gradeBands.data ?? []).map((item) => item.count))} suffix="" />
+          </ChartCard>
+          <ChartCard title="Chuyên cần" subtitle="Tổng hợp bản ghi điểm danh">
+            <BarList data={attendanceBars(attendanceSummary.data)} max={Math.max(1, attendanceSummary.data?.total ?? 0)} suffix="" />
+          </ChartCard>
+        </div>
+      )}
+
+      {(roleId === 'student' || roleId === 'parent') && (
+        <div className="dashboard-grid">
+          <ChartCard title="Điểm theo môn" subtitle="Điểm trung bình từ dữ liệu đã công bố">
+            <BarList data={subjectAverages(grades.data ?? [])} max={10} suffix="" />
+          </ChartCard>
+          <ChartCard title="Trạng thái hóa đơn" subtitle={roleId === 'parent' ? 'Theo học sinh đang chọn' : 'Hóa đơn của bạn'}>
+            <ColumnChart data={invoiceBars(invoices.data ?? [])} max={Math.max(1, ...(invoiceBars(invoices.data ?? []).map((item) => item.value)))} suffix="" />
+          </ChartCard>
+        </div>
+      )}
     </div>
   );
 }
 
-const dashboardMetricsByRole: Record<RoleId, Metric[]> = {
-  admin: [
-    { label: 'Tài khoản hoạt động', value: '2,438', hint: '4 vai trò RBAC', Icon: Users, tone: 'blue' },
-    { label: 'Lớp đang mở', value: String(classes.length), hint: 'Năm học 2025-2026', Icon: School, tone: 'green' },
-    { label: 'Cảnh báo TKB', value: '6', hint: 'GV/phòng/lớp trùng lịch', Icon: AlertTriangle, tone: 'orange' },
-    { label: 'Sự kiện hôm nay', value: '2.7K', hint: 'RabbitMQ + audit log', Icon: Bell, tone: 'violet' },
-  ],
-  teacher: [
-    { label: 'Lớp đang dạy', value: String(teacherClasses.length), hint: 'Toán 10 và 11', Icon: School, tone: 'blue' },
-    { label: 'Tiết hôm nay', value: '4', hint: '2 tiết cần điểm danh', Icon: CalendarDays, tone: 'green' },
-    { label: 'Bài chưa chấm', value: '18', hint: 'Deadline tuần này', Icon: BookOpenCheck, tone: 'orange' },
-    { label: 'Tin nhắn mới', value: '3', hint: 'HS/PH và lớp 10A1', Icon: MessageSquareText, tone: 'violet' },
-  ],
-  student: [
-    { label: 'Điểm trung bình', value: '8.4', hint: 'HK1 đang học', Icon: BarChart3, tone: 'green' },
-    { label: 'Chuyên cần', value: '96%', hint: '1 buổi vắng có phép', Icon: CheckCircle2, tone: 'blue' },
-    { label: 'Bài sắp đến hạn', value: '3', hint: 'Trong 7 ngày', Icon: Clock3, tone: 'orange' },
-    { label: 'Thông báo', value: '12', hint: 'In-app + push', Icon: Bell, tone: 'violet' },
-  ],
-  parent: [
-    { label: 'Hồ sơ con', value: String(children.length), hint: 'Switch profile sẵn sàng', Icon: Users, tone: 'blue' },
-    { label: 'Cảnh báo chuyên cần', value: '1', hint: 'Cần xác nhận lý do', Icon: AlertTriangle, tone: 'red' },
-    { label: 'Hóa đơn mở', value: '2', hint: 'VNPAY/MoMo sandbox', Icon: WalletCards, tone: 'orange' },
-    { label: 'Trao đổi GVCN', value: '4', hint: 'Tin nhắn trong tuần', Icon: MessageSquareText, tone: 'violet' },
-  ],
+type DashboardData = {
+  overview: Overview | null; revenue: Revenue | null; attendanceSummary: AttendanceSummary | null;
+  grades: Grade[] | null; attendance: AttendanceRecord[] | null; timetable: TimetableSlot[] | null;
+  assignments: Assignment[] | null; invoices: Invoice[] | null; children: ApiUser[] | null; unread: number;
 };
 
-function AdminDashboard() {
-  return (
-    <section className="chart-grid">
-      <ChartCard title="Phân bổ tài khoản" subtitle="Admin theo dõi cơ cấu người dùng toàn trường">
-        <BarList data={roleDistribution} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Chuyên cần toàn trường" subtitle="Tỷ lệ có mặt 7 ngày gần nhất">
-        <ColumnChart data={attendanceTrend} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Phổ điểm học kỳ" subtitle="Admin xem chất lượng học tập theo dải điểm">
-        <BarList data={gradeBands} max={80} suffix=" HS" />
-      </ChartCard>
-
-      <ChartCard title="Tài chính & event queue" subtitle="Hóa đơn, trạng thái thanh toán và lượng event">
-        <SplitDashboard />
-      </ChartCard>
-    </section>
-  );
+function buildMetrics(role: RoleId, data: DashboardData): Metric[] {
+  if (role === 'admin') return [
+    { label: 'Học sinh', value: String(data.overview?.students ?? '…'), hint: `${data.overview?.classes ?? '…'} lớp`, Icon: Users, tone: 'blue' },
+    { label: 'Giáo viên', value: String(data.overview?.teachers ?? '…'), hint: `${data.overview?.subjects ?? '…'} môn học`, Icon: School, tone: 'green' },
+    { label: 'Đã thu', value: money(data.revenue?.paidAmount ?? 0), hint: `${data.revenue?.paidCount ?? 0}/${data.revenue?.invoiceCount ?? 0} hóa đơn`, Icon: WalletCards, tone: 'orange' },
+    { label: 'Chưa thu', value: money(data.revenue?.outstanding ?? 0), hint: 'Cập nhật theo giao dịch', Icon: BarChart3, tone: 'red' },
+  ];
+  if (role === 'teacher') return [
+    { label: 'Tiết dạy', value: String(data.timetable?.length ?? '…'), hint: 'Trong thời khóa biểu', Icon: CalendarDays, tone: 'blue' },
+    { label: 'Bài tập', value: String(data.assignments?.length ?? '…'), hint: 'Đã tạo', Icon: BookOpenCheck, tone: 'green' },
+    { label: 'Chuyên cần', value: `${data.attendanceSummary?.attendanceRate ?? 0}%`, hint: `${data.attendanceSummary?.total ?? 0} lượt`, Icon: BarChart3, tone: 'orange' },
+    { label: 'Thông báo mới', value: String(data.unread), hint: 'Chưa đọc', Icon: Bell, tone: 'violet' },
+  ];
+  const avg = data.grades?.length ? data.grades.reduce((sum, item) => sum + item.score, 0) / data.grades.length : 0;
+  const attendanceRate = personalAttendanceRate(data.attendance ?? []);
+  if (role === 'student') return [
+    { label: 'Điểm trung bình', value: avg.toFixed(1), hint: `${data.grades?.length ?? 0} đầu điểm`, Icon: BarChart3, tone: 'blue' },
+    { label: 'Chuyên cần', value: `${attendanceRate}%`, hint: `${data.attendance?.length ?? 0} lượt`, Icon: CalendarDays, tone: 'green' },
+    { label: 'Bài tập', value: String(data.assignments?.length ?? '…'), hint: 'Được giao', Icon: BookOpenCheck, tone: 'orange' },
+    { label: 'Thông báo mới', value: String(data.unread), hint: 'Chưa đọc', Icon: Bell, tone: 'violet' },
+  ];
+  const due = (data.invoices ?? []).reduce((sum, item) => sum + Math.max(0, item.totalAmount - item.paidAmount), 0);
+  return [
+    { label: 'Học sinh', value: String(data.children?.length ?? '…'), hint: 'Đã liên kết', Icon: Users, tone: 'blue' },
+    { label: 'Điểm trung bình', value: avg.toFixed(1), hint: `${data.grades?.length ?? 0} đầu điểm`, Icon: BarChart3, tone: 'green' },
+    { label: 'Cần thanh toán', value: money(due), hint: `${(data.invoices ?? []).filter((item) => item.status !== 'PAID').length} hóa đơn`, Icon: WalletCards, tone: 'orange' },
+    { label: 'Thông báo mới', value: String(data.unread), hint: 'Chưa đọc', Icon: Bell, tone: 'violet' },
+  ];
 }
 
-function TeacherDashboard() {
-  const assignmentProgress = assignments.map((item) => ({
-    label: item.className,
-    value: Math.round((item.submitted / item.total) * 100),
-  }));
-  const classLoad = teacherClasses.map((item) => ({ label: item.className, value: item.students }));
-  const scoreDistribution = roster.map((student) => ({
-    label: student.name,
-    value: Math.round((initialGrades[student.id] ?? 0) * 10),
-  }));
-  const unreadByThread = chatThreads.map((thread) => ({
-    label: thread.name,
-    value: thread.unread,
-  }));
-
-  return (
-    <section className="chart-grid">
-      <ChartCard title="Lớp đang phụ trách" subtitle="Sĩ số theo phân công giáo viên">
-        <BarList data={classLoad} max={45} suffix=" HS" />
-      </ChartCard>
-
-      <ChartCard title="Tiến độ nộp bài" subtitle="Tỷ lệ bài nộp theo lớp">
-        <BarList data={assignmentProgress} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Điểm lớp 10A1" subtitle="Điểm miệng gần nhất của học sinh">
-        <BarList data={scoreDistribution} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Tin nhắn cần xử lý" subtitle="Luồng giao tiếp với HS/PH">
-        <BarList data={unreadByThread} max={3} suffix=" mới" />
-      </ChartCard>
-    </section>
-  );
+function attendanceBars(data: AttendanceSummary | null) {
+  return [
+    { label: 'Có mặt', value: data?.present ?? 0 }, { label: 'Đi muộn', value: data?.late ?? 0 },
+    { label: 'Vắng phép', value: data?.absentExcused ?? 0 }, { label: 'Vắng không phép', value: data?.absentUnexcused ?? 0 },
+  ];
 }
 
-function StudentDashboard() {
-  const scoreBySubject = subjectScores.map((score) => ({
-    label: score.subject,
-    value: Math.round(score.avg * 10),
-  }));
-  const assignmentStatus = assignments.map((item) => ({
-    label: item.title.replace('Bài tập ', ''),
-    value: Math.round((item.submitted / item.total) * 100),
-  }));
-
-  return (
-    <section className="chart-grid">
-      <ChartCard title="Điểm theo môn" subtitle="Học sinh theo dõi kết quả HK1 của mình">
-        <BarList data={scoreBySubject} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Chuyên cần cá nhân" subtitle="Tỷ lệ có mặt theo ngày trong tuần">
-        <ColumnChart data={attendanceTrend} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Bài tập cần theo dõi" subtitle="Tiến độ nộp bài trong lớp">
-        <BarList data={assignmentStatus} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Lịch học hôm nay" subtitle="Các tiết học và việc cần làm">
-        <ProcessList
-          items={[
-            'Tiết 1: Toán tại P201, kiểm tra miệng.',
-            'Tiết 2: Vật lý tại P304, chuẩn bị thí nghiệm.',
-            'Tiết 3: Tiếng Anh tại P108, nộp bài speaking.',
-            'Sau giờ học: CLB Robotics tại Lab 2.',
-          ]}
-        />
-      </ChartCard>
-    </section>
-  );
+function subjectAverages(grades: Grade[]) {
+  const grouped = new Map<string, number[]>();
+  grades.forEach((grade) => grouped.set(grade.subjectName, [...(grouped.get(grade.subjectName) ?? []), grade.score]));
+  return [...grouped].map(([label, scores]) => ({ label, value: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 }));
 }
 
-function ParentDashboard() {
-  const childScores = children.map((child) => ({
-    label: child.name,
-    value: Math.round(child.avg * 10),
-  }));
-  const childAttendance = children.map((child) => ({
-    label: child.name,
-    value: child.attendance,
-  }));
-  const invoiceAmounts = invoices.map((invoice) => ({
-    label: invoice.title.replace(' học sinh', ''),
-    value: Math.round(invoice.amount / 100000),
-  }));
+function invoiceBars(invoices: Invoice[]) {
+  const statuses = ['PAID', 'PARTIAL', 'UNPAID'];
+  return statuses.map((status) => ({ label: status === 'PAID' ? 'Đã trả' : status === 'PARTIAL' ? 'Một phần' : 'Chưa trả', value: invoices.filter((item) => item.status === status).length }));
+}
 
-  return (
-    <section className="chart-grid">
-      <ChartCard title="Kết quả học tập của con" subtitle="Điểm trung bình theo từng hồ sơ con">
-        <BarList data={childScores} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Chuyên cần của con" subtitle="Phụ huynh theo dõi tỷ lệ đi học">
-        <ColumnChart data={childAttendance} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Học phí cần theo dõi" subtitle="Số tiền theo từng hóa đơn">
-        <BarList data={invoiceAmounts} max={70} suffix="00K" />
-      </ChartCard>
-
-      <ChartCard title="Việc cần làm" subtitle="Các đầu việc ưu tiên của phụ huynh">
-        <div className="dashboard-task-list">
-          <div>
-            <span>Xác nhận vắng</span>
-            <strong>{children[0].alert}</strong>
-            <StatusPill value="Cần xử lý" />
-          </div>
-          <div>
-            <span>Học phí</span>
-            <strong>{currency.format(invoices[0].amount)}</strong>
-            <StatusPill value={invoices[0].status} />
-          </div>
-          <div>
-            <span>Liên lạc</span>
-            <strong>4 tin nhắn với GVCN</strong>
-            <StatusPill value="PENDING" />
-          </div>
-        </div>
-      </ChartCard>
-    </section>
-  );
+function personalAttendanceRate(records: AttendanceRecord[]) {
+  if (!records.length) return 0;
+  const attended = records.filter((item) => item.status === 'PRESENT' || item.status === 'LATE').length;
+  return Math.round(attended / records.length * 1000) / 10;
 }
