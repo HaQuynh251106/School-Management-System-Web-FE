@@ -1002,6 +1002,367 @@ td {
   font-size: 1.4rem;
 }
 
+/* Teacher weekly timetable */
+.schedule-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.schedule-status i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.teacher-schedule,
+.weekly-schedule {
+  display: grid;
+  gap: 16px;
+}
+
+.teacher-schedule-summary {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.45fr) minmax(150px, 0.6fr) minmax(230px, 1fr);
+  gap: 12px;
+}
+
+.schedule-summary-primary,
+.schedule-summary-tile {
+  min-width: 0;
+  min-height: 104px;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+}
+
+.schedule-summary-primary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(255, 255, 255, 0.22), transparent 34%),
+    linear-gradient(135deg, #1d4ed8, #2563eb 56%, #0891b2);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.18);
+}
+
+.schedule-summary-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.schedule-summary-primary small,
+.schedule-summary-primary strong,
+.schedule-summary-primary span,
+.schedule-summary-tile span,
+.schedule-summary-tile strong,
+.schedule-summary-tile small {
+  display: block;
+}
+
+.schedule-summary-primary small {
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.schedule-summary-primary strong {
+  font-size: 1.18rem;
+  line-height: 1.3;
+}
+
+.schedule-summary-primary div > span {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.82rem;
+}
+
+.schedule-summary-tile {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 16px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.schedule-summary-tile > span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.schedule-summary-tile strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 1.06rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-summary-tile:not(.next-slot) strong {
+  color: #2563eb;
+  font-size: 1.5rem;
+}
+
+.schedule-summary-tile small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 28px;
+  color: #64748b;
+  font-size: 0.77rem;
+  font-weight: 700;
+}
+
+.schedule-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.legend-dot.occupied { background: #2563eb; }
+.legend-dot.current { background: #bae6fd; box-shadow: inset 0 0 0 2px #0284c7; }
+
+.schedule-hint {
+  margin-left: auto;
+  font-weight: 500;
+}
+
+.teacher-timetable-scroll {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.teacher-timetable-grid {
+  display: grid;
+  grid-template-columns: 82px repeat(6, minmax(172px, 1fr));
+  min-width: 1180px;
+}
+
+.teacher-time-corner,
+.teacher-day-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 68px;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #dbe4f0;
+  background: #f8fafc;
+}
+
+.teacher-time-corner {
+  left: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.teacher-day-head {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+}
+
+.teacher-day-head span {
+  color: #1e293b;
+  font-size: 0.92rem;
+  font-weight: 900;
+}
+
+.teacher-day-head small {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.teacher-day-head.is-today {
+  background: linear-gradient(180deg, #e0f2fe, #f0f9ff);
+}
+
+.teacher-day-head.is-today span,
+.teacher-day-head.is-today small { color: #0369a1; }
+
+.teacher-period {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 2px;
+  min-height: 132px;
+  border-right: 1px solid #dbe4f0;
+  border-bottom: 1px solid #e8edf4;
+  background: #f8fafc;
+}
+
+.teacher-period strong {
+  color: #0f172a;
+  font-size: 1.16rem;
+}
+
+.teacher-period span {
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.teacher-slot {
+  display: grid;
+  min-height: 132px;
+  padding: 8px;
+  border-right: 1px solid #eef2f7;
+  border-bottom: 1px solid #e8edf4;
+  background: #ffffff;
+}
+
+.teacher-slot.is-today { background: #f7fcff; }
+
+.teacher-slot.is-empty {
+  place-items: center;
+  background-image: radial-gradient(#dbe4f0 0.7px, transparent 0.7px);
+  background-size: 12px 12px;
+}
+
+.teacher-empty-label {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.92);
+  color: #b0bac8;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.teacher-class-card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 12px 11px 15px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--slot-color) 24%, #e2e8f0);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--slot-color) 5%, #ffffff);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.teacher-class-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--slot-color);
+  content: "";
+}
+
+.teacher-class-card:hover {
+  z-index: 1;
+  border-color: color-mix(in srgb, var(--slot-color) 46%, #cbd5e1);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--slot-color) 13%, transparent);
+  transform: translateY(-2px);
+}
+
+.teacher-class-topline,
+.teacher-class-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.teacher-class-topline span,
+.teacher-class-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.teacher-class-topline span {
+  color: var(--slot-color);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
+.teacher-class-topline small {
+  color: #64748b;
+  font-size: 0.67rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.teacher-class-card > strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 0.91rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.teacher-class-card > strong svg { flex: 0 0 auto; color: var(--slot-color); }
+
+.teacher-class-meta {
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--slot-color) 12%, #e2e8f0);
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .timetable {
   display: grid;
   grid-template-columns: 78px repeat(5, minmax(130px, 1fr));
@@ -1334,7 +1695,739 @@ td {
   grid-template-columns: 38px minmax(0, 1fr) auto;
 }
 
+/* Semester gradebooks — teacher and student */
+.gradebook-save {
+  min-height: 40px;
+  padding-inline: 16px;
+  border-radius: 11px;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+.gradebook-filterbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 0.55fr)) minmax(240px, 1.35fr);
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fafc, #f4f7fb);
+}
+
+.gradebook-filterbar label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.gradebook-filterbar label > span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gradebook-auto-subject {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 9px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #eff6ff, #fff);
+}
+
+.gradebook-auto-subject > span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gradebook-auto-subject strong {
+  overflow: hidden;
+  color: #1d4ed8;
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gradebook-auto-subject small {
+  color: #64748b;
+  font-size: 0.69rem;
+}
+
+/* Assignment workspace */
+.assignment-composer {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid #dbe4f0;
+  border-radius: 17px;
+  background: linear-gradient(145deg, #f8fbff, #fff 60%);
+  box-shadow: 0 12px 30px rgba(30, 64, 175, 0.06);
+}
+
+.assignment-composer-head,
+.assignment-card-top,
+.submission-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.assignment-composer-head > span,
+.assignment-subject-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border-radius: 12px;
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.assignment-composer-head > div,
+.assignment-card-top > div,
+.submission-panel-head > div {
+  display: grid;
+  min-width: 0;
+}
+
+.assignment-composer-head strong,
+.submission-panel-head strong { color: #172033; font-size: 0.98rem; }
+.assignment-composer-head small,
+.submission-panel-head small { color: #64748b; }
+
+.assignment-form-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.8fr) minmax(240px, 1.4fr) minmax(190px, 0.8fr);
+  gap: 12px;
+}
+
+.assignment-form-grid label,
+.student-submit-panel > label {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.assignment-form-grid label > span,
+.student-submit-panel label > span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.assignment-form-grid .live-input,
+.assignment-form-grid .live-select { width: 100%; min-height: 43px; border-radius: 10px; }
+.assignment-description-field { grid-column: 1 / 3; }
+.assignment-textarea { min-height: 96px !important; padding-block: 11px; resize: vertical; }
+
+.assignment-file-field {
+  position: relative;
+  min-height: 96px;
+  padding: 11px 13px;
+  border: 1px dashed #93c5fd;
+  border-radius: 11px;
+  background: #eff6ff;
+}
+
+.assignment-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.assignment-file-field small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  overflow: hidden;
+  color: #1d4ed8;
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.assignment-late-toggle {
+  display: flex !important;
+  grid-column: 1 / -1;
+  align-items: center !important;
+  gap: 8px !important;
+  width: max-content;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.assignment-late-toggle input { width: 17px; height: 17px; accent-color: #2563eb; }
+.assignment-late-toggle span { color: inherit !important; font-size: inherit !important; letter-spacing: 0 !important; text-transform: none !important; }
+
+.assignment-composer-actions,
+.assignment-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.assignment-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.assignment-summary article {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #fff;
+}
+
+.assignment-summary article > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #eef2ff; color: #4f46e5; }
+.assignment-summary article > div { display: grid; }
+.assignment-summary small { color: #64748b; font-weight: 700; }
+.assignment-summary strong { color: #172033; font-size: 1.12rem; }
+
+.assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  gap: 13px;
+}
+
+.assignment-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 13px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  background: #fff;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.assignment-card:hover,
+.assignment-card.selected { border-color: #93c5fd; box-shadow: 0 13px 27px rgba(37, 99, 235, 0.09); transform: translateY(-1px); }
+.assignment-card-top {
+  display: grid;
+  grid-template-columns: 39px minmax(0, 1fr) auto;
+  align-items: start;
+}
+.assignment-card .assignment-subject-icon { display: grid; color: #2563eb; }
+.assignment-card-top > div { min-width: 0; }
+.assignment-card-top .badge { display: inline-flex; align-self: start; }
+.assignment-card-top small { color: #2563eb; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
+.assignment-card-top strong { overflow-wrap: anywhere; color: #172033; font-size: 0.96rem; line-height: 1.35; }
+.assignment-card > p { min-height: 40px; margin: 0; color: #64748b; line-height: 1.5; }
+
+.assignment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.assignment-meta span { display: inline-flex; align-items: center; gap: 5px; }
+
+.assignment-attachment,
+.assignment-file-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.assignment-attachment { width: 100%; box-sizing: border-box; }
+.assignment-attachment span { flex: 1; overflow: hidden; font-weight: 750; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.assignment-attachment small { color: #2563eb; font-weight: 800; }
+.assignment-file-link { width: fit-content; margin-top: 6px; padding: 6px 8px; font-size: 0.73rem; }
+
+.assignment-progress { display: grid; gap: 6px; }
+.assignment-progress > div { display: flex; justify-content: space-between; color: #64748b; font-size: 0.73rem; font-weight: 750; }
+.assignment-progress > div strong { color: #172033; }
+.assignment-progress > i { overflow: hidden; height: 7px; border-radius: 999px; background: #e2e8f0; }
+.assignment-progress > i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #3b82f6, #2563eb); }
+.assignment-submission-state { margin-right: auto; align-self: center; color: #64748b; font-size: 0.74rem; font-weight: 700; }
+.assignment-card-actions { min-width: 0; flex-wrap: wrap; }
+.assignment-card-actions .live-btn { position: static; flex: 0 0 auto; }
+
+.assignment-grade-result {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 13px;
+  padding: 13px;
+  border: 1px solid #bbf7d0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #f0fdf4, #f8fffb);
+}
+
+.assignment-grade-score {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-content: center;
+  justify-content: center;
+  column-gap: 4px;
+  min-height: 84px;
+  border-radius: 11px;
+  background: #dcfce7;
+  color: #166534;
+  text-align: center;
+}
+
+.assignment-grade-score span {
+  grid-column: 1 / -1;
+  color: #15803d;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.assignment-grade-score strong { font-size: 1.85rem; line-height: 1; }
+.assignment-grade-score small { align-self: end; color: #16a34a; font-weight: 800; }
+.assignment-grade-feedback { display: grid; align-content: center; gap: 7px; min-width: 0; }
+.assignment-grade-feedback > div { display: flex; align-items: center; gap: 7px; color: #15803d; }
+.assignment-grade-feedback p { margin: 0; color: #334155; font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; }
+.assignment-grade-feedback small { color: #64748b; font-size: 0.7rem; font-weight: 650; }
+
+.submission-panel {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 17px;
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.submission-panel-head { justify-content: space-between; }
+.assignment-submission-table td:first-child { min-width: 160px; }
+.assignment-submission-table td:first-child small { display: block; margin-top: 3px; color: #64748b; }
+.assignment-submission-table td:nth-child(2) { min-width: 220px; }
+.assignment-submission-table td:nth-child(2) p { max-width: 360px; margin: 0; white-space: normal; }
+.assignment-submission-table td:nth-child(4) { display: grid; grid-template-columns: 68px minmax(150px, 1fr); gap: 7px; min-width: 230px; }
+.assignment-feedback { min-height: 38px; }
+.student-submit-panel { max-width: 760px; margin-inline: auto; }
+
+.gradebook-filterbar .live-select,
+.gradebook-filterbar .live-input {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.gradebook-onboarding {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  min-height: 240px;
+  padding: 36px 20px;
+  border: 1px dashed #bfdbfe;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 50% 0, rgba(219, 234, 254, 0.72), transparent 54%),
+    #f8fbff;
+  color: #2563eb;
+  text-align: center;
+}
+
+.gradebook-onboarding strong {
+  margin-top: 7px;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.gradebook-onboarding span {
+  max-width: 520px;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.gradebook-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.gradebook-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: #eff6ff;
+}
+
+.gradebook-context small,
+.gradebook-context strong {
+  display: block;
+}
+
+.gradebook-context small {
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.gradebook-context strong { color: #1e3a8a; }
+
+.gradebook-context > span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.75rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.gradebook-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.gradebook-stat {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  min-height: 102px;
+  padding: 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.gradebook-stat > span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.gradebook-stat:nth-child(2) > span { background: #fff7ed; color: #d97706; }
+.gradebook-stat:nth-child(3) > span { background: #ecfdf5; color: #059669; }
+
+.gradebook-stat small,
+.gradebook-stat strong,
+.gradebook-stat p {
+  display: block;
+  margin: 0;
+}
+
+.gradebook-stat small {
+  color: #64748b;
+  font-size: 0.73rem;
+  font-weight: 700;
+}
+
+.gradebook-stat strong {
+  margin: 3px 0;
+  color: #0f172a;
+  font-size: 1.34rem;
+  line-height: 1.2;
+}
+
+.gradebook-stat p {
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 0.73rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gradebook-stat.primary {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff, #f8fbff);
+}
+
+.gradebook-stat.primary > span { background: #2563eb; color: #fff; }
+.gradebook-stat.primary strong { color: #1d4ed8; }
+
+.gradebook-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.gradebook-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.score-dot.excellent { background: #16a34a; }
+.score-dot.average { background: #d97706; }
+.score-dot.needs-attention { background: #dc2626; }
+
+.gradebook-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid #dbe4f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, 0.055);
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.gradebook-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.teacher-gradebook-table { min-width: 980px; }
+
+.gradebook-table th,
+.gradebook-table td {
+  height: 66px;
+  padding: 10px 12px;
+  border-right: 1px solid #eef2f7;
+  border-bottom: 1px solid #e8edf4;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.gradebook-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-width: 112px;
+  height: 62px;
+  background: #f8fafc;
+  color: #475569;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.gradebook-table th span,
+.gradebook-table th small {
+  display: block;
+}
+
+.gradebook-table th span {
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.gradebook-table th small {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.gradebook-table tbody tr:hover td { background-color: #fbfdff; }
+
+.gradebook-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 210px !important;
+  max-width: 240px;
+  background: #fff;
+  text-align: left !important;
+  box-shadow: 1px 0 0 #e2e8f0;
+}
+
+.gradebook-table thead .gradebook-sticky-col {
+  z-index: 3;
+  background: #f1f5f9;
+}
+
+.gradebook-sticky-col strong,
+.gradebook-sticky-col small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gradebook-sticky-col strong {
+  color: #172033;
+  font-size: 0.84rem;
+}
+
+.gradebook-sticky-col small {
+  margin-top: 4px;
+  color: #94a3b8;
+  font-size: 0.69rem;
+}
+
+.gradebook-total-head {
+  min-width: 120px !important;
+  background: #eef2ff !important;
+  color: #3730a3 !important;
+}
+
+.grade-score,
+.grade-total {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.grade-score.excellent,
+.grade-total.excellent { background: #dcfce7; color: #15803d; }
+.grade-score.good,
+.grade-total.good { background: #dbeafe; color: #1d4ed8; }
+.grade-score.average,
+.grade-total.average { background: #fef3c7; color: #b45309; }
+.grade-score.needs-attention,
+.grade-total.needs-attention { background: #fee2e2; color: #b91c1c; }
+.grade-score.empty,
+.grade-total.empty { background: #f1f5f9; color: #94a3b8; }
+
+.gradebook-total-cell {
+  min-width: 120px;
+  background: #fafaff;
+}
+
+.gradebook-total-cell small {
+  display: block;
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 0.64rem;
+}
+
+.grade-total {
+  min-width: 52px;
+  min-height: 36px;
+  font-size: 0.95rem;
+}
+
+.gradebook-score-input {
+  width: 70px;
+  height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  outline: none;
+  background: #fff;
+  color: #172033;
+  font-weight: 850;
+  text-align: center;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.gradebook-score-input:focus {
+  border-color: #2563eb;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
+}
+
+.gradebook-score-input.excellent { border-color: #86efac; background: #f0fdf4; }
+.gradebook-score-input.good { border-color: #93c5fd; background: #eff6ff; }
+.gradebook-score-input.average { border-color: #fcd34d; background: #fffbeb; }
+.gradebook-score-input.needs-attention { border-color: #fca5a5; background: #fef2f2; }
+.gradebook-score-input.empty { border-style: dashed; }
+
+.gradebook-completion {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.gradebook-completion.complete { background: #dcfce7; color: #15803d; }
+.gradebook-completion.incomplete { background: #fff7ed; color: #c2410c; }
+
+.gradebook-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid #93c5fd;
+  border-radius: 0 8px 8px 0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.gradebook-semester-select {
+  min-width: 150px;
+  min-height: 38px;
+}
+
 @media (max-width: 1180px) {
+  .assignment-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assignment-description-field {
+    grid-column: 1 / -1;
+  }
+
+  .gradebook-filterbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gradebook-reason {
+    grid-column: 1 / -1;
+  }
+
+  .teacher-schedule-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-summary-primary {
+    grid-column: 1 / -1;
+  }
+
   .metric-grid,
   .chart-grid,
   .feature-grid,
@@ -1371,6 +2464,109 @@ td {
 }
 
 @media (max-width: 660px) {
+  .assignment-form-grid,
+  .assignment-summary,
+  .assignment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-description-field {
+    grid-column: auto;
+  }
+
+  .assignment-composer-actions,
+  .assignment-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assignment-submission-state {
+    margin-right: 0;
+  }
+
+  .assignment-grade-result {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-grade-score {
+    min-height: 74px;
+  }
+
+  .gradebook-filterbar,
+  .gradebook-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .gradebook-reason {
+    grid-column: auto;
+  }
+
+  .gradebook-context {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gradebook-context > span {
+    white-space: normal;
+  }
+
+  .gradebook-stat {
+    min-height: 88px;
+  }
+
+  .gradebook-table-wrap {
+    margin-inline: -8px;
+    border-radius: 12px;
+  }
+
+  .gradebook-sticky-col {
+    min-width: 170px !important;
+    max-width: 170px;
+  }
+
+  .gradebook-semester-select {
+    width: 100%;
+  }
+
+  .teacher-schedule-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-summary-primary {
+    grid-column: auto;
+  }
+
+  .schedule-summary-primary,
+  .schedule-summary-tile {
+    min-height: 94px;
+    border-radius: 14px;
+  }
+
+  .schedule-legend {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
+
+  .schedule-hint {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .teacher-timetable-scroll {
+    margin-inline: -8px;
+    border-radius: 12px;
+  }
+
+  .teacher-timetable-grid {
+    grid-template-columns: 68px repeat(6, 158px);
+    min-width: 1016px;
+  }
+
+  .teacher-period,
+  .teacher-slot {
+    min-height: 124px;
+  }
+
   .workspace {
     padding: 16px;
   }

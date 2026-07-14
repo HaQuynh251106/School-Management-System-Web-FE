@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Send, Users } from 'lucide-react';
+import { BarChart3, CheckCircle2, Send, Trophy, Users } from 'lucide-react';
 import { api } from '../../api/client';
+import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { ApiUser, SchoolClass, Subject, Semester, ExamCategory, TimetableSlot, Grade } from '../../api/types';
+import type { ApiUser, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherGradebookContext } from '../../api/types';
 import { Section } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, DAY_LABEL } from './common';
+import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -133,83 +135,167 @@ export function TeacherAttendanceLive() {
 
 /* ===== B4 — Bảng điểm ===== */
 export function TeacherGradesLive() {
+  const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
-  const subjects = useApi<Subject[]>('/subjects');
+  const classes = useApi<SchoolClass[]>('/classes');
   const semesters = useApi<Semester[]>('/semesters');
   const cats = useApi<ExamCategory[]>('/exam-categories');
   const toast = useToast();
 
   const classOpts = useMemo(() => {
     const m: Record<string, true> = {};
-    (slots.data || []).forEach((s) => (m[s.classId] = true));
+    const mainSubject = user?.mainSubject?.trim().toLocaleLowerCase('vi');
+    (slots.data || [])
+      .filter((slot) => !mainSubject || slot.subjectName.trim().toLocaleLowerCase('vi') === mainSubject)
+      .forEach((slot) => (m[slot.classId] = true));
     return Object.keys(m);
-  }, [slots.data]);
+  }, [slots.data, user?.mainSubject]);
 
   const [classId, setClassId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
   const [semesterId, setSemesterId] = useState('');
-  const [category, setCategory] = useState('');
   const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    if (!classId && classOpts.length) setClassId(classOpts[0]);
+  }, [classId, classOpts]);
+
+  useEffect(() => {
+    if (!semesterId && semesters.data?.length) {
+      setSemesterId(semesters.data.find((semester) => semester.status === 'ACTIVE')?.id || semesters.data[0].id);
+    }
+  }, [semesterId, semesters.data]);
+
+  const gradebookContext = useApi<TeacherGradebookContext>(classId && semesterId
+    ? `/me/gradebook-context?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}`
+    : null);
+  const contextMatches = gradebookContext.data?.classId === classId && gradebookContext.data?.semesterId === semesterId;
+  const subjectId = contextMatches ? gradebookContext.data?.subjectId || '' : '';
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const existing = useApi<Grade[]>(
-    classId && subjectId && semesterId && category
-      ? `/grades?classId=${classId}&subjectId=${subjectId}&semesterId=${semesterId}&category=${category}`
+    classId && subjectId && semesterId
+      ? `/grades?classId=${classId}&semesterId=${semesterId}`
       : null,
   );
   const [scores, setScores] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const m: Record<string, string> = {};
-    (existing.data || []).forEach((g) => (m[g.studentId] = String(g.score)));
+    (existing.data || []).forEach((grade) => (m[gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1)] = String(grade.score)));
     setScores(m);
   }, [existing.data]);
 
-  const ready = classId && subjectId && semesterId && category;
+  const ready = Boolean(classId && semesterId && subjectId && cats.data?.length);
+  const classMap = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item.code])), [classes.data]);
+  const subjectName = contextMatches ? gradebookContext.data?.subjectName || '' : user?.mainSubject || '';
+  const columns = useMemo(() => gradeColumns(cats.data || []), [cats.data]);
+  const gradeVersions = useMemo(() => new Map((existing.data || []).map((grade) => [
+    gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1),
+    grade.version,
+  ])), [existing.data]);
+
+  const gradeRows = useMemo(() => (students.data || []).map((student) => {
+    const values = columns.flatMap((column) => {
+      const value = scores[gradeKey(student.id, column.category.code, column.assessmentIndex)];
+      return value === undefined || value === '' ? [] : [{
+        category: column.category.code,
+        assessmentIndex: column.assessmentIndex,
+        score: Number(value),
+      }];
+    });
+    return { student, values, average: weightedAverage(values, cats.data || []) };
+  }), [students.data, cats.data, columns, scores]);
+
+  const averages = gradeRows.map((row) => row.average).filter((score): score is number => score != null);
+  const classAverage = averages.length
+    ? Math.round((averages.reduce((total, score) => total + score, 0) / averages.length) * 10) / 10
+    : null;
+  const highest = averages.length ? Math.max(...averages) : null;
+  const totalCells = gradeRows.length * columns.length;
+  const completedCells = gradeRows.reduce((total, row) => total + row.values.length, 0);
+  const completion = totalCells ? Math.round((completedCells / totalCells) * 100) : 0;
+
   const submit = async () => {
-    if (!ready) return toast.show('err', 'Chọn đủ Lớp / Môn / Học kỳ / Loại điểm');
-    const entries = (students.data || [])
-      .filter((s) => scores[s.id] !== undefined && scores[s.id] !== '')
-      .map((s) => ({ studentId: s.id, score: Number(scores[s.id]) }));
-    if (!entries.length) return toast.show('err', 'Chưa nhập điểm nào');
+    if (!ready) return toast.show('err', 'Chọn đủ Lớp / Học kỳ để hệ thống xác định môn mặc định');
+    const invalid = Object.values(scores).some((value) => value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 10));
+    if (invalid) return toast.show('err', 'Điểm phải nằm trong khoảng 0 đến 10');
+
+    const batches = columns.map((column) => ({
+      column,
+      entries: (students.data || [])
+        .filter((student) => scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== undefined && scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== '')
+        .map((student) => {
+          const key = gradeKey(student.id, column.category.code, column.assessmentIndex);
+          return { studentId: student.id, score: Number(scores[key]), expectedVersion: gradeVersions.get(key) };
+        }),
+    })).filter((batch) => batch.entries.length);
+    const entryCount = batches.reduce((total, batch) => total + batch.entries.length, 0);
+    if (!entryCount) return toast.show('err', 'Chưa nhập đầu điểm nào');
+
     try {
-      await api.post('/grades/bulk', { subjectId, semesterId, category, reason, entries });
-      toast.show('ok', `Đã lưu ${entries.length} điểm (HS/PH được thông báo, sửa điểm ghi log).`);
+      await Promise.all(batches.map((batch) => api.post('/grades/bulk', {
+        classId,
+        semesterId,
+        category: batch.column.category.code,
+        assessmentIndex: batch.column.assessmentIndex,
+        reason,
+        entries: batch.entries,
+      })));
+      toast.show('ok', `Đã lưu ${entryCount} đầu điểm và cập nhật tổng kết học kỳ.`);
       existing.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
-    <Section title="Bảng điểm (B4)" subtitle="Nhập/sửa điểm → /grades/bulk · ghi grade_change_logs" wide
-      action={<button className="live-btn" onClick={submit}><Send size={15} /> Lưu điểm</button>}>
+    <Section title="Sổ điểm học kỳ" subtitle="Nhập điểm theo từng đầu điểm và tự động tính tổng kết theo hệ số" wide
+      action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready}><Send size={15} /> Lưu sổ điểm</button>}>
       {toast.node}
-      <div className="live-toolbar">
-        <select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
-          <option value="">— Lớp —</option>{classOpts.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select className="live-select" value={subjectId} onChange={(e) => setSubjectId(e.target.value)}>
-          <option value="">— Môn —</option>{(subjects.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
-          <option value="">— Học kỳ —</option>{(semesters.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select className="live-select" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">— Loại điểm —</option>{(cats.data || []).map((c) => <option key={c.id} value={c.code}>{c.name}</option>)}
-        </select>
-        <input className="live-input grow" placeholder="Lý do sửa (nếu có)" value={reason} onChange={(e) => setReason(e.target.value)} />
+      <div className="gradebook-filterbar">
+        <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
+          <option value="">— Chọn lớp —</option>{classOpts.map((id) => <option key={id} value={id}>{classMap.get(id) || id}</option>)}
+        </select></label>
+        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
+          <option value="">— Chọn học kỳ —</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+        </select></label>
+        <div className="gradebook-auto-subject"><span>Môn mặc định</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
+        <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
       </div>
-      {!ready ? <div className="live-loading">Chọn Lớp / Môn / Học kỳ / Loại điểm để nhập.</div> : (
+
+      {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
         <Async state={students} empty="Lớp chưa có học sinh">
-          {(l) => (
-            <table className="live-table">
-              <thead><tr><th>Học sinh</th><th>Điểm (0–10)</th></tr></thead>
-              <tbody>{l.map((s) => (
-                <tr key={s.id}>
-                  <td><strong>{s.fullName}</strong> <small style={{ color: 'var(--muted)' }}>{s.studentCode}</small></td>
-                  <td><input className="score-input" type="number" min={0} max={10} step="0.1"
-                    value={scores[s.id] ?? ''} onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })} /></td>
-                </tr>
-              ))}</tbody>
-            </table>
+          {(list) => (
+            <div className="gradebook-shell">
+              <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{columns.length} đầu điểm · Hệ số tự động</span></div>
+
+              <div className="gradebook-summary">
+                <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình lớp</small><strong>{formatScore(classAverage)}</strong><p>{averages.length}/{list.length} học sinh có điểm</p></div></article>
+                <article className="gradebook-stat"><span><Trophy size={19} /></span><div><small>Điểm cao nhất</small><strong>{formatScore(highest)}</strong><p>Theo tổng kết hiện tại</p></div></article>
+                <article className="gradebook-stat"><span><CheckCircle2 size={19} /></span><div><small>Tiến độ nhập</small><strong>{completion}%</strong><p>{completedCells}/{totalCells} đầu điểm</p></div></article>
+              </div>
+
+              <div className="gradebook-table-wrap">
+                <table className="gradebook-table teacher-gradebook-table">
+                  <thead><tr>
+                    <th className="gradebook-sticky-col">Học sinh</th>
+                    {columns.map((column) => <th key={`${column.category.code}-${column.assessmentIndex}`}><span>{column.label}</span><small>Hệ số {column.category.weight}</small></th>)}
+                    <th className="gradebook-total-head">Tổng kết</th>
+                    <th>Trạng thái</th>
+                  </tr></thead>
+                  <tbody>{gradeRows.map((row) => {
+                    const missing = columns.length - row.values.length;
+                    return <tr key={row.student.id}>
+                      <td className="gradebook-sticky-col"><strong>{row.student.fullName}</strong><small>{row.student.studentCode || row.student.username}</small></td>
+                      {columns.map((column) => {
+                        const key = gradeKey(row.student.id, column.category.code, column.assessmentIndex);
+                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><input className={`gradebook-score-input ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => setScores({ ...scores, [key]: event.target.value })} /></td>;
+                      })}
+                      <td className="gradebook-total-cell"><strong className={`grade-total ${scoreTone(row.average)}`}>{row.average == null ? '' : formatScore(row.average)}</strong><small>{row.average == null ? 'Chưa đủ điểm' : 'Thang 10'}</small></td>
+                      <td><span className={`gradebook-completion ${missing ? 'incomplete' : 'complete'}`}>{missing ? `Thiếu ${missing}` : 'Đủ điểm'}</span></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+              <p className="gradebook-note">Tổng kết chỉ được tính khi đủ điểm miệng, điểm 15 phút, điểm giữa kỳ và cuối kỳ. Nếu thiếu bất kỳ đầu điểm nào, tổng kết để trống.</p>
+            </div>
           )}
         </Async>
       )}

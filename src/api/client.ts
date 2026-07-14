@@ -76,10 +76,8 @@ async function parseResponse(res: Response): Promise<unknown> {
 }
 
 async function request<T>(path: string, opts: RequestInit = {}, retry = true): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((opts.headers as Record<string, string>) || {}),
-  };
+  const headers: Record<string, string> = { ...((opts.headers as Record<string, string>) || {}) };
+  if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
@@ -99,6 +97,22 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
   return data as T;
 }
 
+async function download(path: string, retry = true): Promise<{ blob: Blob; filename?: string }> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(`${BASE}${path}`, { headers });
+  if (response.status === 401 && retry && await tryRefresh()) return download(path, false);
+  if (!response.ok) {
+    const data = await parseResponse(response);
+    throw new ApiError(response.status, typeof data === 'object' && data && 'error' in data
+      ? String((data as { error: unknown }).error) : response.statusText);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  return { blob: await response.blob(), filename: encoded ? decodeURIComponent(encoded) : plain };
+}
+
 export const api = {
   base: BASE,
   get: <T = any>(path: string) => request<T>(path),
@@ -107,4 +121,10 @@ export const api = {
   put: <T = any>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
   del: <T = any>(path: string) => request<T>(path, { method: 'DELETE' }),
+  upload: <T = any>(path: string, file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    return request<T>(path, { method: 'POST', body: data });
+  },
+  download,
 };

@@ -41,9 +41,10 @@ export interface AttendanceRecord {
 
 export interface Grade {
   id: string; studentId: string; subjectId: string; subjectName: string; semesterId: string;
-  category: string; categoryName: string; score: number; note?: string | null; recordedAt?: string;
+  category: string; categoryName: string; assessmentIndex?: number; score: number; note?: string | null; recordedAt?: string; version?: number;
 }
-export interface ExamCategory { id: string; code: string; name: string; weight: number; }
+export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
+export interface TeacherGradebookContext { classId: string; semesterId: string; subjectId: string; subjectName: string; }
 
 export interface Notification {
   id: string; recipientId: string; type: string; title: string; body: string;
@@ -55,11 +56,14 @@ export interface NotificationTemplate { id: string; code: string; name: string; 
 export interface Assignment {
   id: string; classId: string; subjectId: string; subjectName: string; teacherId: string; teacherName: string;
   title: string; description?: string; status: string; deadline?: string; allowLate: boolean; createdAt: string;
+  attachmentFileId?: string | null; attachmentName?: string | null; submissionCount?: number; studentCount?: number;
 }
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
+  attachmentFileId?: string | null; attachmentName?: string | null; gradedAt?: string | null;
 }
+export interface StoredFile { id: string; originalName: string; contentType: string; sizeBytes: number; createdAt: string; }
 
 export interface FeePeriod { id: string; code: string; name?: string; status: string; applyToGrades?: string | null; dueDate?: string; }
 export interface FeePeriodItem { id: string; feePeriodId: string; name: string; amount: number; gradeLevel?: string | null; }

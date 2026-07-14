@@ -1,34 +1,103 @@
-import { useMemo, useState } from 'react';
-import { Plus, CheckCircle2, Upload, Bell } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { Bell, BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { TimetableSlot, Assignment, Submission, Club, ClubRegistration, Notification, SchoolClass, Subject } from '../../api/types';
+import type { TimetableSlot, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
 
 /* ===== TKB tuần (B2/C2) ===== */
-export function WeeklyTimetable({ path }: { path: string }) {
+const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
+
+function classLabel(value: string) {
+  return value.replace(/^c-/i, '').replace(/-/g, ' ').toUpperCase();
+}
+
+function timeLabel(slot: TimetableSlot) {
+  if (!slot.startTime && !slot.endTime) return `Tiết ${slot.periodNo}`;
+  return [slot.startTime?.slice(0, 5), slot.endTime?.slice(0, 5)].filter(Boolean).join(' – ');
+}
+
+export function WeeklyTimetable({ path, teacherView = false }: { path: string; teacherView?: boolean }) {
   const slots = useApi<TimetableSlot[]>(path);
-  const maxPeriod = useMemo(() => Math.max(5, ...((slots.data || []).map((s) => s.periodNo))), [slots.data]);
-  const cell = (day: string, p: number) => (slots.data || []).find((s) => s.dayOfWeek === day && s.periodNo === p);
+  const maxPeriod = useMemo(() => Math.max(5, ...((slots.data || []).map((slot) => slot.periodNo))), [slots.data]);
+  const cell = (day: string, period: number) => (slots.data || []).find((slot) => slot.dayOfWeek === day && slot.periodNo === period);
+  const today = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()];
+
+  const summary = useMemo(() => {
+    const data = slots.data || [];
+    const classes = new Set(data.map((slot) => slot.classId));
+    const subjects = new Set(data.map((slot) => slot.subjectId || slot.subjectName));
+    const byDay = DAYS.map((day) => ({ day, count: data.filter((slot) => slot.dayOfWeek === day).length }));
+    const busiest = byDay.reduce((best, item) => item.count > best.count ? item : best, byDay[0]);
+    const todaySlots = data.filter((slot) => slot.dayOfWeek === today).sort((a, b) => a.periodNo - b.periodNo);
+    const now = new Date().toTimeString().slice(0, 5);
+    const next = todaySlots.find((slot) => !slot.startTime || slot.startTime.slice(0, 5) >= now);
+    return { slots: data.length, classes: classes.size, subjects: subjects.size, busiest, next };
+  }, [slots.data, today]);
 
   return (
     <Async state={slots} empty="Chưa có thời khóa biểu">
       {() => (
-        <div className="timetable" role="table">
-          <div className="time-head empty-cell" />
-          {DAYS.map((d) => <div key={d} className="time-head">{DAY_LABEL[d]}</div>)}
-          {Array.from({ length: maxPeriod }, (_, i) => i + 1).map((p) => [
-            <div key={`p${p}`} className="time-period">Tiết {p}</div>,
-            ...DAYS.map((d) => {
-              const s = cell(d, p);
-              return (
-                <div key={`${d}${p}`} className="time-cell">
-                  {s && <><strong>{s.subjectName}</strong><small>{s.roomCode} · {s.teacherName}</small></>}
+        <div className={teacherView ? 'teacher-schedule' : 'weekly-schedule'}>
+          {teacherView && (
+            <div className="teacher-schedule-summary" aria-label="Tóm tắt lịch dạy trong tuần">
+              <div className="schedule-summary-primary">
+                <span className="schedule-summary-icon"><CalendarClock size={21} /></span>
+                <div><small>Lịch tuần này</small><strong>{summary.slots} tiết giảng dạy</strong><span>{summary.classes} lớp · {summary.subjects} môn</span></div>
+              </div>
+              <div className="schedule-summary-tile">
+                <span>Ngày bận nhất</span>
+                <strong>{summary.busiest.count ? DAY_LABEL[summary.busiest.day] : '—'}</strong>
+                <small>{summary.busiest.count} tiết</small>
+              </div>
+              <div className="schedule-summary-tile next-slot">
+                <span>Tiết tiếp theo hôm nay</span>
+                <strong>{summary.next?.subjectName || 'Đã hoàn tất'}</strong>
+                <small>{summary.next ? `${classLabel(summary.next.classId)} · ${timeLabel(summary.next)}` : 'Không còn lịch dạy'}</small>
+              </div>
+            </div>
+          )}
+
+          <div className="schedule-legend" aria-hidden="true">
+            <span><i className="legend-dot occupied" /> Có lịch dạy</span>
+            <span><i className="legend-dot current" /> Ngày hiện tại</span>
+            <span className="schedule-hint">Cuộn ngang để xem đầy đủ trên màn hình nhỏ</span>
+          </div>
+
+          <div className="teacher-timetable-scroll">
+            <div className="teacher-timetable-grid" role="table" aria-label={teacherView ? 'Thời khóa biểu giảng dạy cá nhân' : 'Thời khóa biểu tuần'}>
+              <div className="teacher-time-corner"><Clock3 size={16} /><span>Tiết</span></div>
+              {DAYS.map((day) => (
+                <div key={day} className={`teacher-day-head ${day === today ? 'is-today' : ''}`} role="columnheader">
+                  <span>{DAY_LABEL[day]}</span>
+                  <small>{day === today ? 'Hôm nay' : 'Trong tuần'}</small>
                 </div>
-              );
-            }),
-          ])}
+              ))}
+
+              {Array.from({ length: maxPeriod }, (_, index) => index + 1).map((period) => (
+                <Fragment key={period}>
+                  <div className="teacher-period" role="rowheader"><strong>{period}</strong><span>Tiết {period}</span></div>
+                  {DAYS.map((day) => {
+                    const slot = cell(day, period);
+                    const colorIndex = slot ? Math.abs(slot.subjectName.split('').reduce((total, char) => total + char.charCodeAt(0), 0)) % SUBJECT_COLORS.length : 0;
+                    return (
+                      <div key={`${day}-${period}`} className={`teacher-slot ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
+                        {slot ? (
+                          <article className="teacher-class-card" style={{ '--slot-color': SUBJECT_COLORS[colorIndex] } as CSSProperties}>
+                            <div className="teacher-class-topline"><span><School size={13} /> {classLabel(slot.classId)}</span><small>{timeLabel(slot)}</small></div>
+                            <strong><BookOpen size={16} /> {slot.subjectName}</strong>
+                            <div className="teacher-class-meta"><span><MapPin size={13} /> {slot.roomCode || 'Chưa xếp phòng'}</span></div>
+                          </article>
+                        ) : <span className="teacher-empty-label">Trống</span>}
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </Async>
@@ -38,8 +107,13 @@ export function WeeklyTimetable({ path }: { path: string }) {
 /* ===== B2 — TKB cá nhân của giáo viên ===== */
 export function MyTimetableLive() {
   return (
-    <Section title="TKB cá nhân (B2)" subtitle="Lịch dạy theo tuần · /me/timetable" wide>
-      <WeeklyTimetable path="/me/timetable" />
+    <Section
+      title="Lịch giảng dạy"
+      subtitle="Theo dõi lớp, môn học, phòng và thời gian trong một tuần"
+      action={<span className="schedule-status"><i /> Đang áp dụng</span>}
+      wide
+    >
+      <WeeklyTimetable path="/me/timetable" teacherView />
     </Section>
   );
 }
@@ -48,79 +122,184 @@ export function MyTimetableLive() {
 export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const toast = useToast();
   const list = useApi<Assignment[]>(actor === 'teacher' ? '/assignments' : '/me/assignments');
-  const classes = useApi<SchoolClass[]>(actor === 'teacher' ? '/classes' : null);
-  const subjects = useApi<Subject[]>(actor === 'teacher' ? '/subjects' : null);
+  const teachingSlots = useApi<TimetableSlot[]>(actor === 'teacher' ? '/me/timetable' : null);
+  const mySubmissions = useApi<Submission[]>(actor === 'student' ? '/me/submissions' : null);
+  const reloadMySubmissions = mySubmissions.reload;
   const [sel, setSel] = useState<string | null>(null);
   const subs = useApi<Submission[]>(actor === 'teacher' && sel ? `/assignments/${sel}/submissions` : null);
-  const [f, setF] = useState({ classId: '', subjectId: '', title: '', deadline: '' });
+  const [busy, setBusy] = useState(false);
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+  const [submissionFile, setSubmissionFile] = useState<File | null>(null);
+  const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
+  const [f, setF] = useState({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false });
+  const [submissionDraft, setSubmissionDraft] = useState({ content: '', attachmentFileId: '' });
 
-  const create = async () => {
-    if (!f.classId || !f.subjectId || !f.title) return toast.show('err', 'Chọn lớp, môn và nhập tiêu đề');
+  const teachingOptions = useMemo(() => {
+    const unique = new Map<string, TimetableSlot>();
+    (teachingSlots.data || []).forEach((slot) => unique.set(`${slot.classId}:${slot.subjectId}`, slot));
+    return [...unique.values()];
+  }, [teachingSlots.data]);
+  const selectedAssignment = (list.data || []).find((assignment) => assignment.id === sel);
+  const submissionMap = useMemo(() => new Map((mySubmissions.data || []).map((item) => [item.assignmentId, item])), [mySubmissions.data]);
+  const published = (list.data || []).filter((item) => item.status === 'PUBLISHED').length;
+  const totalSubmissions = (list.data || []).reduce((total, item) => total + (item.submissionCount || 0), 0);
+
+  useEffect(() => {
+    if (actor !== 'student') return;
+    const refreshResults = () => reloadMySubmissions();
+    const timer = window.setInterval(refreshResults, 30_000);
+    window.addEventListener('focus', refreshResults);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refreshResults);
+    };
+  }, [actor, reloadMySubmissions]);
+
+  const upload = async (file: File | null) => {
+    if (!file) return null;
+    if (file.size > 10 * 1024 * 1024) throw new Error('Tệp không được vượt quá 10 MB');
+    return api.upload<StoredFile>('/files', file);
+  };
+
+  const create = async (publishNow: boolean) => {
+    if (!f.classId || !f.subjectId || !f.title.trim()) return toast.show('err', 'Chọn lớp, môn và nhập tiêu đề');
+    setBusy(true);
     try {
-      await api.post('/assignments', { ...f, deadline: f.deadline ? new Date(f.deadline).toISOString() : null, publishNow: true });
-      toast.show('ok', 'Đã tạo & phát hành bài tập (HS được thông báo)');
-      setF({ classId: '', subjectId: '', title: '', deadline: '' });
+      const stored = await upload(assignmentFile);
+      await api.post('/assignments', {
+        ...f,
+        deadline: f.deadline ? new Date(f.deadline).toISOString() : null,
+        attachmentFileId: stored?.id || null,
+        publishNow,
+      });
+      toast.show('ok', publishNow ? 'Đã giao bài và thông báo cho học sinh' : 'Đã lưu bản nháp');
+      setF({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false });
+      setAssignmentFile(null);
       list.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+    } catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
   };
-  const submit = async (id: string) => {
-    try { await api.post(`/assignments/${id}/submit`, { content: 'Bài làm của em (demo)' }); toast.show('ok', 'Đã nộp bài'); list.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
+
+  const openSubmission = (assignment: Assignment) => {
+    const current = submissionMap.get(assignment.id);
+    setSel(assignment.id);
+    setSubmissionDraft({ content: current?.content || '', attachmentFileId: current?.attachmentFileId || '' });
+    setSubmissionFile(null);
   };
+
+  const submit = async () => {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const stored = await upload(submissionFile);
+      await api.post(`/assignments/${sel}/submit`, {
+        content: submissionDraft.content,
+        attachmentFileId: stored?.id || submissionDraft.attachmentFileId || null,
+      });
+      toast.show('ok', 'Đã nộp bài thành công');
+      setSel(null);
+      setSubmissionFile(null);
+      list.reload();
+      mySubmissions.reload();
+    } catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
+  };
+
+  const publish = async (id: string) => {
+    setBusy(true);
+    try { await api.post(`/assignments/${id}/publish`); toast.show('ok', 'Đã phát hành bài tập'); list.reload(); }
+    catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
+  };
+
   const grade = async (s: Submission) => {
-    const v = prompt(`Chấm điểm cho ${s.studentName} (0-10):`, s.score != null ? String(s.score) : '8');
-    if (v == null) return;
-    try { await api.post(`/submissions/${s.id}/grade`, { score: Number(v), feedback: 'Tốt' }); toast.show('ok', 'Đã chấm'); subs.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
+    const draft = grading[s.id] || { score: s.score == null ? '' : String(s.score), feedback: s.feedback || '' };
+    if (draft.score === '' || Number(draft.score) < 0 || Number(draft.score) > 10) return toast.show('err', 'Nhập điểm từ 0 đến 10');
+    setBusy(true);
+    try { await api.post(`/submissions/${s.id}/grade`, { score: Number(draft.score), feedback: draft.feedback }); toast.show('ok', 'Đã lưu điểm và phản hồi'); subs.reload(); list.reload(); }
+    catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
+  };
+
+  const downloadFile = async (fileId?: string | null, fallback?: string | null) => {
+    if (!fileId) return;
+    try {
+      const result = await api.download(`/files/${fileId}/content`);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = result.filename || fallback || 'tep-dinh-kem';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
-    <Section title={actor === 'teacher' ? 'Quản lý bài tập (B5)' : 'Bài tập của tôi (C4)'} subtitle="assignments + submissions" wide>
+    <Section title={actor === 'teacher' ? 'Trung tâm giao bài' : 'Bài tập của tôi'} subtitle={actor === 'teacher' ? 'Tạo đề, đính kèm tài liệu và theo dõi tiến độ nộp bài' : 'Xem yêu cầu, tải đề và nộp bài trực tuyến'} wide>
       {toast.node}
       {actor === 'teacher' && (
-        <div className="live-toolbar">
-          <select className="live-select" value={f.classId} onChange={(e) => setF({ ...f, classId: e.target.value })}>
-            <option value="">— Lớp —</option>{(classes.data || []).map((c) => <option key={c.id} value={c.id}>{c.code}</option>)}
-          </select>
-          <select className="live-select" value={f.subjectId} onChange={(e) => setF({ ...f, subjectId: e.target.value })}>
-            <option value="">— Môn —</option>{(subjects.data || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-          <input className="live-input grow" placeholder="Tiêu đề bài tập" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
-          <input className="live-input" type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} />
-          <button className="live-btn" onClick={create}><Plus size={15} /> Giao bài</button>
+        <div className="assignment-composer">
+          <div className="assignment-composer-head"><span><Plus size={18} /></span><div><strong>Tạo bài tập mới</strong><small>Thiết lập yêu cầu và tài liệu cho học sinh</small></div></div>
+          <div className="assignment-form-grid">
+            <label><span>Lớp và môn giảng dạy</span><select className="live-select" value={`${f.classId}:${f.subjectId}`} onChange={(e) => { const [classId, subjectId] = e.target.value.split(':'); setF({ ...f, classId: classId || '', subjectId: subjectId || '' }); }}>
+              <option value=":">— Chọn phân công —</option>{teachingOptions.map((slot) => <option key={`${slot.classId}:${slot.subjectId}`} value={`${slot.classId}:${slot.subjectId}`}>{classLabel(slot.classId)} · {slot.subjectName}</option>)}
+            </select></label>
+            <label className="assignment-title-field"><span>Tiêu đề bài tập</span><input className="live-input" placeholder="Ví dụ: Ôn tập chương Hàm số" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
+            <label><span>Hạn nộp</span><input className="live-input" type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
+            <label className="assignment-description-field"><span>Yêu cầu chi tiết</span><textarea className="live-input assignment-textarea" placeholder="Mô tả nội dung, yêu cầu trình bày và tiêu chí hoàn thành..." value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></label>
+            <label className="assignment-file-field"><span>Tệp đề bài</span><input className="assignment-file-input" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp" onChange={(e) => setAssignmentFile(e.target.files?.[0] || null)} /><small><Paperclip size={13} /> {assignmentFile?.name || 'PDF, Word, Excel hoặc hình ảnh · tối đa 10 MB'}</small></label>
+            <label className="assignment-late-toggle"><input type="checkbox" checked={f.allowLate} onChange={(e) => setF({ ...f, allowLate: e.target.checked })} /><span>Cho phép nộp muộn</span></label>
+          </div>
+          <div className="assignment-composer-actions"><button className="live-btn subtle" disabled={busy} onClick={() => create(false)}>Lưu nháp</button><button className="live-btn" disabled={busy} onClick={() => create(true)}><Send size={15} /> {busy ? 'Đang xử lý…' : 'Giao bài ngay'}</button></div>
         </div>
       )}
+      <div className="assignment-summary">
+        <article><span><BookOpen size={18} /></span><div><small>Tổng bài tập</small><strong>{list.data?.length || 0}</strong></div></article>
+        <article><span><Send size={18} /></span><div><small>Đang phát hành</small><strong>{published}</strong></div></article>
+        <article><span><Users size={18} /></span><div><small>{actor === 'teacher' ? 'Bài đã nộp' : 'Đã hoàn thành'}</small><strong>{actor === 'teacher' ? totalSubmissions : mySubmissions.data?.length || 0}</strong></div></article>
+      </div>
       <Async state={list} empty="Chưa có bài tập">
         {(l) => (
-          <table className="live-table">
-            <thead><tr><th>Tiêu đề</th><th>Môn</th><th>Hạn nộp</th><th>Trạng thái</th><th></th></tr></thead>
-            <tbody>{l.map((a) => (
-              <tr key={a.id} style={{ background: sel === a.id ? '#f1f5fd' : undefined }}>
-                <td><strong>{a.title}</strong></td><td>{a.subjectName}</td><td>{fmtDateTime(a.deadline)}</td>
-                <td><StatusPill value={a.status} /></td>
-                <td>
-                  {actor === 'teacher'
-                    ? <button className="live-btn subtle" onClick={() => setSel(a.id)}>Bài nộp</button>
-                    : <button className="live-btn" onClick={() => submit(a.id)}><Upload size={14} /> Nộp</button>}
-                </td>
-              </tr>
-            ))}</tbody>
-          </table>
+          <div className="assignment-grid">{l.map((assignment) => {
+            const submission = submissionMap.get(assignment.id);
+            const percent = assignment.studentCount ? Math.round(((assignment.submissionCount || 0) / assignment.studentCount) * 100) : 0;
+            return <article className={`assignment-card ${sel === assignment.id ? 'selected' : ''}`} key={assignment.id}>
+              <div className="assignment-card-top"><span className="assignment-subject-icon"><FileText size={19} /></span><div><small>{assignment.subjectName} · {classLabel(assignment.classId)}</small><strong>{assignment.title}</strong></div><StatusPill value={submission?.status || assignment.status} /></div>
+              <p>{assignment.description || 'Không có mô tả bổ sung.'}</p>
+              <div className="assignment-meta"><span><CalendarClock size={14} /> {assignment.deadline ? fmtDateTime(assignment.deadline) : 'Không giới hạn hạn nộp'}</span>{assignment.allowLate && <span><Clock3 size={14} /> Cho phép nộp muộn</span>}</div>
+              {assignment.attachmentFileId && <button className="assignment-attachment" onClick={() => downloadFile(assignment.attachmentFileId, assignment.attachmentName)}><Download size={15} /><span>{assignment.attachmentName}</span><small>Tải đề</small></button>}
+              {actor === 'teacher' ? <>
+                <div className="assignment-progress"><div><span>Tiến độ nộp bài</span><strong>{assignment.submissionCount || 0}/{assignment.studentCount || 0}</strong></div><i><b style={{ width: `${percent}%` }} /></i></div>
+                <div className="assignment-card-actions">{assignment.status === 'DRAFT' && <button className="live-btn" disabled={busy} onClick={() => publish(assignment.id)}><Send size={14} /> Phát hành</button>}<button className="live-btn subtle" onClick={() => setSel(assignment.id)}><Users size={14} /> Xem bài nộp</button></div>
+              </> : <>
+                {(submission?.status === 'GRADED' || submission?.score != null) && <div className="assignment-grade-result">
+                  <div className="assignment-grade-score"><span>Điểm bài làm</span><strong>{submission.score?.toFixed(1) ?? '—'}</strong><small>/ 10</small></div>
+                  <div className="assignment-grade-feedback">
+                    <div><CheckCircle2 size={17} /><strong>Giáo viên đã chấm bài</strong></div>
+                    <p>{submission.feedback || 'Giáo viên chưa để lại nhận xét.'}</p>
+                    {submission.gradedAt && <small>Chấm lúc {fmtDateTime(submission.gradedAt)}</small>}
+                  </div>
+                </div>}
+                <div className="assignment-card-actions"><span className="assignment-submission-state">{submission ? `Đã nộp ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</span>{submission?.status !== 'GRADED' && <button className="live-btn" onClick={() => openSubmission(assignment)}><Upload size={14} /> {submission ? 'Nộp lại' : 'Nộp bài'}</button>}</div>
+              </>}
+            </article>;
+          })}</div>
         )}
       </Async>
-      {actor === 'teacher' && sel && (
-        <div style={{ marginTop: 14 }}>
+      {actor === 'teacher' && sel && <div className="submission-panel">
+          <div className="submission-panel-head"><div><small>Bài tập đang xem</small><strong>{selectedAssignment?.title}</strong></div><button className="live-btn subtle" onClick={() => setSel(null)}>Đóng</button></div>
           <Async state={subs} empty="Chưa có bài nộp">
             {(l) => (
-              <table className="live-table"><thead><tr><th>Học sinh</th><th>Trạng thái</th><th>Điểm</th><th></th></tr></thead>
+              <table className="live-table assignment-submission-table"><thead><tr><th>Học sinh</th><th>Bài làm</th><th>Trạng thái</th><th>Điểm và phản hồi</th><th></th></tr></thead>
                 <tbody>{l.map((s) => (
-                  <tr key={s.id}><td>{s.studentName}</td><td><StatusPill value={s.status} /></td><td>{s.score ?? '—'}</td>
-                    <td><button className="live-btn subtle" onClick={() => grade(s)}><CheckCircle2 size={14} /> Chấm</button></td></tr>
+                  <tr key={s.id}><td><strong>{s.studentName}</strong><small>{fmtDateTime(s.submittedAt)}</small></td><td><p>{s.content || 'Chỉ gửi tệp đính kèm'}</p>{s.attachmentFileId && <button className="assignment-file-link" onClick={() => downloadFile(s.attachmentFileId, s.attachmentName)}><Download size={13} /> {s.attachmentName}</button>}</td><td><StatusPill value={s.status} /></td><td><input className="gradebook-score-input" aria-label={`Điểm của ${s.studentName}`} type="number" min={0} max={10} step="0.1" value={grading[s.id]?.score ?? (s.score == null ? '' : String(s.score))} onChange={(e) => setGrading({ ...grading, [s.id]: { score: e.target.value, feedback: grading[s.id]?.feedback ?? s.feedback ?? '' } })} /><input className="live-input assignment-feedback" aria-label={`Phản hồi cho ${s.studentName}`} placeholder="Nhận xét" value={grading[s.id]?.feedback ?? s.feedback ?? ''} onChange={(e) => setGrading({ ...grading, [s.id]: { score: grading[s.id]?.score ?? (s.score == null ? '' : String(s.score)), feedback: e.target.value } })} /></td>
+                    <td><button className="live-btn subtle" disabled={busy} onClick={() => grade(s)}><CheckCircle2 size={14} /> Lưu chấm</button></td></tr>
                 ))}</tbody></table>
             )}
           </Async>
-        </div>
-      )}
+        </div>}
+      {actor === 'student' && sel && selectedAssignment && <div className="submission-panel student-submit-panel">
+        <div className="submission-panel-head"><div><small>Nộp bài cho</small><strong>{selectedAssignment.title}</strong></div><button className="live-btn subtle" onClick={() => setSel(null)}>Đóng</button></div>
+        <label><span>Nội dung bài làm</span><textarea className="live-input assignment-textarea" placeholder="Nhập câu trả lời, ghi chú hoặc đường dẫn liên quan..." value={submissionDraft.content} onChange={(e) => setSubmissionDraft({ ...submissionDraft, content: e.target.value })} /></label>
+        <label className="assignment-file-field"><span>Tệp bài làm</span><input className="assignment-file-input" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp" onChange={(e) => setSubmissionFile(e.target.files?.[0] || null)} /><small><Paperclip size={13} /> {submissionFile?.name || submissionMap.get(sel)?.attachmentName || 'Chọn tệp tối đa 10 MB'}</small></label>
+        <div className="assignment-composer-actions"><button className="live-btn" disabled={busy} onClick={submit}><Upload size={15} /> {busy ? 'Đang tải lên…' : 'Xác nhận nộp bài'}</button></div>
+      </div>}
     </Section>
   );
 }
