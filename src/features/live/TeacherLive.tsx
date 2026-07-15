@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CheckCircle2, Send, Trophy, Users } from 'lucide-react';
+import { BarChart3, CalendarDays, CheckCircle2, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Phone, Send, ShieldCheck, Trophy, UserRound, Users, UsersRound } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
 import type { ApiUser, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherGradebookContext } from '../../api/types';
-import { Section } from '../../components/ui';
-import { Async, useToast, ATT_LABEL, DAY_LABEL } from './common';
+import { Section, StatusPill } from '../../components/ui';
+import { Async, useToast, ATT_LABEL, DAY_LABEL, fmtDate } from './common';
+import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -13,10 +14,15 @@ const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
 
 /* ===== B1 — Lớp được phân công ===== */
 export function TeacherClassesLive() {
+  const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
   const classesApi = useApi<SchoolClass[]>('/classes');
   const [classId, setClassId] = useState('');
+  const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
+  const studentProfile = useApi<ApiUser>(profileTarget
+    ? `/classes/${encodeURIComponent(profileTarget.classId)}/students/${encodeURIComponent(profileTarget.studentId)}/profile`
+    : null);
 
   const classMap = useMemo(() => {
     const m: Record<string, SchoolClass> = {};
@@ -31,40 +37,187 @@ export function TeacherClassesLive() {
       g[s.classId].subjects.add(s.subjectName);
       g[s.classId].count++;
     });
-    return Object.values(g);
-  }, [slots.data]);
+    (classesApi.data || [])
+      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
+      .forEach((schoolClass) => {
+        g[schoolClass.id] = g[schoolClass.id] || { classId: schoolClass.id, subjects: new Set(), count: 0 };
+      });
+    return Object.values(g).sort((a, b) => (classMap[a.classId]?.code || a.classId).localeCompare(classMap[b.classId]?.code || b.classId, 'vi'));
+  }, [classMap, classesApi.data, slots.data, user?.id]);
+
+  const homeroomClasses = useMemo(
+    () => (classesApi.data || []).filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id),
+    [classesApi.data, user?.id],
+  );
+  const selectedClass = classId ? classMap[classId] : undefined;
+  const selectedIsHomeroom = selectedClass?.homeroomTeacherId === user?.id;
+  const profileClass = profileTarget ? classMap[profileTarget.classId] : undefined;
 
   return (
-    <Section title="Lớp được phân công (B1)" subtitle="Suy ra từ TKB cá nhân · /me/timetable" wide>
-      <Async state={slots} empty="Chưa được phân công lớp nào">
-        {() => (
-          <table className="live-table">
-            <thead><tr><th>Lớp</th><th>Môn dạy</th><th>Số tiết/tuần</th><th></th></tr></thead>
-            <tbody>
-              {groups.map((g) => (
-                <tr key={g.classId} style={{ background: classId === g.classId ? '#f1f5fd' : undefined }}>
-                  <td><strong>{classMap[g.classId]?.code || g.classId}</strong></td>
-                  <td>{[...g.subjects].join(', ')}</td>
-                  <td>{g.count}</td>
-                  <td><button className="live-btn subtle" onClick={() => setClassId(g.classId)}><Users size={14} /> Danh sách HS</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <Section title="Lớp giảng dạy và chủ nhiệm" subtitle="Theo dõi lớp phụ trách, danh sách học sinh và hồ sơ lớp chủ nhiệm" wide>
+      {homeroomClasses.length > 0 && (
+        <div className="homeroom-overview">
+          <div className="homeroom-overview-head">
+            <span className="homeroom-overview-icon"><ShieldCheck size={21} /></span>
+            <div><strong>Lớp chủ nhiệm</strong><small>Thầy cô có quyền xem hồ sơ chi tiết của học sinh trong các lớp này.</small></div>
+            <span className="homeroom-count">{homeroomClasses.length} lớp</span>
+          </div>
+          <div className="homeroom-class-grid">
+            {homeroomClasses.map((schoolClass) => (
+              <button
+                type="button"
+                key={schoolClass.id}
+                className={`homeroom-class-option ${classId === schoolClass.id ? 'active' : ''}`}
+                onClick={() => setClassId(schoolClass.id)}
+              >
+                <span><GraduationCap size={20} /></span>
+                <div><strong>{schoolClass.code}</strong><small>{schoolClass.name || `Lớp ${schoolClass.code}`}</small></div>
+                <b>{schoolClass.studentCount || 0} học sinh</b>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <Async state={{ data: groups, loading: slots.loading || classesApi.loading, error: slots.error || classesApi.error }} empty="Chưa được phân công lớp nào">
+        {(assignedGroups) => (
+          <div className="teacher-class-table-wrap">
+            <table className="live-table">
+              <thead><tr><th>Lớp</th><th>Vai trò</th><th>Môn dạy</th><th>Số tiết/tuần</th><th></th></tr></thead>
+              <tbody>
+                {assignedGroups.map((g) => {
+                  const isHomeroom = classMap[g.classId]?.homeroomTeacherId === user?.id;
+                  return (
+                    <tr key={g.classId} className={classId === g.classId ? 'teacher-class-row-active' : ''}>
+                      <td><strong>{classMap[g.classId]?.code || g.classId}</strong></td>
+                      <td><span className={`teacher-class-role ${isHomeroom ? 'homeroom' : ''}`}>{isHomeroom ? 'Giáo viên chủ nhiệm' : 'Giáo viên bộ môn'}</span></td>
+                      <td>{[...g.subjects].join(', ') || '—'}</td>
+                      <td>{g.count || '—'}</td>
+                      <td><button className="live-btn subtle" onClick={() => setClassId(g.classId)}><Users size={14} /> Xem học sinh</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Async>
       {classId && (
-        <div style={{ marginTop: 14 }}>
+        <div className="teacher-student-list">
+          <div className="teacher-student-list-head">
+            <div><span>Danh sách học sinh</span><strong>Lớp {selectedClass?.code || classId}</strong></div>
+            {selectedIsHomeroom
+              ? <p><ShieldCheck size={16} /> Lớp chủ nhiệm · Được xem hồ sơ chi tiết</p>
+              : <p className="limited"><LockKeyhole size={16} /> Lớp bộ môn · Chỉ xem danh sách cơ bản</p>}
+          </div>
           <Async state={students} empty="Lớp chưa có học sinh">
             {(l) => (
-              <table className="live-table"><thead><tr><th>Mã HS</th><th>Họ tên</th><th>Lớp</th></tr></thead>
-                <tbody>{l.map((s) => <tr key={s.id}><td>{s.studentCode}</td><td><strong>{s.fullName}</strong></td><td>{s.className}</td></tr>)}</tbody></table>
+              <div className="teacher-class-table-wrap">
+                <table className="live-table"><thead><tr><th>STT</th><th>Mã học sinh</th><th>Họ và tên</th><th>Lớp</th><th></th></tr></thead>
+                  <tbody>{l.map((student, index) => <tr key={student.id}>
+                    <td>{index + 1}</td><td>{student.studentCode || '—'}</td><td><strong>{student.fullName}</strong></td><td>{student.className || selectedClass?.code || '—'}</td>
+                    <td>{selectedIsHomeroom
+                      ? <button className="live-btn subtle" onClick={() => setProfileTarget({ classId, studentId: student.id })}><Eye size={15} /> Xem hồ sơ</button>
+                      : <span className="teacher-profile-locked"><LockKeyhole size={14} /> Chỉ giáo viên chủ nhiệm</span>}</td>
+                  </tr>)}</tbody></table>
+              </div>
             )}
           </Async>
         </div>
       )}
+      {profileTarget && (
+        <Modal
+          title="Hồ sơ học sinh"
+          onClose={() => setProfileTarget(null)}
+          footer={<button className="live-btn subtle" onClick={() => setProfileTarget(null)}>Đóng</button>}
+        >
+          <Async state={studentProfile} empty="Không tìm thấy hồ sơ học sinh">
+            {(student) => <HomeroomStudentProfile student={student} schoolClass={profileClass} />}
+          </Async>
+        </Modal>
+      )}
     </Section>
   );
+}
+
+function HomeroomStudentProfile({ student, schoolClass }: { student: ApiUser; schoolClass?: SchoolClass }) {
+  const initials = student.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
+  const profileGroups = [
+    {
+      title: 'Thông tin học tập', Icon: GraduationCap, items: [
+        ['Mã học sinh', homeroomProfileValue(student.studentCode)],
+        ['Lớp hiện tại', homeroomProfileValue(student.className || schoolClass?.code)],
+        ['Khối học', homeroomProfileValue(schoolClass?.gradeLevel)],
+        ['Ngày nhập học', homeroomProfileDate(student.enrollmentDate)],
+      ],
+    },
+    {
+      title: 'Thông tin cá nhân', Icon: UserRound, items: [
+        ['Ngày sinh', homeroomProfileDate(student.dateOfBirth)],
+        ['Giới tính', homeroomGenderLabel(student.gender)],
+        ['Nơi sinh', homeroomProfileValue(student.placeOfBirth)],
+        ['Dân tộc / Quốc tịch', `${homeroomProfileValue(student.ethnicity)} / ${homeroomProfileValue(student.nationality)}`],
+      ],
+    },
+    {
+      title: 'Liên hệ', Icon: MapPin, items: [
+        ['Email', homeroomProfileValue(student.email)],
+        ['Số điện thoại', homeroomProfileValue(student.phone)],
+        ['Địa chỉ thường trú', homeroomProfileValue(student.address)],
+      ],
+    },
+    {
+      title: 'Người giám hộ', Icon: UsersRound, items: [
+        ['Họ và tên', homeroomProfileValue(student.guardianName)],
+        ['Số điện thoại', homeroomProfileValue(student.guardianPhone)],
+      ],
+    },
+  ];
+
+  return (
+    <div className="homeroom-student-profile">
+      <header className="homeroom-profile-hero">
+        <div className="homeroom-profile-avatar">
+          {student.avatarUrl ? <img src={student.avatarUrl} alt={`Ảnh đại diện của ${student.fullName}`} /> : <span>{initials || 'HS'}</span>}
+        </div>
+        <div className="homeroom-profile-identity">
+          <span>Hồ sơ lớp chủ nhiệm</span>
+          <h3>{student.fullName}</h3>
+          <div><b><IdCard size={15} /> {homeroomProfileValue(student.studentCode)}</b><b><GraduationCap size={15} /> Lớp {homeroomProfileValue(student.className || schoolClass?.code)}</b></div>
+        </div>
+        <StatusPill value={student.status} />
+      </header>
+
+      <div className="homeroom-profile-highlights">
+        <span><CalendarDays size={17} /><small>Ngày sinh</small><strong>{homeroomProfileDate(student.dateOfBirth)}</strong></span>
+        <span><Mail size={17} /><small>Email</small><strong>{homeroomProfileValue(student.email)}</strong></span>
+        <span><Phone size={17} /><small>Liên hệ giám hộ</small><strong>{homeroomProfileValue(student.guardianPhone)}</strong></span>
+      </div>
+
+      <div className="homeroom-profile-grid">
+        {profileGroups.map(({ title, Icon, items }) => (
+          <section key={title} className="homeroom-profile-card">
+            <header><span><Icon size={17} /></span><h4>{title}</h4></header>
+            <dl>{items.map(([label, value]) => <div key={label}><dt>{label}</dt><dd className={value === 'Chưa cập nhật' ? 'empty' : ''}>{value}</dd></div>)}</dl>
+          </section>
+        ))}
+      </div>
+      <footer className="homeroom-profile-note"><ShieldCheck size={17} /><span>Thông tin chi tiết chỉ dành cho giáo viên chủ nhiệm và bộ phận quản trị nhà trường.</span></footer>
+    </div>
+  );
+}
+
+function homeroomProfileValue(value?: string | null) {
+  return value?.trim() || 'Chưa cập nhật';
+}
+
+function homeroomProfileDate(value?: string | null) {
+  return value ? fmtDate(value) : 'Chưa cập nhật';
+}
+
+function homeroomGenderLabel(value?: string | null) {
+  if (!value) return 'Chưa cập nhật';
+  const labels: Record<string, string> = { MALE: 'Nam', FEMALE: 'Nữ', OTHER: 'Khác' };
+  return labels[value.toUpperCase()] || value;
 }
 
 /* ===== B3 — Sổ điểm danh ===== */
@@ -92,7 +245,7 @@ export function TeacherAttendanceLive() {
   };
 
   return (
-    <Section title="Sổ điểm danh (B3)" subtitle="Bulk submit → backend tự cảnh báo PH (flowchart 2.5)" wide
+    <Section title="Sổ điểm danh" subtitle="Ghi nhận tình trạng đi học theo từng tiết" wide
       action={<button className="live-btn" onClick={submit}><Send size={15} /> Gửi điểm danh</button>}>
       {toast.node}
       <div className="live-toolbar">
@@ -146,13 +299,20 @@ export function TeacherGradesLive() {
     const m: Record<string, true> = {};
     const mainSubject = user?.mainSubject?.trim().toLocaleLowerCase('vi');
     (slots.data || [])
-      .filter((slot) => !mainSubject || slot.subjectName.trim().toLocaleLowerCase('vi') === mainSubject)
+      .filter((slot) => Boolean(mainSubject) && (
+        slot.subjectId.trim().toLocaleLowerCase('vi') === mainSubject
+        || slot.subjectName.trim().toLocaleLowerCase('vi') === mainSubject)
+      )
       .forEach((slot) => (m[slot.classId] = true));
+    (classes.data || [])
+      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
+      .forEach((schoolClass) => (m[schoolClass.id] = true));
     return Object.keys(m);
-  }, [slots.data, user?.mainSubject]);
+  }, [classes.data, slots.data, user?.id, user?.mainSubject]);
 
   const [classId, setClassId] = useState('');
   const [semesterId, setSemesterId] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [reason, setReason] = useState('');
 
   useEffect(() => {
@@ -169,11 +329,21 @@ export function TeacherGradesLive() {
     ? `/me/gradebook-context?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}`
     : null);
   const contextMatches = gradebookContext.data?.classId === classId && gradebookContext.data?.semesterId === semesterId;
-  const subjectId = contextMatches ? gradebookContext.data?.subjectId || '' : '';
+  const contextSubjects = contextMatches ? gradebookContext.data?.subjects || [] : [];
+
+  useEffect(() => {
+    if (!contextMatches || !gradebookContext.data) return;
+    const currentIsAvailable = gradebookContext.data.subjects.some((subject) => subject.subjectId === selectedSubjectId);
+    if (!currentIsAvailable) setSelectedSubjectId(gradebookContext.data.subjectId);
+  }, [contextMatches, gradebookContext.data, selectedSubjectId]);
+
+  const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
+  const subjectId = selectedSubject?.subjectId || '';
+  const canEdit = Boolean(selectedSubject?.editable);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const existing = useApi<Grade[]>(
     classId && subjectId && semesterId
-      ? `/grades?classId=${classId}&semesterId=${semesterId}`
+      ? `/grades?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}&subjectId=${encodeURIComponent(subjectId)}`
       : null,
   );
   const [scores, setScores] = useState<Record<string, string>>({});
@@ -186,7 +356,7 @@ export function TeacherGradesLive() {
 
   const ready = Boolean(classId && semesterId && subjectId && cats.data?.length);
   const classMap = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item.code])), [classes.data]);
-  const subjectName = contextMatches ? gradebookContext.data?.subjectName || '' : user?.mainSubject || '';
+  const subjectName = selectedSubject?.subjectName || '';
   const columns = useMemo(() => gradeColumns(cats.data || []), [cats.data]);
   const gradeVersions = useMemo(() => new Map((existing.data || []).map((grade) => [
     gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1),
@@ -216,6 +386,7 @@ export function TeacherGradesLive() {
 
   const submit = async () => {
     if (!ready) return toast.show('err', 'Chọn đủ Lớp / Học kỳ để hệ thống xác định môn mặc định');
+    if (!canEdit) return toast.show('err', 'Bạn chỉ được xem điểm môn ngoài chuyên ngành, không thể thay đổi dữ liệu');
     const invalid = Object.values(scores).some((value) => value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 10));
     if (invalid) return toast.show('err', 'Điểm phải nằm trong khoảng 0 đến 10');
 
@@ -234,6 +405,7 @@ export function TeacherGradesLive() {
     try {
       await Promise.all(batches.map((batch) => api.post('/grades/bulk', {
         classId,
+        subjectId,
         semesterId,
         category: batch.column.category.code,
         assessmentIndex: batch.column.assessmentIndex,
@@ -247,7 +419,7 @@ export function TeacherGradesLive() {
 
   return (
     <Section title="Sổ điểm học kỳ" subtitle="Nhập điểm theo từng đầu điểm và tự động tính tổng kết theo hệ số" wide
-      action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready}><Send size={15} /> Lưu sổ điểm</button>}>
+      action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready || !canEdit}>{canEdit ? <Send size={15} /> : <LockKeyhole size={15} />} {canEdit ? 'Lưu sổ điểm' : 'Chỉ xem'}</button>}>
       {toast.node}
       <div className="gradebook-filterbar">
         <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -256,15 +428,34 @@ export function TeacherGradesLive() {
         <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
           <option value="">— Chọn học kỳ —</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
         </select></label>
-        <div className="gradebook-auto-subject"><span>Môn mặc định</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
-        <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        {contextMatches && gradebookContext.data?.homeroomTeacher ? (
+          <label><span>Môn học của lớp chủ nhiệm</span><select className="live-select" value={subjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
+            {contextSubjects.map((subject) => <option key={subject.subjectId} value={subject.subjectId}>{subject.subjectName}{subject.editable ? ' · Có thể chỉnh sửa' : ' · Chỉ xem'}</option>)}
+          </select></label>
+        ) : (
+          <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
+        )}
+        {canEdit ? (
+          <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        ) : (
+          <div className="gradebook-readonly-card"><Eye size={18} /><div><strong>Chế độ chỉ xem</strong><small>Điểm do giáo viên bộ môn {selectedSubject?.teacherName || 'phụ trách'} quản lý</small></div></div>
+        )}
       </div>
+
+      {ready && gradebookContext.data?.homeroomTeacher && (
+        <div className={`gradebook-access-notice ${canEdit ? 'editable' : 'readonly'}`}>
+          {canEdit ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}
+          <span>{canEdit
+            ? `Bạn là giáo viên chủ nhiệm và có thể cập nhật môn ${subjectName} thuộc chuyên ngành của mình.`
+            : `Bạn là giáo viên chủ nhiệm nên được xem môn ${subjectName}, nhưng không thể thay đổi điểm ngoài chuyên ngành.`}</span>
+        </div>
+      )}
 
       {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
         <Async state={students} empty="Lớp chưa có học sinh">
           {(list) => (
             <div className="gradebook-shell">
-              <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{columns.length} đầu điểm · Hệ số tự động</span></div>
+              <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
 
               <div className="gradebook-summary">
                 <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình lớp</small><strong>{formatScore(classAverage)}</strong><p>{averages.length}/{list.length} học sinh có điểm</p></div></article>
@@ -286,7 +477,7 @@ export function TeacherGradesLive() {
                       <td className="gradebook-sticky-col"><strong>{row.student.fullName}</strong><small>{row.student.studentCode || row.student.username}</small></td>
                       {columns.map((column) => {
                         const key = gradeKey(row.student.id, column.category.code, column.assessmentIndex);
-                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><input className={`gradebook-score-input ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => setScores({ ...scores, [key]: event.target.value })} /></td>;
+                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><input className={`gradebook-score-input ${!canEdit ? 'locked' : ''} ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} aria-readonly={!canEdit} readOnly={!canEdit} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => canEdit && setScores({ ...scores, [key]: event.target.value })} /></td>;
                       })}
                       <td className="gradebook-total-cell"><strong className={`grade-total ${scoreTone(row.average)}`}>{row.average == null ? '' : formatScore(row.average)}</strong><small>{row.average == null ? 'Chưa đủ điểm' : 'Thang 10'}</small></td>
                       <td><span className={`gradebook-completion ${missing ? 'incomplete' : 'complete'}`}>{missing ? `Thiếu ${missing}` : 'Đủ điểm'}</span></td>

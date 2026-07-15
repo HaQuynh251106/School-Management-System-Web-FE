@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { GraduationCap, ClipboardCheck, LogIn, School, UserRoundCog, RefreshCcw } from 'lucide-react';
+import {
+  BookOpenCheck, ClipboardCheck, Eye, EyeOff, GraduationCap, LockKeyhole,
+  LogIn, RefreshCcw, School, ShieldCheck, Sparkles, UserRound, UserRoundCog, UsersRound,
+} from 'lucide-react';
 import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
 import type { CSSProperties } from 'react';
 
 const demos = [
-  { label: 'Admin', username: 'admin', password: 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Teacher', username: 'gv.hoa', password: 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Student', username: 'hs.an', password: 'student@123', Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Parent', username: 'ph.pham', password: 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
+  { label: 'Quản trị', username: 'admin', password: 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
+  { label: 'Giáo viên', username: 'gv.hoa', password: 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
+  { label: 'Học sinh', username: 'hs.an', password: 'student@123', Icon: GraduationCap, color: '#7c3aed' },
+  { label: 'Phụ huynh', username: 'ph.pham', password: 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ];
 
 type View = 'login' | 'forgot' | 'reset';
@@ -25,6 +28,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true); setError(null); setMessage(null);
@@ -50,42 +54,79 @@ export function LoginPage() {
   });
 
   return (
-    <div className="login-screen"><div className="login-card">
-      <div className="login-brand"><div className="brand-mark"><School size={26} /></div><div><strong>Smart School Ecosystem</strong><span>ReactJS Web Console</span></div></div>
+    <div className="login-screen">
+      <main className="login-shell">
+        <section className="login-visual" aria-label="Không gian học tập hiện đại">
+          <img src="/images/school-login-campus.png" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" />
+          <div className="login-visual-shade" />
+          <div className="login-visual-content">
+            <span className="login-visual-kicker"><Sparkles size={15} /> Hệ sinh thái giáo dục số</span>
+            <div>
+              <h2>Kết nối nhà trường,<br />đồng hành cùng học sinh</h2>
+              <p>Một không gian quản lý thống nhất, an toàn và thân thiện cho mọi thành viên.</p>
+            </div>
+            <div className="login-visual-points">
+              <span><BookOpenCheck size={17} /> Quản lý tập trung</span>
+              <span><ShieldCheck size={17} /> Bảo mật theo vai trò</span>
+              <span><UsersRound size={17} /> Kết nối liền mạch</span>
+            </div>
+          </div>
+        </section>
 
-      {view === 'login' && <>
-        <h1>Đăng nhập</h1><p className="login-sub">Kết nối an toàn tới hệ thống quản lý trường học</p>
-        <form onSubmit={(event) => { event.preventDefault(); submitLogin(); }}>
-          <label className="login-field"><span>Tên đăng nhập</span><input value={username} onChange={(event) => setUsername(event.target.value)} autoFocus autoComplete="username" /></label>
-          <label className="login-field"><span>Mật khẩu</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
-          <Feedback error={error} message={message} />
-          <button className="login-submit" type="submit" disabled={busy}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
-          <button className="link-button" type="button" onClick={() => { setView('forgot'); setError(null); setMessage(null); }}>Quên mật khẩu?</button>
-        </form>
-        <div className="login-divider"><span>Tài khoản phát triển local</span></div>
-        <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div>
-      </>}
+        <section className="login-panel">
+          <div className="login-panel-inner">
+            <div className="login-brand">
+              <div className="brand-mark"><School size={25} /></div>
+              <div><strong>Trường học số</strong><span>Cổng quản lý trực tuyến</span></div>
+            </div>
 
-      {view === 'forgot' && <>
-        <h1>Quên mật khẩu</h1><p className="login-sub">Nhập email hoặc tên đăng nhập của bạn.</p>
-        <form onSubmit={(event) => { event.preventDefault(); submitForgot(); }}>
-          <label className="login-field"><span>Email hoặc tên đăng nhập</span><input value={identifier} onChange={(event) => setIdentifier(event.target.value)} required autoFocus /></label>
-          <Feedback error={error} message={message} />
-          <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang gửi...' : 'Gửi hướng dẫn'}</button>
-          <button className="link-button" type="button" onClick={() => setView('login')}>Quay lại đăng nhập</button>
-        </form>
-      </>}
+            {view === 'login' && <>
+              <div className="login-heading">
+                <span>Chào mừng trở lại</span>
+                <h1>Đăng nhập</h1>
+                <p className="login-sub">Nhập thông tin để tiếp tục vào hệ thống.</p>
+              </div>
+              <form onSubmit={(event) => { event.preventDefault(); submitLogin(); }}>
+                <label className="login-field">
+                  <span>Tên đăng nhập</span>
+                  <div className="login-input-wrap"><UserRound size={18} /><input value={username} onChange={(event) => setUsername(event.target.value)} autoFocus autoComplete="username" placeholder="Nhập tên đăng nhập" /></div>
+                </label>
+                <label className="login-field">
+                  <span>Mật khẩu</span>
+                  <div className="login-input-wrap"><LockKeyhole size={18} /><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Nhập mật khẩu" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+                </label>
+                <div className="login-form-actions"><span>Thông tin đăng nhập được bảo mật</span><button className="link-button" type="button" onClick={() => { setView('forgot'); setError(null); setMessage(null); }}>Quên mật khẩu?</button></div>
+                <Feedback error={error} message={message} />
+                <button className="login-submit" type="submit" disabled={busy}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
+              </form>
+              <div className="login-divider"><span>Tài khoản dùng thử</span></div>
+              <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div>
+            </>}
 
-      {view === 'reset' && <>
-        <h1>Đặt lại mật khẩu</h1><p className="login-sub">Tạo mật khẩu mới có ít nhất 8 ký tự.</p>
-        <form onSubmit={(event) => { event.preventDefault(); submitReset(); }}>
-          <label className="login-field"><span>Mật khẩu mới</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} autoFocus autoComplete="new-password" /></label>
-          <label className="login-field"><span>Xác nhận mật khẩu</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} autoComplete="new-password" /></label>
-          <Feedback error={error} message={message} />
-          <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
-        </form>
-      </>}
-    </div></div>
+            {view === 'forgot' && <>
+              <div className="login-heading"><span>Khôi phục tài khoản</span><h1>Quên mật khẩu</h1><p className="login-sub">Nhập email hoặc tên đăng nhập để nhận hướng dẫn.</p></div>
+              <form onSubmit={(event) => { event.preventDefault(); submitForgot(); }}>
+                <label className="login-field"><span>Email hoặc tên đăng nhập</span><div className="login-input-wrap"><UserRound size={18} /><input value={identifier} onChange={(event) => setIdentifier(event.target.value)} required autoFocus placeholder="Nhập thông tin tài khoản" /></div></label>
+                <Feedback error={error} message={message} />
+                <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang gửi...' : 'Gửi hướng dẫn'}</button>
+                <button className="link-button login-back" type="button" onClick={() => setView('login')}>Quay lại đăng nhập</button>
+              </form>
+            </>}
+
+            {view === 'reset' && <>
+              <div className="login-heading"><span>Bảo mật tài khoản</span><h1>Đặt lại mật khẩu</h1><p className="login-sub">Tạo mật khẩu mới có ít nhất 8 ký tự.</p></div>
+              <form onSubmit={(event) => { event.preventDefault(); submitReset(); }}>
+                <label className="login-field"><span>Mật khẩu mới</span><div className="login-input-wrap"><LockKeyhole size={18} /><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} autoFocus autoComplete="new-password" /></div></label>
+                <label className="login-field"><span>Xác nhận mật khẩu</span><div className="login-input-wrap"><ShieldCheck size={18} /><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} autoComplete="new-password" /></div></label>
+                <Feedback error={error} message={message} />
+                <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
+              </form>
+            </>}
+          </div>
+          <p className="login-footer">© 2026 Trường học số · Hỗ trợ người dùng an toàn và hiệu quả</p>
+        </section>
+      </main>
+    </div>
   );
 }
 

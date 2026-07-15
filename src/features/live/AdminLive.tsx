@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2 } from 'lucide-react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, NotificationTemplate, Club, ClubRegistration,
 } from '../../api/types';
-import { Section, FunctionTabs, StatusPill, Badge } from '../../components/ui';
+import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, useToast, money } from './common';
 import { Modal, Field } from './Modal';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
@@ -16,7 +16,10 @@ const PAGE_SIZE = 8;
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
   username: '', fullName: '', role: 'STUDENT', password: 'Sse@123456',
-  email: '', phone: '', teacherCode: '', mainSubject: '', classId: '',
+  email: '', phone: '', avatarUrl: '', teacherCode: '', mainSubject: '',
+  studentCode: '', classId: '', dateOfBirth: '', gender: '', placeOfBirth: '',
+  ethnicity: 'Kinh', nationality: 'Việt Nam', address: '', enrollmentDate: '',
+  guardianName: '', guardianPhone: '',
 };
 
 export function AdminUsersLive() {
@@ -27,7 +30,9 @@ export function AdminUsersLive() {
   const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
   const classes = useApi<SchoolClass[]>('/classes');
   const toast = useToast();
-  const [showCreate, setShowCreate] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...BLANK_USER });
 
   useEffect(() => setPage(0), [role, q]);
@@ -45,33 +50,102 @@ export function AdminUsersLive() {
     } catch (e: any) { toast.show('err', e.message); }
   };
 
-  const create = async () => {
-    if (!form.username || !form.fullName) return toast.show('err', 'Nhập username + họ tên');
+  const closeEditor = () => {
+    setShowEditor(false);
+    setEditingUser(null);
+    setForm({ ...BLANK_USER });
+  };
+
+  const openCreate = () => {
+    setEditingUser(null);
+    setForm({ ...BLANK_USER });
+    setShowEditor(true);
+  };
+
+  const openEdit = (user: ApiUser) => {
+    setEditingUser(user);
+    setForm({
+      ...BLANK_USER,
+      username: user.username,
+      fullName: user.fullName,
+      role: user.role,
+      password: '',
+      email: user.email || '',
+      phone: user.phone || '',
+      avatarUrl: user.avatarUrl || '',
+      teacherCode: user.teacherCode || '',
+      mainSubject: user.mainSubject || '',
+      studentCode: user.studentCode || '',
+      classId: user.classId || '',
+      dateOfBirth: user.dateOfBirth || '',
+      gender: user.gender || '',
+      placeOfBirth: user.placeOfBirth || '',
+      ethnicity: user.ethnicity || '',
+      nationality: user.nationality || '',
+      address: user.address || '',
+      enrollmentDate: user.enrollmentDate || '',
+      guardianName: user.guardianName || '',
+      guardianPhone: user.guardianPhone || '',
+    });
+    setShowEditor(true);
+  };
+
+  const saveUser = async () => {
+    if (!form.username.trim() || !form.fullName.trim()) return toast.show('err', 'Vui lòng nhập tên đăng nhập và họ tên');
+    if (!editingUser && form.password.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    if (form.role === 'STUDENT' && !form.classId) return toast.show('err', 'Vui lòng chọn lớp cho học sinh');
     const cls = classes.data?.find((c) => c.id === form.classId);
     const body: Record<string, unknown> = {
-      username: form.username, fullName: form.fullName, role: form.role,
-      password: form.password || 'Sse@123456', email: form.email || null, phone: form.phone || null,
+      fullName: form.fullName.trim(), email: form.email.trim(), phone: form.phone.trim(), avatarUrl: form.avatarUrl.trim(),
     };
-    if (form.role === 'TEACHER') { body.teacherCode = form.teacherCode || null; body.mainSubject = form.mainSubject || null; }
-    if (form.role === 'STUDENT') { body.classId = form.classId || null; body.className = cls?.code || null; } // mã HS tự sinh
+    if (!editingUser) {
+      body.username = form.username.trim();
+      body.role = form.role;
+      body.password = form.password || 'Sse@123456';
+    }
+    if (form.role === 'TEACHER') {
+      body.teacherCode = form.teacherCode.trim();
+      body.mainSubject = form.mainSubject.trim();
+    }
+    if (form.role === 'STUDENT') {
+      Object.assign(body, {
+        studentCode: form.studentCode.trim() || null,
+        classId: form.classId,
+        className: cls?.code || '',
+        dateOfBirth: form.dateOfBirth || null,
+        gender: form.gender || null,
+        placeOfBirth: form.placeOfBirth.trim(),
+        ethnicity: form.ethnicity.trim(),
+        nationality: form.nationality.trim(),
+        address: form.address.trim(),
+        enrollmentDate: form.enrollmentDate || null,
+        guardianName: form.guardianName.trim(),
+        guardianPhone: form.guardianPhone.trim(),
+      });
+    }
+    setSaving(true);
     try {
-      await api.post('/users', body);
-      toast.show('ok', 'Đã tạo người dùng');
-      setShowCreate(false);
-      setForm({ ...BLANK_USER });
+      if (editingUser) await api.put(`/users/${editingUser.id}`, body);
+      else await api.post('/users', body);
+      toast.show('ok', editingUser ? 'Đã cập nhật hồ sơ người dùng' : 'Đã tạo người dùng mới');
+      closeEditor();
       users.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+    } catch (e: any) {
+      toast.show('err', e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <Section title="Người dùng & phân quyền (A1)" subtitle="identity service · khóa/mở/tạo · phân trang" wide
-      action={<button className="live-btn" onClick={() => setShowCreate(true)}><Plus size={15} /> Tạo người dùng</button>}>
+    <Section title="Người dùng & phân quyền" subtitle="Quản lý tài khoản và quyền truy cập" wide
+      action={<button className="live-btn" onClick={openCreate}><Plus size={15} /> Tạo người dùng</button>}>
       {toast.node}
       <div className="live-toolbar">
         <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="">Tất cả vai trò</option>
-          <option value="ADMIN">Admin</option><option value="TEACHER">Teacher</option>
-          <option value="STUDENT">Student</option><option value="PARENT">Parent</option>
+          <option value="ADMIN">Quản trị viên</option><option value="TEACHER">Giáo viên</option>
+          <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
         </select>
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
         <button className="live-btn ghost" onClick={() => users.reload()}><RefreshCw size={15} /> Tải lại</button>
@@ -81,18 +155,21 @@ export function AdminUsersLive() {
         {() => (
           <>
             <table className="live-table">
-              <thead><tr><th>Họ tên</th><th>Username</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead>
+              <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead>
               <tbody>
                 {pageItems.map((u) => (
                   <tr key={u.id}>
                     <td><strong>{u.fullName}</strong>{u.studentCode && <small style={{ color: 'var(--muted)' }}> · {u.studentCode}</small>}{u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</td>
                     <td>@{u.username}</td>
-                    <td><Badge tone="blue">{u.role}</Badge></td>
+                    <td><Badge tone="blue">{viLabel(u.role)}</Badge></td>
                     <td><StatusPill value={u.status} /></td>
                     <td>
-                      <button className="live-btn subtle" onClick={() => toggleLock(u)}>
-                        {u.status === 'ACTIVE' ? <><Lock size={14} /> Khóa</> : <><Unlock size={14} /> Mở</>}
-                      </button>
+                      <div className="admin-user-actions">
+                        <button className="live-btn subtle" onClick={() => openEdit(u)}><Pencil size={14} /> Chỉnh sửa</button>
+                        <button className="live-btn subtle" onClick={() => toggleLock(u)}>
+                          {u.status === 'ACTIVE' ? <><Lock size={14} /> Khóa</> : <><Unlock size={14} /> Mở</>}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -107,42 +184,87 @@ export function AdminUsersLive() {
         )}
       </Async>
 
-      {showCreate && (
-        <Modal title="Tạo người dùng mới" onClose={() => setShowCreate(false)}
+      {showEditor && (
+        <Modal title={editingUser ? `Chỉnh sửa hồ sơ · ${editingUser.fullName}` : 'Tạo người dùng mới'} onClose={closeEditor}
           footer={<>
-            <button className="live-btn ghost" onClick={() => setShowCreate(false)}>Hủy</button>
-            <button className="live-btn" onClick={create}><Plus size={15} /> Tạo tài khoản</button>
+            <button className="live-btn ghost" onClick={closeEditor} disabled={saving}>Hủy</button>
+            <button className="live-btn" onClick={saveUser} disabled={saving}>
+              {editingUser ? <><Save size={15} /> {saving ? 'Đang lưu…' : 'Lưu hồ sơ'}</> : <><Plus size={15} /> {saving ? 'Đang tạo…' : 'Tạo tài khoản'}</>}
+            </button>
           </>}>
-          <Field label="Vai trò">
-            <select value={form.role} onChange={(e) => set('role', e.target.value)}>
-              <option value="STUDENT">Học sinh</option><option value="TEACHER">Giáo viên</option>
-              <option value="PARENT">Phụ huynh</option><option value="ADMIN">Quản trị</option>
-            </select>
-          </Field>
-          <div className="modal-grid2">
-            <Field label="Họ và tên"><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="Nguyễn Văn A" /></Field>
-            <Field label="Tên đăng nhập"><input value={form.username} onChange={(e) => set('username', e.target.value)} placeholder="vd: hs.vana" /></Field>
-          </div>
-          <div className="modal-grid2">
-            <Field label="Mật khẩu"><input value={form.password} onChange={(e) => set('password', e.target.value)} /></Field>
-            <Field label="Email"><input value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="a@sse.edu.vn" /></Field>
-          </div>
-          <Field label="Số điện thoại"><input value={form.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
+          <div className="admin-user-form">
+            <section className="admin-user-form-section">
+              <header><span><UserRound size={18} /></span><div><h4>Thông tin tài khoản</h4><p>Thông tin nhận diện và đăng nhập hệ thống</p></div></header>
+              <div className="admin-user-form-grid">
+                <Field label="Vai trò">
+                  <select value={form.role} disabled={Boolean(editingUser)} onChange={(e) => set('role', e.target.value)}>
+                    <option value="STUDENT">Học sinh</option><option value="TEACHER">Giáo viên</option>
+                    <option value="PARENT">Phụ huynh</option><option value="ADMIN">Quản trị viên</option>
+                  </select>
+                </Field>
+                <Field label="Họ và tên *"><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="Nguyễn Văn A" /></Field>
+                <Field label="Tên đăng nhập *"><input value={form.username} disabled={Boolean(editingUser)} onChange={(e) => set('username', e.target.value)} placeholder="vd: hs.vana" /></Field>
+                {!editingUser && <Field label="Mật khẩu *"><input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} /></Field>}
+                <Field label="Email"><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="a@sse.edu.vn" /></Field>
+                <Field label="Số điện thoại"><input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="09xxxxxxxx" /></Field>
+                <Field label="Ảnh đại diện (URL)"><input type="url" value={form.avatarUrl} onChange={(e) => set('avatarUrl', e.target.value)} placeholder="https://…" /></Field>
+              </div>
+            </section>
 
-          {form.role === 'TEACHER' && (
-            <div className="modal-grid2">
-              <Field label="Mã giáo viên"><input value={form.teacherCode} onChange={(e) => set('teacherCode', e.target.value)} placeholder="GV003" /></Field>
-              <Field label="Môn chính"><input value={form.mainSubject} onChange={(e) => set('mainSubject', e.target.value)} placeholder="Toán" /></Field>
-            </div>
-          )}
-          {form.role === 'STUDENT' && (
-            <Field label="Lớp (mã học sinh sẽ tự sinh)">
-              <select value={form.classId} onChange={(e) => set('classId', e.target.value)}>
-                <option value="">— Chọn lớp —</option>
-                {(classes.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
-              </select>
-            </Field>
-          )}
+            {form.role === 'TEACHER' && (
+              <section className="admin-user-form-section">
+                <header><span><IdCard size={18} /></span><div><h4>Thông tin giảng dạy</h4><p>Mã cán bộ và chuyên ngành phụ trách</p></div></header>
+                <div className="admin-user-form-grid">
+                  <Field label="Mã giáo viên"><input value={form.teacherCode} onChange={(e) => set('teacherCode', e.target.value)} placeholder="GV003" /></Field>
+                  <Field label="Môn chính"><input value={form.mainSubject} onChange={(e) => set('mainSubject', e.target.value)} placeholder="Toán" /></Field>
+                </div>
+              </section>
+            )}
+
+            {form.role === 'STUDENT' && (
+              <>
+                <section className="admin-user-form-section">
+                  <header><span><School size={18} /></span><div><h4>Thông tin học tập</h4><p>Lớp học, mã học sinh và thời điểm nhập học</p></div></header>
+                  <div className="admin-user-form-grid">
+                    <Field label="Mã học sinh"><input value={form.studentCode} onChange={(e) => set('studentCode', e.target.value)} placeholder="Để trống để hệ thống tự sinh" /></Field>
+                    <Field label="Lớp học *">
+                      <select value={form.classId} onChange={(e) => set('classId', e.target.value)}>
+                        <option value="">— Chọn lớp —</option>
+                        {(classes.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Ngày nhập học"><input type="date" value={form.enrollmentDate} onChange={(e) => set('enrollmentDate', e.target.value)} /></Field>
+                  </div>
+                </section>
+
+                <section className="admin-user-form-section">
+                  <header><span><IdCard size={18} /></span><div><h4>Thông tin cá nhân</h4><p>Thông tin định danh cơ bản của học sinh</p></div></header>
+                  <div className="admin-user-form-grid">
+                    <Field label="Ngày sinh"><input type="date" value={form.dateOfBirth} onChange={(e) => set('dateOfBirth', e.target.value)} /></Field>
+                    <Field label="Giới tính">
+                      <select value={form.gender} onChange={(e) => set('gender', e.target.value)}>
+                        <option value="">— Chọn giới tính —</option><option value="MALE">Nam</option><option value="FEMALE">Nữ</option><option value="OTHER">Khác</option>
+                      </select>
+                    </Field>
+                    <Field label="Nơi sinh"><input value={form.placeOfBirth} onChange={(e) => set('placeOfBirth', e.target.value)} placeholder="Tỉnh / Thành phố" /></Field>
+                    <Field label="Dân tộc"><input value={form.ethnicity} onChange={(e) => set('ethnicity', e.target.value)} placeholder="Kinh" /></Field>
+                    <Field label="Quốc tịch"><input value={form.nationality} onChange={(e) => set('nationality', e.target.value)} placeholder="Việt Nam" /></Field>
+                    <div className="admin-user-form-wide"><Field label="Địa chỉ thường trú"><textarea rows={3} value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành phố" /></Field></div>
+                  </div>
+                </section>
+
+                <section className="admin-user-form-section">
+                  <header><span><UsersRound size={18} /></span><div><h4>Thông tin người giám hộ</h4><p>Thông tin liên hệ khi nhà trường cần trao đổi</p></div></header>
+                  <div className="admin-user-form-grid">
+                    <Field label="Họ tên người giám hộ"><input value={form.guardianName} onChange={(e) => set('guardianName', e.target.value)} placeholder="Nguyễn Văn B" /></Field>
+                    <Field label="Số điện thoại người giám hộ"><input type="tel" value={form.guardianPhone} onChange={(e) => set('guardianPhone', e.target.value)} placeholder="09xxxxxxxx" /></Field>
+                  </div>
+                </section>
+
+                <div className="admin-user-privacy-note"><MapPin size={16} /><span>Thông tin học sinh chỉ được sử dụng cho công tác quản lý của nhà trường và giáo viên chủ nhiệm.</span></div>
+              </>
+            )}
+          </div>
         </Modal>
       )}
     </Section>
@@ -156,9 +278,11 @@ export function AdminAcademicLive() {
   const classes = useApi<SchoolClass[]>('/classes');
   const subjects = useApi<Subject[]>('/subjects');
   const rooms = useApi<Room[]>('/rooms');
+  const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const toast = useToast();
   const [sj, setSj] = useState({ code: '', name: '' });
   const [rm, setRm] = useState({ code: '', name: '', capacity: 45 });
+  const [assigningClassId, setAssigningClassId] = useState('');
 
   const addSubject = async () => {
     if (!sj.code || !sj.name) return toast.show('err', 'Nhập mã + tên môn');
@@ -170,6 +294,19 @@ export function AdminAcademicLive() {
     try { await api.post('/rooms', rm); toast.show('ok', 'Đã thêm phòng học'); setRm({ code: '', name: '', capacity: 45 }); rooms.reload(); }
     catch (e: any) { toast.show('err', e.message); }
   };
+  const assignHomeroomTeacher = async (classId: string, teacherId: string) => {
+    setAssigningClassId(classId);
+    try {
+      if (teacherId) await api.put(`/classes/${classId}/homeroom-teacher`, { teacherId });
+      else await api.del(`/classes/${classId}/homeroom-teacher`);
+      toast.show('ok', teacherId ? 'Đã phân công giáo viên chủ nhiệm' : 'Đã bỏ phân công giáo viên chủ nhiệm');
+      classes.reload();
+    } catch (e: any) {
+      toast.show('err', e.message);
+    } finally {
+      setAssigningClassId('');
+    }
+  };
 
   return (
     <>
@@ -177,7 +314,7 @@ export function AdminAcademicLive() {
       <FunctionTabs
         tabs={[
           { id: 'years', label: 'Năm học', Icon: CalendarDays, content: (
-            <Section title="Năm học" subtitle="academic_years" wide>
+            <Section title="Năm học" subtitle="Danh sách năm học" wide>
               <Async state={years}>{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Trạng thái</th></tr></thead>
                   <tbody>{l.map((y) => <tr key={y.id}><td><strong>{y.code}</strong></td><td>{y.name}</td><td><StatusPill value={y.status} /></td></tr>)}</tbody></table>
@@ -185,7 +322,7 @@ export function AdminAcademicLive() {
             </Section>
           ) },
           { id: 'sem', label: 'Học kỳ', Icon: CalendarDays, content: (
-            <Section title="Học kỳ" subtitle="semesters" wide>
+            <Section title="Học kỳ" subtitle="Danh sách học kỳ" wide>
               <Async state={semesters}>{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thứ tự</th><th>Trạng thái</th></tr></thead>
                   <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td><td>{s.sequence}</td><td><StatusPill value={s.status} /></td></tr>)}</tbody></table>
@@ -193,15 +330,31 @@ export function AdminAcademicLive() {
             </Section>
           ) },
           { id: 'classes', label: 'Lớp', Icon: School, content: (
-            <Section title="Lớp học" subtitle="classes" wide>
+            <Section title="Lớp học" subtitle="Phân công giáo viên chủ nhiệm cho từng lớp" wide>
               <Async state={classes}>{(l) => (
-                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Sĩ số</th></tr></thead>
-                  <tbody>{l.map((c) => <tr key={c.id}><td><strong>{c.code}</strong></td><td>{c.name}</td><td><Badge tone="violet">{c.gradeLevel}</Badge></td><td>{c.studentCount} HS</td></tr>)}</tbody></table>
+                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th></tr></thead>
+                  <tbody>{l.map((c) => <tr key={c.id}>
+                    <td><strong>{c.code}</strong></td><td>{c.name}</td><td><Badge tone="violet">{c.gradeLevel}</Badge></td><td>{c.studentCount} HS</td>
+                    <td>
+                      <select
+                        className="live-select homeroom-teacher-select"
+                        aria-label={`Giáo viên chủ nhiệm lớp ${c.code}`}
+                        value={c.homeroomTeacherId || ''}
+                        disabled={assigningClassId === c.id || teachers.loading}
+                        onChange={(event) => assignHomeroomTeacher(c.id, event.target.value)}
+                      >
+                        <option value="">— Chưa phân công —</option>
+                        {(teachers.data || []).map((teacher) => (
+                          <option key={teacher.id} value={teacher.id} disabled={teacher.status !== 'ACTIVE'}>{teacher.fullName} · {teacher.mainSubject || 'Chưa có chuyên ngành'}{teacher.status !== 'ACTIVE' ? ' · Đã khóa' : ''}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>)}</tbody></table>
               )}</Async>
             </Section>
           ) },
           { id: 'subjects', label: 'Môn', Icon: BookOpen, content: (
-            <Section title="Môn học" subtitle="subjects" wide>
+            <Section title="Môn học" subtitle="Danh sách môn học" wide>
               <div className="live-toolbar">
                 <input className="live-input" placeholder="Mã (vd CHEM)" value={sj.code} onChange={(e) => setSj({ ...sj, code: e.target.value })} />
                 <input className="live-input grow" placeholder="Tên môn" value={sj.name} onChange={(e) => setSj({ ...sj, name: e.target.value })} />
@@ -214,7 +367,7 @@ export function AdminAcademicLive() {
             </Section>
           ) },
           { id: 'rooms', label: 'Phòng', Icon: DoorOpen, content: (
-            <Section title="Phòng học" subtitle="rooms · thêm phòng khi trường mở rộng tòa nhà" wide>
+            <Section title="Phòng học" subtitle="Danh sách phòng học" wide>
               <div className="live-toolbar">
                 <input className="live-input" placeholder="Mã (vd B201)" value={rm.code} onChange={(e) => setRm({ ...rm, code: e.target.value })} />
                 <input className="live-input grow" placeholder="Tên phòng" value={rm.name} onChange={(e) => setRm({ ...rm, name: e.target.value })} />
@@ -244,7 +397,7 @@ export function AdminExamCategoriesLive() {
     catch (e: any) { toast.show('err', e.message); }
   };
   return (
-    <Section title="Cấu hình khảo thí (A4)" subtitle="Loại điểm + hệ số · exam_categories" wide>
+    <Section title="Cấu hình khảo thí" subtitle="Quản lý loại điểm và hệ số" wide>
       {toast.node}
       <div className="live-toolbar">
         <input className="live-input" placeholder="Mã (ORAL…)" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} />
@@ -301,7 +454,7 @@ export function AdminFinanceLive() {
       {toast.node}
       <FunctionTabs tabs={[
         { id: 'periods', label: 'Đợt thu', Icon: CircleDollarSign, content: (
-          <Section title="Đợt thu học phí (A7)" subtitle="Tạo đợt → thêm khoản → mở → sinh hóa đơn" wide>
+          <Section title="Đợt thu học phí" subtitle="Quản lý khoản thu và phát hành hóa đơn" wide>
             <div className="live-toolbar">
               <input className="live-input" placeholder="Mã (HK2-2025)" value={pf.code} onChange={(e) => setPf({ ...pf, code: e.target.value })} />
               <input className="live-input grow" placeholder="Tên đợt thu" value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} />
@@ -342,7 +495,7 @@ export function AdminFinanceLive() {
           </Section>
         ) },
         { id: 'invoices', label: 'Hóa đơn & thu tiền', Icon: FileText, content: (
-          <Section title="Hóa đơn — xác nhận thu tiền mặt" subtitle="HS đóng trực tiếp tại trường → admin xác nhận; PH thanh toán online trên app" wide
+          <Section title="Xác nhận thu học phí" subtitle="Theo dõi và xác nhận các khoản đã thanh toán" wide
             action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
             <Async state={invoices} empty="Chưa có hóa đơn">
               {(l) => (<table className="live-table"><thead><tr><th>Mã</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>
@@ -367,14 +520,14 @@ export function AdminFinanceLive() {
 export function AdminTemplatesLive() {
   const tpls = useApi<NotificationTemplate[]>('/notification-templates');
   return (
-    <Section title="Template thông báo (A9)" subtitle="notification_templates · Handlebars-like" wide>
+    <Section title="Mẫu thông báo" subtitle="Quản lý nội dung gửi đến người dùng" wide>
       <Async state={tpls} empty="Chưa có template">
         {(l) => (
           <table className="live-table">
             <thead><tr><th>Mã</th><th>Tên</th><th>Kênh</th><th>Nội dung</th><th>Bật</th></tr></thead>
             <tbody>{l.map((t) => (
-              <tr key={t.id}><td><strong>{t.code}</strong></td><td>{t.name}</td><td><Badge tone="blue">{t.channel}</Badge></td>
-                <td><small>{t.bodyTemplate}</small></td><td>{t.active ? <Badge tone="green">ON</Badge> : <Badge tone="red">OFF</Badge>}</td></tr>
+              <tr key={t.id}><td><strong>{t.code}</strong></td><td>{t.name}</td><td><Badge tone="blue">{viLabel(t.channel)}</Badge></td>
+                <td><small>{t.bodyTemplate}</small></td><td>{t.active ? <Badge tone="green">Đang bật</Badge> : <Badge tone="red">Đang tắt</Badge>}</td></tr>
             ))}</tbody>
           </table>
         )}
@@ -396,7 +549,7 @@ export function AdminClubsLive() {
     catch (e: any) { toast.show('err', e.message); }
   };
   return (
-    <Section title="Khóa ngoại khóa (A5)" subtitle="clubs + đăng ký · có học phí" wide>
+    <Section title="Khóa ngoại khóa" subtitle="Quản lý lớp, học phí và đăng ký" wide>
       {toast.node}
       <div className="live-toolbar">
         <input className="live-input grow" placeholder="Tên CLB" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />

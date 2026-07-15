@@ -62,7 +62,7 @@ function TimetableEditor() {
   };
 
   return (
-    <Section title="Xếp thời khóa biểu (A3)" subtitle="Chọn lớp → bấm ô trống để thêm tiết · trùng GV/phòng/lớp sẽ cảnh báo để xử lý ngay" wide>
+    <Section title="Xếp thời khóa biểu" subtitle="Chọn lớp và thêm tiết học vào ô trống" wide>
       {toast.node}
       <div className="live-toolbar">
         <select className="live-select grow" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -177,7 +177,7 @@ function HolidayManager() {
   };
 
   return (
-    <Section title="Ngày nghỉ / sự kiện" subtitle="Cập nhật ngày nghỉ đột xuất (mưa bão, sự kiện trường) · thêm & xóa" wide>
+    <Section title="Ngày nghỉ và sự kiện" subtitle="Quản lý các ngày không tổ chức học" wide>
       {toast.node}
       <div className="live-toolbar">
         <input className="live-input" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />

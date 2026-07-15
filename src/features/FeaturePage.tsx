@@ -1,4 +1,3 @@
-import type React from 'react';
 import type { ModuleItem, RoleDefinition } from '../types';
 import { GeneralDashboard } from './dashboard/GeneralDashboard';
 import { AdminReportsLive } from './live/AdminReportsLive';
@@ -20,21 +19,7 @@ export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleD
     return <GeneralDashboard roleId={role.id} />;
   }
 
-  return (
-    <div className="feature-page">
-      <section className="feature-hero" style={{ '--role-color': role.color } as React.CSSProperties}>
-        <div className="feature-icon">
-          <module.Icon size={24} />
-        </div>
-        <div>
-          <span>{module.code} · {module.phase} · ưu tiên {module.priority}</span>
-          <h2>{module.title}</h2>
-          <p>{module.summary}</p>
-        </div>
-      </section>
-      <FeatureBody code={module.code} />
-    </div>
-  );
+  return <div className="feature-page"><FeatureBody code={module.code} /></div>;
 }
 
 export function FeatureBody({ code }: { code: string }) {

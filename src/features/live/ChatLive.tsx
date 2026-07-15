@@ -29,7 +29,7 @@ export function ChatLive() {
   };
 
   return (
-    <Section title="Giao tiếp (chat 1-1)" subtitle="/chat — broadcast & nhắn tin GV ↔ HS/PH" wide>
+    <Section title="Trao đổi" subtitle="Nhắn tin trực tiếp với giáo viên, học sinh và phụ huynh" wide>
       {toast.node}
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 220, flex: '0 0 240px' }}>

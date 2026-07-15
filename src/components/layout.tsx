@@ -10,7 +10,6 @@ export function SessionCard({ role, name }: { role: RoleDefinition; name?: strin
         <role.Icon size={20} />
       </div>
       <div>
-        <span>Phiên đăng nhập</span>
         <strong>{name ?? role.sessionName}</strong>
         <small>{role.label}</small>
       </div>
@@ -32,13 +31,12 @@ export function SidebarMenu({
       <button className={`menu-button ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => onSelect('dashboard')}>
         <BarChart3 size={19} />
         <span>
-          <strong>Dashboard</strong>
-          <small>Tổng quan</small>
+          <strong>Tổng quan</strong>
         </span>
         <ChevronRight size={16} />
       </button>
 
-      <div className="sidebar-section-title">Menu {role.label}</div>
+      <div className="sidebar-section-title">Chức năng</div>
       {modules[role.id].map((item) => (
         <button
           key={item.code}
@@ -48,7 +46,6 @@ export function SidebarMenu({
           <item.Icon size={19} />
           <span>
             <strong>{item.title}</strong>
-            <small>{item.code} · {item.phase}</small>
           </span>
           <ChevronRight size={16} />
         </button>

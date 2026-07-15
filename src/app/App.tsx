@@ -28,20 +28,20 @@ export default function App() {
   const roleId = user.role.toLowerCase() as RoleId;
   const role = roles.find((item) => item.id === roleId) ?? roles[0];
   const activeModule = modules[role.id].find((item) => item.code === activePage);
-  const pageTitle = activePage === 'dashboard' ? `Dashboard ${role.label}` : activeModule?.title ?? 'Chức năng';
+  const pageTitle = activePage === 'dashboard' ? 'Tổng quan' : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
 
   return (
     <ActiveChildProvider>
-      <div className="app-shell">
+      <div className={`app-shell app-shell--${roleId}`}>
         <aside className="sidebar">
           <div className="brand">
             <div className="brand-mark">
               <School size={24} />
             </div>
             <div>
-              <strong>SSE</strong>
-              <span>Smart School Ecosystem</span>
+              <strong>Trường học số</strong>
+              <span>Quản lý tập trung</span>
             </div>
           </div>
 
@@ -56,10 +56,6 @@ export default function App() {
               <p>{pageSubtitle}</p>
             </div>
             <div className="topbar-actions">
-              <div style={{ textAlign: 'right', marginRight: 4 }}>
-                <strong style={{ display: 'block', fontSize: 14 }}>{user.fullName}</strong>
-                <small style={{ color: 'var(--muted)' }}>@{user.username} · {user.role}</small>
-              </div>
               <button className="logout-btn" onClick={logout} title="Đăng xuất">
                 <LogOut size={16} /> Đăng xuất
               </button>

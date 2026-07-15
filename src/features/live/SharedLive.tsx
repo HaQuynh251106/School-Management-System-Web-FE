@@ -312,7 +312,7 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
   const myRegs = useApi<ClubRegistration[]>(regsPath);
 
   const register = async (clubId: string) => {
-    if (actor === 'parent' && !childId) return toast.show('err', 'Chọn con ở tab Switch Profile trước');
+    if (actor === 'parent' && !childId) return toast.show('err', 'Vui lòng chọn học sinh trước');
     try {
       await api.post(`/clubs/${clubId}/register`, actor === 'parent' ? { studentId: childId } : {});
       toast.show('ok', 'Đăng ký thành công');
@@ -323,7 +323,7 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
   const joined = new Set((myRegs.data || []).filter((r) => r.status === 'REGISTERED').map((r) => r.clubId));
 
   return (
-    <Section title={actor === 'student' ? 'Đăng ký ngoại khóa (C6)' : 'Đăng ký ngoại khóa cho con (D5)'} subtitle="clubs + club_registrations" wide>
+    <Section title={actor === 'student' ? 'Đăng ký ngoại khóa' : 'Đăng ký ngoại khóa cho con'} subtitle="Chọn hoạt động phù hợp và còn chỗ" wide>
       {toast.node}
       <Async state={clubs} empty="Chưa có CLB nào">
         {(l) => (
@@ -352,7 +352,7 @@ export function NotificationsLive() {
   const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
 
   return (
-    <Section title="Thông báo (C5)" subtitle="Hộp thư in-app · notifications" wide
+    <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
       action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
       {toast.node}
       <Async state={inbox} empty="Không có thông báo">

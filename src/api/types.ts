@@ -14,6 +14,15 @@ export interface ApiUser {
   studentCode?: string | null;
   className?: string | null;
   classId?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  placeOfBirth?: string | null;
+  ethnicity?: string | null;
+  nationality?: string | null;
+  address?: string | null;
+  enrollmentDate?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
   teacherCode?: string | null;
   mainSubject?: string | null;
   childrenIds?: string[] | null;
@@ -21,7 +30,8 @@ export interface ApiUser {
 
 export interface SchoolClass {
   id: string; code: string; name: string; gradeLevel: string;
-  academicYearId?: string; homeroomTeacherId?: string; studentCount: number;
+  academicYearId?: string; homeroomTeacherId?: string; homeroomTeacherName?: string;
+  homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number;
 }
 export interface Subject { id: string; code: string; name: string; }
 export interface AcademicYear { id: string; code: string; name: string; status: string; startDate?: string; endDate?: string; }
@@ -44,7 +54,13 @@ export interface Grade {
   category: string; categoryName: string; assessmentIndex?: number; score: number; note?: string | null; recordedAt?: string; version?: number;
 }
 export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
-export interface TeacherGradebookContext { classId: string; semesterId: string; subjectId: string; subjectName: string; }
+export interface GradebookSubject {
+  subjectId: string; subjectName: string; teacherName?: string | null; editable: boolean;
+}
+export interface TeacherGradebookContext {
+  classId: string; semesterId: string; subjectId: string; subjectName: string;
+  homeroomTeacher: boolean; canEdit: boolean; subjects: GradebookSubject[];
+}
 
 export interface Notification {
   id: string; recipientId: string; type: string; title: string; body: string;
