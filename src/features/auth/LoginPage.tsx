@@ -7,12 +7,13 @@ import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
 import type { CSSProperties } from 'react';
 
-const demos = [
-  { label: 'Quản trị', username: 'admin', password: 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Giáo viên', username: 'gv.hoa', password: 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Học sinh', username: 'hs.an', password: 'student@123', Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Phụ huynh', username: 'ph.pham', password: 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
-];
+const env = (import.meta as any).env || {};
+const demos = env.VITE_SHOW_DEMO_ACCOUNTS === 'true' ? [
+  { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME, password: env.VITE_DEMO_ADMIN_PASSWORD, Icon: UserRoundCog, color: '#2563eb' },
+  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME, password: env.VITE_DEMO_TEACHER_PASSWORD, Icon: ClipboardCheck, color: '#0f766e' },
+  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME, password: env.VITE_DEMO_STUDENT_PASSWORD, Icon: GraduationCap, color: '#7c3aed' },
+  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME, password: env.VITE_DEMO_PARENT_PASSWORD, Icon: RefreshCcw, color: '#c2410c' },
+].filter((account) => account.username && account.password) : [];
 
 type View = 'login' | 'forgot' | 'reset';
 
@@ -20,8 +21,8 @@ export function LoginPage() {
   const { login } = useAuth();
   const resetToken = new URLSearchParams(window.location.search).get('token');
   const [view, setView] = useState<View>(resetToken ? 'reset' : 'login');
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin@123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -45,7 +46,7 @@ export function LoginPage() {
   });
   const submitReset = () => run(async () => {
     if (!resetToken) throw new Error('Liên kết đặt lại mật khẩu không hợp lệ');
-    if (newPassword.length < 8) throw new Error('Mật khẩu phải có ít nhất 8 ký tự');
+    if (newPassword.length < 10) throw new Error('Mật khẩu phải có ít nhất 10 ký tự');
     if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp');
     await api.post('/auth/reset-password', { token: resetToken, newPassword });
     window.history.replaceState({}, '', window.location.pathname);
@@ -99,8 +100,8 @@ export function LoginPage() {
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
               </form>
-              <div className="login-divider"><span>Tài khoản dùng thử</span></div>
-              <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div>
+              {demos.length > 0 && <><div className="login-divider"><span>Tài khoản dùng thử</span></div>
+              <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div></>}
             </>}
 
             {view === 'forgot' && <>
@@ -114,10 +115,10 @@ export function LoginPage() {
             </>}
 
             {view === 'reset' && <>
-              <div className="login-heading"><span>Bảo mật tài khoản</span><h1>Đặt lại mật khẩu</h1><p className="login-sub">Tạo mật khẩu mới có ít nhất 8 ký tự.</p></div>
+              <div className="login-heading"><span>Bảo mật tài khoản</span><h1>Đặt lại mật khẩu</h1><p className="login-sub">Tạo mật khẩu mới có ít nhất 10 ký tự.</p></div>
               <form onSubmit={(event) => { event.preventDefault(); submitReset(); }}>
-                <label className="login-field"><span>Mật khẩu mới</span><div className="login-input-wrap"><LockKeyhole size={18} /><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} autoFocus autoComplete="new-password" /></div></label>
-                <label className="login-field"><span>Xác nhận mật khẩu</span><div className="login-input-wrap"><ShieldCheck size={18} /><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={8} autoComplete="new-password" /></div></label>
+                <label className="login-field"><span>Mật khẩu mới</span><div className="login-input-wrap"><LockKeyhole size={18} /><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={10} autoFocus autoComplete="new-password" /></div></label>
+                <label className="login-field"><span>Xác nhận mật khẩu</span><div className="login-input-wrap"><ShieldCheck size={18} /><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={10} autoComplete="new-password" /></div></label>
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
               </form>

@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { Bell, BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { TimetableSlot, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification } from '../../api/types';
+import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
 
@@ -122,7 +122,7 @@ export function MyTimetableLive() {
 export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const toast = useToast();
   const list = useApi<Assignment[]>(actor === 'teacher' ? '/assignments' : '/me/assignments');
-  const teachingSlots = useApi<TimetableSlot[]>(actor === 'teacher' ? '/me/timetable' : null);
+  const teachingAssignments = useApi<TeachingAssignment[]>(actor === 'teacher' ? '/me/teaching-assignments' : null);
   const mySubmissions = useApi<Submission[]>(actor === 'student' ? '/me/submissions' : null);
   const reloadMySubmissions = mySubmissions.reload;
   const [sel, setSel] = useState<string | null>(null);
@@ -135,10 +135,10 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const [submissionDraft, setSubmissionDraft] = useState({ content: '', attachmentFileId: '' });
 
   const teachingOptions = useMemo(() => {
-    const unique = new Map<string, TimetableSlot>();
-    (teachingSlots.data || []).forEach((slot) => unique.set(`${slot.classId}:${slot.subjectId}`, slot));
+    const unique = new Map<string, TeachingAssignment>();
+    (teachingAssignments.data || []).forEach((assignment) => unique.set(`${assignment.classId}:${assignment.subjectId}`, assignment));
     return [...unique.values()];
-  }, [teachingSlots.data]);
+  }, [teachingAssignments.data]);
   const selectedAssignment = (list.data || []).find((assignment) => assignment.id === sel);
   const submissionMap = useMemo(() => new Map((mySubmissions.data || []).map((item) => [item.assignmentId, item])), [mySubmissions.data]);
   const published = (list.data || []).filter((item) => item.status === 'PUBLISHED').length;
@@ -347,30 +347,50 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
 /* ===== Thông báo in-app (C5) ===== */
 export function NotificationsLive() {
   const inbox = useApi<Notification[]>('/notifications');
+  const preferences = useApi<NotificationPreference[]>('/notification-preferences');
   const toast = useToast();
   const markRead = async (id: string) => { try { await api.post(`/notifications/${id}/read`); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
   const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
+  const togglePreference = async (preference: NotificationPreference) => {
+    try {
+      await api.put('/notification-preferences', { channel: preference.channel, enabled: !preference.enabled });
+      toast.show('ok', 'Đã cập nhật tùy chọn thông báo'); preferences.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
 
   return (
-    <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
-      action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
+    <div className="notification-page-grid">
       {toast.node}
-      <Async state={inbox} empty="Không có thông báo">
-        {(l) => (
-          <div>
-            {l.map((n) => (
-              <div key={n.id} className={`noti-item ${n.read ? '' : 'unread'}`}>
-                <Bell size={18} />
-                <div className="noti-body">
-                  <strong>{n.title} <Badge tone="blue">{n.type}</Badge></strong>
-                  <span>{n.body}</span><br /><small>{fmtDateTime(n.createdAt)}</small>
+      <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
+        <Async state={preferences} empty="Chưa có tùy chọn thông báo">
+          {(items) => <div className="notification-preferences">{items.map((preference) => (
+            <label key={preference.id}>
+              <span><strong>{{ IN_APP: 'Trong ứng dụng', PUSH: 'Thông báo đẩy', EMAIL: 'Email' }[preference.channel]}</strong>
+                <small>{preference.channel === 'IN_APP' ? 'Hiển thị trong hộp thư của hệ thống' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
+              <input type="checkbox" checked={preference.enabled} onChange={() => togglePreference(preference)} />
+            </label>
+          ))}</div>}
+        </Async>
+      </Section>
+      <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
+        action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
+        <Async state={inbox} empty="Không có thông báo">
+          {(l) => (
+            <div>
+              {l.map((n) => (
+                <div key={n.id} className={`noti-item ${n.read ? '' : 'unread'}`}>
+                  <Bell size={18} />
+                  <div className="noti-body">
+                    <strong>{n.title} <Badge tone="blue">{n.type}</Badge></strong>
+                    <span>{n.body}</span><br /><small>{fmtDateTime(n.createdAt)}</small>
+                  </div>
+                  {!n.read && <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đã đọc</button>}
                 </div>
-                {!n.read && <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đã đọc</button>}
-              </div>
-            ))}
-          </div>
-        )}
-      </Async>
-    </Section>
+              ))}
+            </div>
+          )}
+        </Async>
+      </Section>
+    </div>
   );
 }

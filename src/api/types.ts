@@ -8,6 +8,7 @@ export interface ApiUser {
   fullName: string;
   role: Role;
   status: string;
+  passwordChangeRequired: boolean;
   email?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
@@ -31,9 +32,9 @@ export interface ApiUser {
 export interface SchoolClass {
   id: string; code: string; name: string; gradeLevel: string;
   academicYearId?: string; homeroomTeacherId?: string; homeroomTeacherName?: string;
-  homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number;
+  homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number; capacity: number;
 }
-export interface Subject { id: string; code: string; name: string; }
+export interface Subject { id: string; code: string; name: string; coefficient: number; }
 export interface AcademicYear { id: string; code: string; name: string; status: string; startDate?: string; endDate?: string; }
 export interface Semester { id: string; academicYearId: string; code: string; name: string; sequence: number; status: string; }
 export interface Room { id: string; code: string; name?: string; capacity?: number; }
@@ -52,6 +53,40 @@ export interface AttendanceRecord {
 export interface Grade {
   id: string; studentId: string; subjectId: string; subjectName: string; semesterId: string;
   category: string; categoryName: string; assessmentIndex?: number; score: number; note?: string | null; recordedAt?: string; version?: number;
+}
+
+export interface TeachingAssignment {
+  id: string;
+  classId: string;
+  classCode: string;
+  subjectId: string;
+  subjectName: string;
+  teacherId: string;
+  teacherName: string;
+  semesterId: string;
+  weeklyPeriods: number;
+  scheduledPeriods: number;
+  remainingPeriods: number;
+  teacherClassCount: number;
+  teacherWeeklyPeriods: number;
+  teacherScheduledPeriods: number;
+  fullyScheduled: boolean;
+  teacherBusy: boolean;
+  canSchedule: boolean;
+  availabilityMessage?: string | null;
+  assignedAt: string;
+  assignedBy?: string | null;
+  updatedAt: string;
+}
+export interface TeacherClassAssignment {
+  id: string; classId: string; classCode: string; subjectId: string; subjectName: string;
+  semesterId: string; weeklyPeriods: number; scheduledPeriods: number;
+}
+export interface TeacherWorkload {
+  teacherId: string; teacherCode?: string | null; teacherName: string; mainSubject?: string | null;
+  status: string; classCount: number; subjectCount: number; weeklyPeriods: number;
+  scheduledPeriods: number; classCodes: string[]; subjectNames: string[];
+  assignments: TeacherClassAssignment[];
 }
 export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
 export interface GradebookSubject {
@@ -74,6 +109,7 @@ export interface Assignment {
   title: string; description?: string; status: string; deadline?: string; allowLate: boolean; createdAt: string;
   attachmentFileId?: string | null; attachmentName?: string | null; submissionCount?: number; studentCount?: number;
 }
+export interface NotificationPreference { id: string; userId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; enabled: boolean; updatedAt: string; }
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
@@ -88,6 +124,27 @@ export interface Invoice {
   totalAmount: number; paidAmount: number; status: string; issuedAt?: string; dueDate?: string;
 }
 export interface Payment { id: string; invoiceId: string; amount: number; method: string; status: string; txnRef?: string; paidAt?: string; }
+export interface PaymentCallback { txnRef: string; status: 'SUCCESS' | 'FAILED'; amount: number; signature: string; }
+export interface PaymentInitResponse {
+  payment: Payment; invoice: Invoice; gatewayStatus: string;
+  callbackUrl?: string; sandboxCallback?: PaymentCallback;
+}
+
+export interface LoginHistory {
+  id: string; userId?: string | null; username: string; success: boolean;
+  failureReason?: string | null; ipAddress?: string | null; userAgent?: string | null; createdAt: string;
+}
+
+export interface ImportResult {
+  totalRows: number; importedRows: number; failedRows: number;
+  errors: Array<{ row: number; username?: string; error: string }>;
+}
+
+export interface StudentYearlySummary {
+  id: string; academicYearId: string; studentId: string; studentName: string; classId: string;
+  averageScore?: number | null; conductGrade?: string | null; promotionStatus: string;
+  missingRequirements?: string | null; nextClassId?: string | null; finalizedAt?: string | null;
+}
 
 export interface Club { id: string; name: string; description?: string; capacity: number; schedule?: string; fee: number; status: string; }
 export interface ClubRegistration { id: string; clubId: string; clubName?: string; studentId: string; studentName?: string; status: string; registeredAt?: string; }

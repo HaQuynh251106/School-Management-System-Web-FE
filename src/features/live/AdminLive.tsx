@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound } from 'lucide-react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, NotificationTemplate, Club, ClubRegistration,
+  ImportResult, LoginHistory, StudentYearlySummary,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, useToast, money } from './common';
@@ -29,11 +30,16 @@ export function AdminUsersLive() {
   const params = [role && `role=${role}`, q && `q=${encodeURIComponent(q)}`].filter(Boolean).join('&');
   const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
   const classes = useApi<SchoolClass[]>('/classes');
+  const students = useApi<ApiUser[]>('/users?role=STUDENT');
   const toast = useToast();
   const [showEditor, setShowEditor] = useState(false);
   const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...BLANK_USER });
+  const [linkedStudentId, setLinkedStudentId] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
 
   useEffect(() => setPage(0), [role, q]);
 
@@ -54,6 +60,58 @@ export function AdminUsersLive() {
     setShowEditor(false);
     setEditingUser(null);
     setForm({ ...BLANK_USER });
+  };
+
+  const resetPassword = async (u: ApiUser) => {
+    const value = window.prompt(`Nhập mật khẩu mới cho ${u.fullName} (để trống để hệ thống tự sinh):`, '');
+    if (value === null) return;
+    if (value && value.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    try {
+      const result = await api.post<{ password: string }>(`/users/${u.id}/reset-password`, { newPassword: value || null });
+      toast.show('ok', `Mật khẩu tạm thời của ${u.fullName}: ${result.password}`);
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const importExcel = async (file?: File) => {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const result = await api.upload<ImportResult>('/users/import', file);
+      setImportResult(result);
+      toast.show(result.failedRows ? 'err' : 'ok', `Đã nhập ${result.importedRows}/${result.totalRows} tài khoản`);
+      users.reload(); students.reload(); classes.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setImporting(false); }
+  };
+
+  const downloadImportTemplate = async () => {
+    try {
+      const result = await api.download('/users/import-template');
+      const href = URL.createObjectURL(result.blob);
+      const anchor = document.createElement('a'); anchor.href = href; anchor.download = result.filename || 'mau-nhap-nguoi-dung.xlsx'; anchor.click();
+      URL.revokeObjectURL(href);
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const linkChild = async () => {
+    if (!editingUser || !linkedStudentId) return;
+    try {
+      await api.post(`/users/${editingUser.id}/children`, { studentId: linkedStudentId, primaryContact: true });
+      setEditingUser({ ...editingUser, childrenIds: [...new Set([...(editingUser.childrenIds ?? []), linkedStudentId])] });
+      setLinkedStudentId('');
+      toast.show('ok', 'Đã liên kết học sinh với phụ huynh');
+      users.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const unlinkChild = async (studentId: string) => {
+    if (!editingUser) return;
+    try {
+      await api.del(`/users/${editingUser.id}/children/${studentId}`);
+      setEditingUser({ ...editingUser, childrenIds: (editingUser.childrenIds ?? []).filter((id) => id !== studentId) });
+      toast.show('ok', 'Đã bỏ liên kết học sinh');
+      users.reload();
+    } catch (e: any) { toast.show('err', e.message); }
   };
 
   const openCreate = () => {
@@ -148,8 +206,21 @@ export function AdminUsersLive() {
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
         </select>
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <label className={`live-btn ghost ${importing ? 'is-disabled' : ''}`}>
+          <Upload size={15} /> {importing ? 'Đang nhập…' : 'Nhập Excel'}
+          <input hidden type="file" accept=".xlsx,.xls" disabled={importing} onChange={(e) => { importExcel(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+        </label>
+        <button className="live-btn ghost" onClick={downloadImportTemplate}><Download size={15} /> Tệp mẫu</button>
         <button className="live-btn ghost" onClick={() => users.reload()}><RefreshCw size={15} /> Tải lại</button>
       </div>
+
+      {importResult && (
+        <div className={`import-result ${importResult.failedRows ? 'has-errors' : ''}`}>
+          <strong>Đã xử lý {importResult.totalRows} dòng</strong>
+          <span>{importResult.importedRows} thành công · {importResult.failedRows} lỗi</span>
+          {importResult.errors.length > 0 && <small>{importResult.errors.slice(0, 5).map((e) => `Dòng ${e.row}: ${e.error}`).join(' · ')}</small>}
+        </div>
+      )}
 
       <Async state={users} empty="Không có người dùng">
         {() => (
@@ -169,6 +240,7 @@ export function AdminUsersLive() {
                         <button className="live-btn subtle" onClick={() => toggleLock(u)}>
                           {u.status === 'ACTIVE' ? <><Lock size={14} /> Khóa</> : <><Unlock size={14} /> Mở</>}
                         </button>
+                        <button className="live-btn subtle" onClick={() => resetPassword(u)}><KeyRound size={14} /> Đặt lại mật khẩu</button>
                       </div>
                     </td>
                   </tr>
@@ -264,6 +336,41 @@ export function AdminUsersLive() {
                 <div className="admin-user-privacy-note"><MapPin size={16} /><span>Thông tin học sinh chỉ được sử dụng cho công tác quản lý của nhà trường và giáo viên chủ nhiệm.</span></div>
               </>
             )}
+
+            {form.role === 'PARENT' && editingUser && (
+              <section className="admin-user-form-section">
+                <header><span><Link2 size={18} /></span><div><h4>Liên kết học sinh</h4><p>Phụ huynh chỉ xem được dữ liệu của các học sinh đã liên kết</p></div></header>
+                <div className="live-toolbar">
+                  <select className="live-select grow" value={linkedStudentId} onChange={(e) => setLinkedStudentId(e.target.value)}>
+                    <option value="">— Chọn học sinh —</option>
+                    {(students.data ?? []).filter((student) => !(editingUser.childrenIds ?? []).includes(student.id)).map((student) => (
+                      <option key={student.id} value={student.id}>{student.fullName} · {student.studentCode || student.username} · {student.className || 'Chưa xếp lớp'}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="live-btn" onClick={linkChild} disabled={!linkedStudentId}><Link2 size={14} /> Liên kết</button>
+                </div>
+                <div className="linked-student-list">
+                  {(editingUser.childrenIds ?? []).length === 0 && <span>Chưa liên kết học sinh nào.</span>}
+                  {(editingUser.childrenIds ?? []).map((id) => {
+                    const student = students.data?.find((item) => item.id === id);
+                    return <div key={id}><strong>{student?.fullName || id}</strong><small>{student?.className || 'Chưa xếp lớp'}</small><button type="button" onClick={() => unlinkChild(id)}><Unlink size={14} /> Bỏ liên kết</button></div>;
+                  })}
+                </div>
+              </section>
+            )}
+
+            {editingUser && (
+              <section className="admin-user-form-section">
+                <header><span><KeyRound size={18} /></span><div><h4>Lịch sử đăng nhập</h4><p>50 lần đăng nhập gần nhất để phát hiện truy cập bất thường</p></div></header>
+                <Async state={history} empty="Chưa có lịch sử đăng nhập">
+                  {(items) => <div className="login-history-list">{items.slice(0, 8).map((item) => (
+                    <div key={item.id}><span className={item.success ? 'success-dot' : 'error-dot'} />
+                      <strong>{item.success ? 'Thành công' : 'Thất bại'}</strong><span>{new Date(item.createdAt).toLocaleString('vi-VN')}</span>
+                      <small>{item.ipAddress || 'Không rõ IP'}{item.failureReason ? ` · ${item.failureReason}` : ''}</small></div>
+                  ))}</div>}
+                </Async>
+              </section>
+            )}
           </div>
         </Modal>
       )}
@@ -280,18 +387,50 @@ export function AdminAcademicLive() {
   const rooms = useApi<Room[]>('/rooms');
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const toast = useToast();
-  const [sj, setSj] = useState({ code: '', name: '' });
+  const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
+  const [sf, setSf] = useState({ academicYearId: '', code: '', name: '', sequence: 1, startDate: '', endDate: '' });
+  const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', academicYearId: '', homeroomTeacherId: '', capacity: 45 });
+  const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
   const [rm, setRm] = useState({ code: '', name: '', capacity: 45 });
   const [assigningClassId, setAssigningClassId] = useState('');
 
+  const addYear = async () => {
+    if (!yf.code || !yf.startDate || !yf.endDate) return toast.show('err', 'Nhập mã và thời gian năm học');
+    try {
+      await api.post('/academicYears', { ...yf, name: yf.name || yf.code, status: 'PLANNED' });
+      toast.show('ok', 'Đã tạo năm học'); setYf({ code: '', name: '', startDate: '', endDate: '' }); years.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const addSemester = async () => {
+    if (!sf.academicYearId || !sf.code) return toast.show('err', 'Chọn năm học và nhập mã học kỳ');
+    try {
+      await api.post('/semesters', { ...sf, name: sf.name || sf.code, status: 'PLANNED' });
+      toast.show('ok', 'Đã tạo học kỳ'); setSf({ academicYearId: '', code: '', name: '', sequence: 1, startDate: '', endDate: '' }); semesters.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const addClass = async () => {
+    if (!cf.code || !cf.academicYearId) return toast.show('err', 'Nhập mã lớp và chọn năm học');
+    try {
+      await api.post('/classes', { ...cf, name: cf.name || `Lớp ${cf.code}`, homeroomTeacherId: cf.homeroomTeacherId || null });
+      toast.show('ok', 'Đã tạo lớp học'); setCf({ code: '', name: '', gradeLevel: 'K10', academicYearId: '', homeroomTeacherId: '', capacity: 45 }); classes.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
   const addSubject = async () => {
     if (!sj.code || !sj.name) return toast.show('err', 'Nhập mã + tên môn');
-    try { await api.post('/subjects', sj); toast.show('ok', 'Đã thêm môn'); setSj({ code: '', name: '' }); subjects.reload(); }
+    try { await api.post('/subjects', sj); toast.show('ok', 'Đã thêm môn'); setSj({ code: '', name: '', coefficient: 1 }); subjects.reload(); }
     catch (e: any) { toast.show('err', e.message); }
   };
   const addRoom = async () => {
     if (!rm.code) return toast.show('err', 'Nhập mã phòng');
     try { await api.post('/rooms', rm); toast.show('ok', 'Đã thêm phòng học'); setRm({ code: '', name: '', capacity: 45 }); rooms.reload(); }
+    catch (e: any) { toast.show('err', e.message); }
+  };
+  const updateSubject = async (subject: Subject, coefficient: number) => {
+    if (!Number.isFinite(coefficient) || coefficient <= 0) return toast.show('err', 'Hệ số môn không hợp lệ');
+    try { await api.put(`/subjects/${subject.id}`, { name: subject.name, coefficient }); toast.show('ok', `Đã cập nhật hệ số môn ${subject.name}`); subjects.reload(); }
     catch (e: any) { toast.show('err', e.message); }
   };
   const assignHomeroomTeacher = async (classId: string, teacherId: string) => {
@@ -315,14 +454,30 @@ export function AdminAcademicLive() {
         tabs={[
           { id: 'years', label: 'Năm học', Icon: CalendarDays, content: (
             <Section title="Năm học" subtitle="Danh sách năm học" wide>
+              <div className="live-toolbar academic-create-bar">
+                <input className="live-input" placeholder="Mã (2026-2027)" value={yf.code} onChange={(e) => setYf({ ...yf, code: e.target.value })} />
+                <input className="live-input grow" placeholder="Tên năm học" value={yf.name} onChange={(e) => setYf({ ...yf, name: e.target.value })} />
+                <input className="live-input" type="date" title="Ngày bắt đầu" value={yf.startDate} onChange={(e) => setYf({ ...yf, startDate: e.target.value })} />
+                <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
+                <button className="live-btn" onClick={addYear}><Plus size={15} /> Tạo năm học</button>
+              </div>
               <Async state={years}>{(l) => (
-                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Trạng thái</th></tr></thead>
-                  <tbody>{l.map((y) => <tr key={y.id}><td><strong>{y.code}</strong></td><td>{y.name}</td><td><StatusPill value={y.status} /></td></tr>)}</tbody></table>
+                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th></tr></thead>
+                  <tbody>{l.map((y) => <tr key={y.id}><td><strong>{y.code}</strong></td><td>{y.name}</td><td>{y.startDate || '—'} → {y.endDate || '—'}</td><td><StatusPill value={y.status} /></td></tr>)}</tbody></table>
               )}</Async>
             </Section>
           ) },
           { id: 'sem', label: 'Học kỳ', Icon: CalendarDays, content: (
             <Section title="Học kỳ" subtitle="Danh sách học kỳ" wide>
+              <div className="live-toolbar academic-create-bar">
+                <select className="live-select" value={sf.academicYearId} onChange={(e) => setSf({ ...sf, academicYearId: e.target.value })}><option value="">— Năm học —</option>{(years.data ?? []).map((y) => <option key={y.id} value={y.id}>{y.code}</option>)}</select>
+                <input className="live-input" placeholder="Mã (HK1)" value={sf.code} onChange={(e) => setSf({ ...sf, code: e.target.value })} />
+                <input className="live-input grow" placeholder="Tên học kỳ" value={sf.name} onChange={(e) => setSf({ ...sf, name: e.target.value })} />
+                <input className="live-input" type="number" min="1" max="3" title="Thứ tự" value={sf.sequence} onChange={(e) => setSf({ ...sf, sequence: Number(e.target.value) })} />
+                <input className="live-input" type="date" value={sf.startDate} onChange={(e) => setSf({ ...sf, startDate: e.target.value })} />
+                <input className="live-input" type="date" value={sf.endDate} onChange={(e) => setSf({ ...sf, endDate: e.target.value })} />
+                <button className="live-btn" onClick={addSemester}><Plus size={15} /> Tạo học kỳ</button>
+              </div>
               <Async state={semesters}>{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thứ tự</th><th>Trạng thái</th></tr></thead>
                   <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td><td>{s.sequence}</td><td><StatusPill value={s.status} /></td></tr>)}</tbody></table>
@@ -331,10 +486,19 @@ export function AdminAcademicLive() {
           ) },
           { id: 'classes', label: 'Lớp', Icon: School, content: (
             <Section title="Lớp học" subtitle="Phân công giáo viên chủ nhiệm cho từng lớp" wide>
+              <div className="live-toolbar academic-create-bar">
+                <input className="live-input" placeholder="Mã lớp (10A2)" value={cf.code} onChange={(e) => setCf({ ...cf, code: e.target.value })} />
+                <input className="live-input grow" placeholder="Tên lớp" value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} />
+                <select className="live-select" value={cf.gradeLevel} onChange={(e) => setCf({ ...cf, gradeLevel: e.target.value })}>{[6,7,8,9,10,11,12].map((g) => <option key={g} value={`K${g}`}>Khối {g}</option>)}</select>
+                <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value })}><option value="">— Năm học —</option>{(years.data ?? []).map((y) => <option key={y.id} value={y.id}>{y.code}</option>)}</select>
+                <input className="live-input" type="number" min="1" max="100" style={{ width: 105 }} title="Sĩ số tối đa" value={cf.capacity} onChange={(e) => setCf({ ...cf, capacity: Number(e.target.value) })} />
+                <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}><option value="">— GVCN (tùy chọn) —</option>{(teachers.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select>
+                <button className="live-btn" onClick={addClass}><Plus size={15} /> Tạo lớp</button>
+              </div>
               <Async state={classes}>{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th></tr></thead>
                   <tbody>{l.map((c) => <tr key={c.id}>
-                    <td><strong>{c.code}</strong></td><td>{c.name}</td><td><Badge tone="violet">{c.gradeLevel}</Badge></td><td>{c.studentCount} HS</td>
+                    <td><strong>{c.code}</strong></td><td>{c.name}</td><td><Badge tone="violet">{c.gradeLevel}</Badge></td><td>{c.studentCount}/{c.capacity || 45} HS</td>
                     <td>
                       <select
                         className="live-select homeroom-teacher-select"
@@ -358,11 +522,12 @@ export function AdminAcademicLive() {
               <div className="live-toolbar">
                 <input className="live-input" placeholder="Mã (vd CHEM)" value={sj.code} onChange={(e) => setSj({ ...sj, code: e.target.value })} />
                 <input className="live-input grow" placeholder="Tên môn" value={sj.name} onChange={(e) => setSj({ ...sj, name: e.target.value })} />
+                <input className="live-input" type="number" min="0.5" max="10" step="0.5" style={{ width: 100 }} title="Hệ số môn" value={sj.coefficient} onChange={(e) => setSj({ ...sj, coefficient: Number(e.target.value) })} />
                 <button className="live-btn" onClick={addSubject}><Plus size={15} /> Thêm môn</button>
               </div>
               <Async state={subjects}>{(l) => (
-                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th></tr></thead>
-                  <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td></tr>)}</tbody></table>
+                <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Hệ số tổng kết</th></tr></thead>
+                  <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td><td><input className="coefficient-input" type="number" min="0.5" max="10" step="0.5" defaultValue={s.coefficient || 1} onBlur={(e) => updateSubject(s, Number(e.target.value))} /></td></tr>)}</tbody></table>
               )}</Async>
             </Section>
           ) },
@@ -380,10 +545,73 @@ export function AdminAcademicLive() {
               )}</Async>
             </Section>
           ) },
+          { id: 'year-end', label: 'Tổng kết năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} /> },
         ]}
       />
     </>
   );
+}
+
+function YearEndManager({ years }: { years: AcademicYear[] }) {
+  const [yearId, setYearId] = useState('');
+  const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
+  const toast = useToast();
+  const [savingId, setSavingId] = useState('');
+  const [finalizing, setFinalizing] = useState(false);
+
+  const setConduct = async (studentId: string, conductGrade: string) => {
+    setSavingId(studentId);
+    try {
+      await api.put(`/academic-years/${yearId}/students/${studentId}/conduct`, { conductGrade });
+      toast.show('ok', 'Đã lưu hạnh kiểm'); preview.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setSavingId(''); }
+  };
+
+  const finalize = async () => {
+    if (!yearId || !window.confirm('Chốt năm học sẽ khóa kết quả và tự động xét lên lớp. Bạn muốn tiếp tục?')) return;
+    setFinalizing(true);
+    try {
+      await api.post(`/academic-years/${yearId}/finalize`);
+      toast.show('ok', 'Đã chốt năm học và hoàn tất xét lên lớp'); preview.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setFinalizing(false); }
+  };
+
+  return (
+    <Section title="Tổng kết và xét lên lớp" subtitle="Kiểm tra đủ đầu điểm, nhập hạnh kiểm rồi chốt năm học" wide
+      action={<button className="live-btn" disabled={!yearId || finalizing} onClick={finalize}><GraduationCap size={15} /> {finalizing ? 'Đang chốt…' : 'Chốt năm học'}</button>}>
+      {toast.node}
+      <div className="live-toolbar">
+        <select className="live-select grow" value={yearId} onChange={(e) => setYearId(e.target.value)}>
+          <option value="">— Chọn năm học cần tổng kết —</option>
+          {years.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}
+        </select>
+        {yearId && <button className="live-btn ghost" onClick={preview.reload}><RefreshCw size={14} /> Tính lại</button>}
+      </div>
+      {!yearId ? <div className="live-loading">Chọn năm học để kiểm tra điều kiện tổng kết.</div> : (
+        <Async state={preview} empty="Năm học chưa có học sinh">
+          {(rows) => <div className="admin-table-scroll"><table className="live-table year-end-table">
+            <thead><tr><th>Học sinh</th><th>Điểm TB</th><th>Hạnh kiểm</th><th>Điều kiện</th><th>Kết quả</th></tr></thead>
+            <tbody>{rows.map((row) => <tr key={row.id}>
+              <td><strong>{row.studentName}</strong></td>
+              <td>{row.averageScore == null ? '—' : row.averageScore.toFixed(2)}</td>
+              <td><select className="live-select" value={row.conductGrade || ''} disabled={Boolean(row.finalizedAt) || savingId === row.studentId} onChange={(e) => setConduct(row.studentId, e.target.value)}>
+                <option value="">— Chọn —</option><option value="GOOD">Tốt</option><option value="FAIR">Khá</option><option value="AVERAGE">Trung bình</option><option value="WEAK">Yếu</option>
+              </select></td>
+              <td>{row.missingRequirements ? <span className="year-end-missing" title={row.missingRequirements}>{row.missingRequirements}</span> : <Badge tone="green">Đủ dữ liệu</Badge>}</td>
+              <td><StatusPill value={yearEndLabel(row.promotionStatus)} /></td>
+            </tr>)}</tbody>
+          </table></div>}
+        </Async>
+      )}
+    </Section>
+  );
+}
+
+function yearEndLabel(status: string) {
+  return ({ READY: 'Sẵn sàng', INCOMPLETE: 'Thiếu dữ liệu', PROMOTED: 'Lên lớp',
+    PROMOTED_PENDING_CLASS: 'Chờ xếp lớp', GRADUATED: 'Tốt nghiệp', RETAINED: 'Lưu ban' } as Record<string, string>)[status] || status;
 }
 
 /* ============ A4 — Loại điểm ============ */
@@ -443,7 +671,7 @@ export function AdminFinanceLive() {
   const confirmCash = async (inv: Invoice) => {
     if (!confirm(`Xác nhận học sinh ${inv.studentName} đã đóng ${money(inv.totalAmount - inv.paidAmount)} tại trường?`)) return;
     try {
-      await api.post('/payments', { invoiceId: inv.id, method: 'CASH' });
+      await api.post('/payments/cash', { invoiceId: inv.id, method: 'CASH' });
       toast.show('ok', `Đã ghi nhận thu tiền mặt ${inv.code}`);
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }

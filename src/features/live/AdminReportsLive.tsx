@@ -1,6 +1,10 @@
 import { useApi } from '../../api/useApi';
+import { useState } from 'react';
+import type { AcademicYear } from '../../api/types';
+import { api } from '../../api/client';
 import { Section, StatusPill } from '../../components/ui';
-import { Async, money } from './common';
+import { Download } from 'lucide-react';
+import { Async, money, useToast } from './common';
 
 /** A8: Báo cáo & thống kê — GỘP tất cả vào một trang (tổng quan + phổ điểm + chuyên cần + doanh thu). */
 export function AdminReportsLive() {
@@ -8,9 +12,32 @@ export function AdminReportsLive() {
   const dist = useApi<Array<{ band: string; count: number }>>('/reports/grade-distribution');
   const att = useApi<Record<string, number>>('/reports/attendance-summary');
   const rev = useApi<Record<string, number>>('/reports/revenue');
+  const years = useApi<AcademicYear[]>('/academicYears');
+  const [yearId, setYearId] = useState('');
+  const promotion = useApi<Record<string, number>>(yearId ? `/reports/promotion?academicYearId=${yearId}` : null);
+  const toast = useToast();
+
+  const exportReport = async (type: string) => {
+    try {
+      const result = await api.download(`/reports/export?type=${type}`);
+      const href = URL.createObjectURL(result.blob);
+      const anchor = document.createElement('a');
+      anchor.href = href; anchor.download = result.filename || `bao-cao-${type}.csv`; anchor.click();
+      URL.revokeObjectURL(href);
+      toast.show('ok', 'Đã xuất báo cáo CSV');
+    } catch (e: any) { toast.show('err', e.message); }
+  };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      {toast.node}
+      <div className="live-toolbar report-export-toolbar">
+        <strong>Xuất dữ liệu</strong>
+        <button className="live-btn ghost" onClick={() => exportReport('overview')}><Download size={14} /> Tổng quan</button>
+        <button className="live-btn ghost" onClick={() => exportReport('grades')}><Download size={14} /> Phổ điểm</button>
+        <button className="live-btn ghost" onClick={() => exportReport('attendance')}><Download size={14} /> Chuyên cần</button>
+        <button className="live-btn ghost" onClick={() => exportReport('revenue')}><Download size={14} /> Doanh thu</button>
+      </div>
       <Section title="Tổng quan hệ thống" subtitle="Số liệu vận hành hiện tại" wide>
         <Async state={overview}>{(d) => (
           <div className="admin-table-scroll"><table className="live-table admin-data-table">
@@ -65,6 +92,22 @@ export function AdminReportsLive() {
             </tbody>
           </table></div>
         )}</Async>
+      </Section>
+
+      <Section title="Kết quả lên lớp" subtitle="Tổng hợp sau khi chốt năm học" wide
+        action={<select className="live-select" value={yearId} onChange={(e) => setYearId(e.target.value)}><option value="">— Chọn năm học —</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>}>
+        {!yearId ? <div className="live-loading">Chọn năm học để xem kết quả lên lớp.</div> : (
+          <Async state={promotion}>{(data) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
+            <thead><tr><th>Kết quả</th><th>Số học sinh</th><th>Tỷ lệ</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Lên lớp</strong></td><td>{data.promoted ?? 0}</td><td>{percent(data.promoted, data.total)}</td></tr>
+              <tr><td><strong>Chờ xếp lớp</strong></td><td>{data.pendingClass ?? 0}</td><td>{percent(data.pendingClass, data.total)}</td></tr>
+              <tr><td><strong>Tốt nghiệp</strong></td><td>{data.graduated ?? 0}</td><td>{percent(data.graduated, data.total)}</td></tr>
+              <tr><td><strong>Lưu ban</strong></td><td>{data.retained ?? 0}</td><td>{percent(data.retained, data.total)}</td></tr>
+              <tr><td><strong>Chưa hoàn tất</strong></td><td>{data.incomplete ?? 0}</td><td>{percent(data.incomplete, data.total)}</td></tr>
+            </tbody>
+          </table></div>}</Async>
+        )}
       </Section>
     </div>
   );

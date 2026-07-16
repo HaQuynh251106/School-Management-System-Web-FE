@@ -3,7 +3,7 @@ import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw } from 'lucide-r
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import type { ApiUser, Grade, AttendanceRecord, Invoice } from '../../api/types';
+import type { ApiUser, Grade, AttendanceRecord, Invoice, PaymentInitResponse } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, fmtDate, money } from './common';
 import { ExtracurricularLive } from './SharedLive';
@@ -96,8 +96,13 @@ export function ParentInvoiceLive() {
   const toast = useToast();
   const pay = async (inv: Invoice) => {
     try {
-      await api.post('/payments', { invoiceId: inv.id, method: 'VNPAY' });
-      toast.show('ok', `Thanh toán ${inv.code} thành công (sandbox VNPAY)`);
+      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VNPAY' });
+      if (initiated.callbackUrl && initiated.sandboxCallback) {
+        await api.post(initiated.callbackUrl, initiated.sandboxCallback);
+        toast.show('ok', `Thanh toán ${inv.code} thành công`);
+      } else {
+        toast.show('ok', `Giao dịch ${inv.code} đang chờ cổng thanh toán xác nhận`);
+      }
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };

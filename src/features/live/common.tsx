@@ -35,14 +35,16 @@ export function Async<T>({
   state,
   children,
   empty,
+  allowEmpty = false,
 }: {
   state: { data: T | null; loading: boolean; error: string | null };
   children: (data: T) => ReactNode;
   empty?: string;
+  allowEmpty?: boolean;
 }) {
   if (state.loading) return <LoadingBlock />;
   if (state.error) return <ErrorBlock msg={state.error} />;
-  if (state.data == null || (Array.isArray(state.data) && state.data.length === 0)) {
+  if (state.data == null || (!allowEmpty && Array.isArray(state.data) && state.data.length === 0)) {
     return <EmptyState label={empty} />;
   }
   return <>{children(state.data)}</>;

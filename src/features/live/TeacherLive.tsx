@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, CheckCircle2, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Phone, Send, ShieldCheck, Trophy, UserRound, Users, UsersRound } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Phone, RotateCcw, Search, Send, ShieldCheck, Trophy, UserCheck, UserRound, Users, UsersRound, UserX } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { ApiUser, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherGradebookContext } from '../../api/types';
+import type { ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherGradebookContext, TeachingAssignment } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
-import { Async, useToast, ATT_LABEL, DAY_LABEL, fmtDate } from './common';
+import { Async, useToast, DAY_LABEL, fmtDate } from './common';
 import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 
@@ -15,7 +15,7 @@ const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
 /* ===== B1 — Lớp được phân công ===== */
 export function TeacherClassesLive() {
   const { user } = useAuth();
-  const slots = useApi<TimetableSlot[]>('/me/timetable');
+  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teaching-assignments');
   const classesApi = useApi<SchoolClass[]>('/classes');
   const [classId, setClassId] = useState('');
   const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
@@ -32,10 +32,10 @@ export function TeacherClassesLive() {
 
   const groups = useMemo(() => {
     const g: Record<string, { classId: string; subjects: Set<string>; count: number }> = {};
-    (slots.data || []).forEach((s) => {
-      g[s.classId] = g[s.classId] || { classId: s.classId, subjects: new Set(), count: 0 };
-      g[s.classId].subjects.add(s.subjectName);
-      g[s.classId].count++;
+    (teachingAssignments.data || []).forEach((assignment) => {
+      g[assignment.classId] = g[assignment.classId] || { classId: assignment.classId, subjects: new Set(), count: 0 };
+      g[assignment.classId].subjects.add(assignment.subjectName);
+      g[assignment.classId].count += assignment.weeklyPeriods;
     });
     (classesApi.data || [])
       .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
@@ -43,7 +43,7 @@ export function TeacherClassesLive() {
         g[schoolClass.id] = g[schoolClass.id] || { classId: schoolClass.id, subjects: new Set(), count: 0 };
       });
     return Object.values(g).sort((a, b) => (classMap[a.classId]?.code || a.classId).localeCompare(classMap[b.classId]?.code || b.classId, 'vi'));
-  }, [classMap, classesApi.data, slots.data, user?.id]);
+  }, [classMap, classesApi.data, teachingAssignments.data, user?.id]);
 
   const homeroomClasses = useMemo(
     () => (classesApi.data || []).filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id),
@@ -78,7 +78,7 @@ export function TeacherClassesLive() {
           </div>
         </div>
       )}
-      <Async state={{ data: groups, loading: slots.loading || classesApi.loading, error: slots.error || classesApi.error }} empty="Chưa được phân công lớp nào">
+      <Async state={{ data: groups, loading: teachingAssignments.loading || classesApi.loading, error: teachingAssignments.error || classesApi.error }} empty="Chưa được phân công lớp nào">
         {(assignedGroups) => (
           <div className="teacher-class-table-wrap">
             <table className="live-table">
@@ -222,68 +222,264 @@ function homeroomGenderLabel(value?: string | null) {
 
 /* ===== B3 — Sổ điểm danh ===== */
 export function TeacherAttendanceLive() {
+  const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
   const [slotId, setSlotId] = useState('');
   const [date, setDate] = useState(TODAY);
   const toast = useToast();
-  const slot = (slots.data || []).find((s) => s.id === slotId);
+  const attendanceSlots = useMemo(() => {
+    const mainSubject = user?.mainSubject?.trim().toLocaleLowerCase('vi');
+    if (!mainSubject) return [];
+    return (slots.data || []).filter((item) => (
+      item.subjectId.trim().toLocaleLowerCase('vi') === mainSubject
+      || item.subjectName.trim().toLocaleLowerCase('vi') === mainSubject
+    ));
+  }, [slots.data, user?.mainSubject]);
+  const slot = attendanceSlots.find((item) => item.id === slotId);
   const students = useApi<ApiUser[]>(slot ? `/classes/${slot.classId}/students` : null);
-  const [marks, setMarks] = useState<Record<string, string>>({});
+  const attendance = useApi<AttendanceRecord[]>(slot
+    ? `/attendance?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
+    : null);
+  const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
+  const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [saving, setSaving] = useState(false);
+  const [hasSavedRegister, setHasSavedRegister] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState('');
 
   useEffect(() => {
-    if (students.data) setMarks(Object.fromEntries(students.data.map((s) => [s.id, 'PRESENT'])));
-  }, [students.data]);
+    if (!slot || !students.data || attendance.loading) return;
+    const existing = new Map((attendance.data || [])
+      .filter((record) => record.slotId === slot.id && record.date === date)
+      .map((record) => [record.studentId, record]));
+    const next = Object.fromEntries(students.data.map((student) => {
+      const record = existing.get(student.id);
+      return [student.id, { status: record?.status || 'PRESENT', note: record?.note || '' }];
+    }));
+    setMarks(next);
+    setBaseline(next);
+    setHasSavedRegister(existing.size > 0);
+    setLastSavedAt(existing.size ? 'Đã tải dữ liệu đã lưu' : 'Chưa có dữ liệu cho tiết này');
+  }, [attendance.data, attendance.loading, date, slot, students.data]);
 
-  const submit = async () => {
-    if (!slot) return toast.show('err', 'Chọn tiết học');
-    try {
-      const body = { slotId, date, marks: (students.data || []).map((s) => ({ studentId: s.id, status: marks[s.id] || 'PRESENT' })) };
-      await api.post('/attendance/bulk', body);
-      const absent = Object.values(marks).filter((v) => v !== 'PRESENT').length;
-      toast.show('ok', `Đã lưu điểm danh. ${absent} HS vắng/trễ → đã gửi cảnh báo phụ huynh.`);
-    } catch (e: any) { toast.show('err', e.message); }
+  const dirty = useMemo(() => JSON.stringify(marks) !== JSON.stringify(baseline), [baseline, marks]);
+  const saveRequired = !hasSavedRegister || dirty;
+
+  useEffect(() => {
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warnBeforeLeave);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeave);
+  }, [dirty]);
+
+  const confirmDiscard = () => !dirty || window.confirm('Các thay đổi điểm danh chưa được lưu. Bạn có muốn bỏ thay đổi?');
+
+  const changeSlot = (nextSlotId: string) => {
+    if (!confirmDiscard()) return;
+    setSlotId(nextSlotId);
+    setSearch('');
+    setStatusFilter('ALL');
   };
 
+  const changeDate = (nextDate: string) => {
+    if (!confirmDiscard()) return;
+    setDate(nextDate);
+  };
+
+  const updateStatus = (studentId: string, status: string) => {
+    setMarks((current) => ({
+      ...current,
+      [studentId]: { status, note: status === 'PRESENT' ? '' : current[studentId]?.note || '' },
+    }));
+  };
+
+  const updateNote = (studentId: string, note: string) => {
+    setMarks((current) => ({ ...current, [studentId]: { ...(current[studentId] || { status: 'PRESENT' }), note } }));
+  };
+
+  const markAll = (status: string) => {
+    setMarks((current) => Object.fromEntries((students.data || []).map((student) => [
+      student.id,
+      { status, note: status === 'PRESENT' ? '' : current[student.id]?.note || '' },
+    ])));
+  };
+
+  const resetChanges = () => setMarks(structuredClone(baseline));
+
+  const submit = async () => {
+    if (!slot) return toast.show('err', 'Vui lòng chọn tiết học');
+    const missingNotes = (students.data || []).filter((student) => {
+      const mark = marks[student.id];
+      return mark && mark.status !== 'PRESENT' && !mark.note.trim();
+    });
+    if (missingNotes.length) {
+      return toast.show('err', `Vui lòng nhập ghi chú cho ${missingNotes.length} học sinh vắng hoặc đi muộn`);
+    }
+    setSaving(true);
+    try {
+      const body = {
+        slotId,
+        date,
+        marks: (students.data || []).map((student) => ({
+          studentId: student.id,
+          status: marks[student.id]?.status || 'PRESENT',
+          note: marks[student.id]?.note.trim() || null,
+        })),
+      };
+      const saved = await api.post<AttendanceRecord[]>('/attendance/bulk', body);
+      const savedMap = new Map(saved.map((record) => [record.studentId, record]));
+      const next = Object.fromEntries((students.data || []).map((student) => {
+        const record = savedMap.get(student.id);
+        return [student.id, { status: record?.status || 'PRESENT', note: record?.note || '' }];
+      }));
+      setMarks(next);
+      setBaseline(next);
+      setHasSavedRegister(true);
+      setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
+      const alerts = saved.filter((record) => record.status !== 'PRESENT').length;
+      toast.show('ok', alerts
+        ? `Đã lưu ${saved.length} học sinh. Hệ thống đã xử lý cảnh báo chuyên cần cho ${alerts} trường hợp.`
+        : `Đã lưu điểm danh ${saved.length} học sinh.`);
+    } catch (e: any) {
+      toast.show('err', e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const summary = useMemo(() => {
+    const values = (students.data || []).map((student) => marks[student.id]?.status || 'PRESENT');
+    return {
+      total: values.length,
+      present: values.filter((status) => status === 'PRESENT').length,
+      late: values.filter((status) => status === 'LATE').length,
+      absentExcused: values.filter((status) => status === 'ABSENT_EXCUSED').length,
+      absentUnexcused: values.filter((status) => status === 'ABSENT_UNEXCUSED').length,
+    };
+  }, [marks, students.data]);
+
+  const filteredStudents = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase('vi');
+    return (students.data || []).filter((student) => {
+      const matchesSearch = !needle
+        || student.fullName.toLocaleLowerCase('vi').includes(needle)
+        || (student.studentCode || '').toLocaleLowerCase('vi').includes(needle);
+      const matchesStatus = statusFilter === 'ALL' || (marks[student.id]?.status || 'PRESENT') === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [marks, search, statusFilter, students.data]);
+
   return (
-    <Section title="Sổ điểm danh" subtitle="Ghi nhận tình trạng đi học theo từng tiết" wide
-      action={<button className="live-btn" onClick={submit}><Send size={15} /> Gửi điểm danh</button>}>
+    <Section title="Sổ điểm danh điện tử" subtitle="Chỉ điểm danh các tiết đúng môn chuyên ngành được phân công" wide
+      action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired}><Send size={15} /> {saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
       {toast.node}
-      <div className="live-toolbar">
-        <select className="live-select grow" value={slotId} onChange={(e) => setSlotId(e.target.value)}>
-          <option value="">— Chọn tiết —</option>
-          {(slots.data || []).map((s) => (
-            <option key={s.id} value={s.id}>{DAY_LABEL[s.dayOfWeek]} · Tiết {s.periodNo} · {s.subjectName} · {s.classId}</option>
-          ))}
-        </select>
-        <input className="live-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <div className="attendance-register-shell">
+        <div className="attendance-session-panel">
+          <div className={`attendance-subject-scope ${user?.mainSubject ? '' : 'missing'}`}>
+            <span><GraduationCap size={18} /></span>
+            <div><small>Môn được phép điểm danh</small><strong>{user?.mainSubject || 'Chưa cấu hình chuyên ngành'}</strong></div>
+            <b>{attendanceSlots.length} tiết phù hợp</b>
+          </div>
+          <div className="attendance-session-fields">
+            <label><span>Tiết học phụ trách</span><select className="live-select" value={slotId} onChange={(event) => changeSlot(event.target.value)}>
+              <option value="">{attendanceSlots.length ? '— Chọn tiết học —' : '— Chưa có tiết đúng môn chuyên ngành —'}</option>
+              {attendanceSlots.map((item) => (
+                <option key={item.id} value={item.id}>{DAY_LABEL[item.dayOfWeek]} · Tiết {item.periodNo} · {item.subjectName} · {item.classId}</option>
+              ))}
+            </select></label>
+            <label><span>Ngày điểm danh</span><input className="live-input" type="date" value={date} onChange={(event) => changeDate(event.target.value)} /></label>
+          </div>
+          {slot && <div className="attendance-session-context">
+            <div><span><CalendarCheck2 size={19} /></span><p><small>Môn học</small><strong>{slot.subjectName}</strong></p></div>
+            <div><span><Users size={19} /></span><p><small>Lớp</small><strong>{slot.classId}</strong></p></div>
+            <div><span><Clock3 size={19} /></span><p><small>Thời gian</small><strong>Tiết {slot.periodNo} · {slot.startTime || '—'}–{slot.endTime || '—'}</strong></p></div>
+            <div><span><MapPin size={19} /></span><p><small>Phòng học</small><strong>{slot.roomCode || 'Chưa xếp phòng'}</strong></p></div>
+          </div>}
+          {slot && <div className={`attendance-save-state ${dirty || !hasSavedRegister ? 'dirty' : 'saved'}`}>
+            {dirty || !hasSavedRegister ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
+            <span>{dirty ? 'Có thay đổi chưa lưu' : lastSavedAt}</span>
+          </div>}
+        </div>
+
+        {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : (
+          <Async state={{ data: students.data, loading: students.loading || attendance.loading, error: students.error || attendance.error }} empty="Lớp chưa có học sinh">
+            {() => <>
+              <div className="attendance-summary-grid">
+                <article className="total"><span><Users size={19} /></span><div><small>Sĩ số lớp</small><strong>{summary.total}</strong></div></article>
+                <article className="present"><span><UserCheck size={19} /></span><div><small>Có mặt</small><strong>{summary.present}</strong></div></article>
+                <article className="late"><span><Clock3 size={19} /></span><div><small>Đi muộn</small><strong>{summary.late}</strong></div></article>
+                <article className="excused"><span><UserX size={19} /></span><div><small>Vắng có phép</small><strong>{summary.absentExcused}</strong></div></article>
+                <article className="unexcused"><span><AlertTriangle size={19} /></span><div><small>Vắng không phép</small><strong>{summary.absentUnexcused}</strong></div></article>
+              </div>
+
+              <div className="attendance-actionbar">
+                <div className="attendance-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên hoặc mã học sinh…" /></div>
+                <select className="live-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Lọc trạng thái điểm danh">
+                  <option value="ALL">Tất cả trạng thái</option>
+                  {ATT_STATES.map((status) => <option key={status} value={status}>{ATTENDANCE_STATUS_LABELS[status]}</option>)}
+                </select>
+                <div className="attendance-quick-actions">
+                  <button type="button" onClick={() => markAll('PRESENT')}><UserCheck size={15} /> Tất cả có mặt</button>
+                  <button type="button" onClick={resetChanges} disabled={!dirty}><RotateCcw size={15} /> Hoàn tác</button>
+                </div>
+              </div>
+
+              <div className="attendance-table-wrap">
+                <table className="attendance-table">
+                  <thead><tr><th>STT</th><th>Học sinh</th><th>Trạng thái chuyên cần</th><th>Ghi chú</th></tr></thead>
+                  <tbody>{filteredStudents.map((student) => {
+                    const mark = marks[student.id] || { status: 'PRESENT', note: '' };
+                    return <tr key={student.id} data-status={mark.status}>
+                      <td>{(students.data || []).findIndex((item) => item.id === student.id) + 1}</td>
+                      <td><div className="attendance-student"><span>{student.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><p><strong>{student.fullName}</strong><small>{student.studentCode || 'Chưa có mã học sinh'}</small></p></div></td>
+                      <td><div className="attendance-status-options">{ATT_STATES.map((status) => <button
+                        type="button"
+                        key={status}
+                        className={mark.status === status ? `active ${attendanceStatusTone(status)}` : ''}
+                        aria-pressed={mark.status === status}
+                        onClick={() => updateStatus(student.id, status)}
+                      ><i />{ATTENDANCE_STATUS_LABELS[status]}</button>)}</div></td>
+                      <td><input
+                        className="attendance-note-input"
+                        maxLength={255}
+                        value={mark.note}
+                        disabled={mark.status === 'PRESENT'}
+                        onChange={(event) => updateNote(student.id, event.target.value)}
+                        placeholder={mark.status === 'PRESENT' ? 'Không cần ghi chú' : 'Nhập lý do hoặc ghi chú…'}
+                        aria-label={`Ghi chú điểm danh của ${student.fullName}`}
+                      /></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+                {!filteredStudents.length && <div className="attendance-filter-empty"><Search size={24} /><span>Không tìm thấy học sinh phù hợp bộ lọc.</span></div>}
+              </div>
+              <footer className="attendance-register-footer">
+                <span>Hiển thị {filteredStudents.length}/{summary.total} học sinh</span>
+                <p><ShieldCheck size={15} /> Trường hợp vắng hoặc đi muộn sẽ được gửi cảnh báo đến phụ huynh sau khi lưu.</p>
+              </footer>
+            </>}
+          </Async>
+        )}
       </div>
-      {!slot ? <div className="live-loading">Chọn một tiết để điểm danh.</div> : (
-        <Async state={students} empty="Lớp chưa có học sinh">
-          {(l) => (
-            <table className="live-table">
-              <thead><tr><th>Học sinh</th><th>Trạng thái</th></tr></thead>
-              <tbody>
-                {l.map((s) => (
-                  <tr key={s.id}>
-                    <td><strong>{s.fullName}</strong> <small style={{ color: 'var(--muted)' }}>{s.studentCode}</small></td>
-                    <td>
-                      <div className="seg">
-                        {ATT_STATES.map((st) => {
-                          const on = (marks[s.id] || 'PRESENT') === st;
-                          const cls = st === 'PRESENT' ? 'on-present' : st === 'LATE' ? 'on-late' : 'on-absent';
-                          return <button key={st} className={on ? cls : ''} onClick={() => setMarks({ ...marks, [s.id]: st })}>{ATT_LABEL[st]}</button>;
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Async>
-      )}
     </Section>
   );
+}
+
+const ATTENDANCE_STATUS_LABELS: Record<string, string> = {
+  PRESENT: 'Có mặt',
+  LATE: 'Đi muộn',
+  ABSENT_EXCUSED: 'Vắng có phép',
+  ABSENT_UNEXCUSED: 'Vắng không phép',
+};
+
+function attendanceStatusTone(status: string) {
+  if (status === 'PRESENT') return 'present';
+  if (status === 'LATE') return 'late';
+  if (status === 'ABSENT_EXCUSED') return 'excused';
+  return 'unexcused';
 }
 
 /* ===== B4 — Bảng điểm ===== */

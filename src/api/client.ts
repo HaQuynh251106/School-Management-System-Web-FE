@@ -1,11 +1,11 @@
 // API client gọi backend SSE (Spring Boot, mặc định http://localhost:4000).
-// Quản lý JWT trong localStorage + tự refresh khi 401.
+// Token chỉ tồn tại trong bộ nhớ của tab hiện tại để tránh bị đọc lại từ localStorage khi có XSS.
 
 const BASE: string =
   ((import.meta as any).env?.VITE_API_BASE as string) || 'http://localhost:4000';
 
-let accessToken: string | null = localStorage.getItem('sse_token');
-let refreshToken: string | null = localStorage.getItem('sse_refresh');
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
 
 export class ApiError extends Error {
@@ -18,13 +18,9 @@ export class ApiError extends Error {
 
 export function setTokens(access: string | null, refresh?: string | null) {
   accessToken = access;
-  if (access) localStorage.setItem('sse_token', access);
-  else localStorage.removeItem('sse_token');
 
   if (refresh !== undefined) {
     refreshToken = refresh;
-    if (refresh) localStorage.setItem('sse_refresh', refresh);
-    else localStorage.removeItem('sse_refresh');
   }
 }
 

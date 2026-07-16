@@ -7,6 +7,7 @@ import { GeneralDashboard } from '../features/dashboard/GeneralDashboard';
 import { FeaturePage } from '../features/FeaturePage';
 import { useAuth } from '../api/auth';
 import { LoginPage } from '../features/auth/LoginPage';
+import { PasswordChangePage } from '../features/auth/PasswordChangePage';
 import { ActiveChildProvider } from '../api/activeChild';
 
 export default function App() {
@@ -23,6 +24,9 @@ export default function App() {
   }
   if (!user) {
     return <LoginPage />;
+  }
+  if (user.passwordChangeRequired) {
+    return <PasswordChangePage />;
   }
 
   const roleId = user.role.toLowerCase() as RoleId;

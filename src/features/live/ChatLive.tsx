@@ -5,6 +5,7 @@ import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
 import { Section } from '../../components/ui';
 import { Async, useToast, fmtDateTime } from './common';
+import type { ApiUser, SchoolClass } from '../../api/types';
 
 interface Thread { userId: string; name: string; lastMessage: string; lastTime: string; unread: number; }
 interface ChatMsg { id: string; senderId: string; senderName: string; recipientId: string; body: string; createdAt: string; }
@@ -13,10 +14,18 @@ interface ChatMsg { id: string; senderId: string; senderName: string; recipientI
 export function ChatLive() {
   const { user } = useAuth();
   const threads = useApi<Thread[]>('/chat/threads');
+  const contacts = useApi<ApiUser[]>('/chat/contacts');
+  const teachingClasses = useApi<SchoolClass[]>(user?.role === 'TEACHER' ? '/me/teaching-classes' : null);
   const [withId, setWithId] = useState<string | null>(null);
   const msgs = useApi<ChatMsg[]>(withId ? `/chat/messages?withUserId=${withId}` : null);
   const [text, setText] = useState('');
+  const [broadcastClassId, setBroadcastClassId] = useState('');
+  const [broadcastText, setBroadcastText] = useState('');
   const toast = useToast();
+  const available = (contacts.data ?? []).map((contact) => {
+    const thread = threads.data?.find((item) => item.userId === contact.id);
+    return thread ?? { userId: contact.id, name: contact.fullName, lastMessage: 'Bắt đầu hội thoại', lastTime: '', unread: 0 };
+  });
 
   const send = async () => {
     if (!withId || !text.trim()) return;
@@ -28,15 +37,33 @@ export function ChatLive() {
     } catch (e: any) { toast.show('err', e.message); }
   };
 
+  const sendBroadcast = async () => {
+    if (!broadcastClassId || !broadcastText.trim()) return toast.show('err', 'Chọn lớp và nhập nội dung thông báo');
+    try {
+      await api.post('/announcements', { audience: `CLASS:${broadcastClassId}`, title: 'Thông báo từ giáo viên', body: broadcastText.trim() });
+      setBroadcastText(''); toast.show('ok', 'Đã gửi thông báo tới lớp');
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
   return (
     <Section title="Trao đổi" subtitle="Nhắn tin trực tiếp với giáo viên, học sinh và phụ huynh" wide>
       {toast.node}
+      {user?.role === 'TEACHER' && (
+        <div className="class-broadcast-box">
+          <div><strong>Thông báo tới lớp</strong><small>Gửi đồng thời tới hộp thư của học sinh trong lớp phụ trách</small></div>
+          <select className="live-select" value={broadcastClassId} onChange={(e) => setBroadcastClassId(e.target.value)}>
+            <option value="">— Chọn lớp —</option>{(teachingClasses.data ?? []).map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
+          </select>
+          <input className="live-input grow" placeholder="Nội dung thông báo…" value={broadcastText} onChange={(e) => setBroadcastText(e.target.value)} />
+          <button className="live-btn" onClick={sendBroadcast}><Send size={14} /> Gửi lớp</button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div style={{ minWidth: 220, flex: '0 0 240px' }}>
-          <Async state={threads} empty="Chưa có hội thoại">
-            {(list) => (
+          <Async state={contacts} empty="Không có người liên hệ phù hợp">
+            {() => (
               <div className="child-tabs" style={{ flexDirection: 'column' }}>
-                {list.map((t) => (
+                {available.map((t) => (
                   <button key={t.userId} className={withId === t.userId ? 'active' : ''}
                     style={{ textAlign: 'left' }} onClick={() => setWithId(t.userId)}>
                     {t.name} {t.unread > 0 ? `(${t.unread})` : ''}
