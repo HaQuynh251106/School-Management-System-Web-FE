@@ -71,7 +71,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ, VNPAY/MoMo.', Icon: CircleDollarSign },
     { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Tổng hợp điểm, chuyên cần và doanh thu.', Icon: FileSpreadsheet },
-    { code: 'A9', title: 'Mẫu thông báo', phase: 'GĐ2', priority: 3, summary: 'Quản lý nội dung thông báo theo từng kênh.', Icon: Bell },
+    { code: 'A9', title: 'Trung tâm thông báo', phase: 'GĐ2', priority: 1, summary: 'Gửi thông báo toàn trường hoặc riêng theo từng vai trò.', Icon: Bell },
   ],
   teacher: [
     { code: 'B1', title: 'Lớp được phân công', phase: 'GĐ1', priority: 1, summary: 'Danh sách lớp, sĩ số, môn và học kỳ phụ trách.', Icon: School },
@@ -80,6 +80,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B4', title: 'Bảng điểm', phase: 'GĐ1', priority: 2, summary: 'Nhập/sửa điểm, ghi log thay đổi, phổ điểm lớp.', Icon: BarChart3 },
     { code: 'B5', title: 'Bài tập', phase: 'GĐ2', priority: 2, summary: 'Giao bài, đính kèm tệp và chấm bài.', Icon: BookOpenCheck },
     { code: 'B6', title: 'Trao đổi', phase: 'GĐ2', priority: 2, summary: 'Nhắn tin với học sinh và phụ huynh.', Icon: MessageSquareText },
+    { code: 'B7', title: 'Thông báo tự động', phase: 'GĐ2', priority: 1, summary: 'Theo dõi cơ chế báo điểm, điểm danh và trao đổi tình hình lớp.', Icon: Bell },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },
@@ -88,6 +89,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'C4', title: 'Nộp bài tập', phase: 'GĐ2', priority: 1, summary: 'Xem đề, nộp bài và nhận kết quả chấm.', Icon: Upload },
     { code: 'C5', title: 'Thông báo', phase: 'GĐ2', priority: 2, summary: 'Theo dõi thông tin mới từ nhà trường.', Icon: Bell },
     { code: 'C6', title: 'Ngoại khóa', phase: 'GĐ2', priority: 3, summary: 'Đăng ký khóa ngoại khóa còn chỗ.', Icon: Plus },
+    { code: 'C7', title: 'Trao đổi giáo viên', phase: 'GĐ2', priority: 1, summary: 'Hỏi bài và trao đổi trực tiếp với giáo viên phụ trách.', Icon: MessageSquareText },
   ],
   parent: [
     { code: 'D1', title: 'Chọn học sinh', phase: 'GĐ1', priority: 1, summary: 'Chọn con cần theo dõi.', Icon: RefreshCcw },

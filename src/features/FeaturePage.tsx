@@ -7,9 +7,9 @@ import { ChatLive } from './live/ChatLive';
 // Live (nối backend thật)
 import {
   AdminUsersLive, AdminAcademicLive, AdminExamCategoriesLive,
-  AdminFinanceLive, AdminTemplatesLive, AdminClubsLive,
+  AdminFinanceLive, AdminNotificationsLive, AdminClubsLive,
 } from './live/AdminLive';
-import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive } from './live/TeacherLive';
+import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive, TeacherNotificationsLive } from './live/TeacherLive';
 import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
 import { ParentSwitchLive, ParentMonitorLive, ParentInvoiceLive, ParentExtracurricularLive } from './live/ParentLive';
 import { MyTimetableLive, AssignmentsLive, ExtracurricularLive, NotificationsLive } from './live/SharedLive';
@@ -33,7 +33,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A6': return <AdminAuditLive />;
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
-    case 'A9': return <AdminTemplatesLive />;
+    case 'A9': return <AdminNotificationsLive />;
     // ---- Teacher ----
     case 'B1': return <TeacherClassesLive />;
     case 'B2': return <MyTimetableLive />;
@@ -41,6 +41,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B4': return <TeacherGradesLive />;
     case 'B5': return <AssignmentsLive actor="teacher" />;
     case 'B6': return <ChatLive />;
+    case 'B7': return <TeacherNotificationsLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
@@ -48,6 +49,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'C4': return <AssignmentsLive actor="student" />;
     case 'C5': return <NotificationsLive />;
     case 'C6': return <ExtracurricularLive actor="student" />;
+    case 'C7': return <ChatLive />;
     // ---- Parent ----
     case 'D1': return <ParentSwitchLive />;
     case 'D2': return <ParentMonitorLive />;

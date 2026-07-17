@@ -169,13 +169,13 @@ export function StudentAcademicLive() {
           action={<select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effSem} onChange={(e) => setSem(e.target.value)}>
             {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
           </select>}>
-          <Async state={grades} empty="Chưa có điểm trong học kỳ này">
-            {(l) => (
+          <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
+            {(pagedSubjectRows) => (
               <div className="gradebook-shell">
                 <div className="gradebook-summary student-grade-summary">
                   <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình học kỳ</small><strong>{formatScore(semesterAverage)}</strong><p>Trung bình {subjectAverages.length} môn có điểm</p></div></article>
                   <article className="gradebook-stat"><span><Trophy size={19} /></span><div><small>Môn nổi bật</small><strong>{bestSubject?.subjectName || '—'}</strong><p>{bestSubject?.average != null ? `${formatScore(bestSubject.average)} điểm` : 'Chưa đủ dữ liệu'}</p></div></article>
-                  <article className="gradebook-stat"><span><CheckCircle2 size={19} /></span><div><small>Đầu điểm đã có</small><strong>{l.length}</strong><p>{subjectRows.length} môn học trong kỳ</p></div></article>
+                  <article className="gradebook-stat"><span><CheckCircle2 size={19} /></span><div><small>Đầu điểm đã có</small><strong>{grades.data?.length || 0}</strong><p>{subjectRows.length} môn học trong kỳ</p></div></article>
                 </div>
 
                 <div className="gradebook-legend"><span><i className="score-dot excellent" /> Tốt</span><span><i className="score-dot average" /> Đạt</span><span><i className="score-dot needs-attention" /> Cần cải thiện</span></div>
@@ -187,7 +187,7 @@ export function StudentAcademicLive() {
                       {columns.map((column) => <th key={`${column.category.code}-${column.assessmentIndex}`}><span>{column.label}</span><small>Hệ số {column.category.weight}</small></th>)}
                       <th className="gradebook-total-head">Tổng kết</th>
                     </tr></thead>
-                    <tbody>{subjectRows.map((row) => (
+                    <tbody>{pagedSubjectRows.map((row) => (
                       <tr key={row.subjectId}>
                         <td className="gradebook-sticky-col"><strong>{row.subjectName}</strong><small>{columns.filter((column) => row.grades.some((item) => item.category === column.category.code && (item.assessmentIndex ?? 1) === column.assessmentIndex)).length}/{columns.length} đầu điểm</small></td>
                         {columns.map((column) => {
@@ -215,7 +215,7 @@ export function StudentAttendanceLive() {
   const att = useApi<AttendanceRecord[]>('/attendance');
   return (
     <Section title="Chuyên cần cá nhân" subtitle="Lịch sử đi học của bạn" wide>
-      <Async state={att} empty="Chưa có dữ liệu điểm danh">
+      <Async paginate state={att} empty="Chưa có dữ liệu điểm danh" itemLabel="lượt điểm danh">
         {(l) => (
           <table className="live-table">
             <thead><tr><th>Ngày</th><th>Tiết</th><th>Môn</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>

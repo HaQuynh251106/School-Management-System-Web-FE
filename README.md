@@ -12,7 +12,7 @@ npm run dev
 
 Backend local mặc định ở `http://localhost:4000`; thay `VITE_API_BASE` khi cần.
 
-Tài khoản profile local: `admin/admin@123`, `gv.hoa/teacher@123`, `hs.an/student@123`, `ph.pham/parent@123`.
+Tài khoản profile local: `admin/admin@123`, `gv.hoa/teacher@123`, `hs.minh/student@123`, `ph.pham/parent@123`.
 
 ## Kiểm tra
 

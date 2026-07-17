@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Phone, RotateCcw, Search, Send, ShieldCheck, Trophy, UserCheck, UserRound, Users, UsersRound, UserX } from 'lucide-react';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Megaphone, Phone, RefreshCw, RotateCcw, Search, Send, ShieldCheck, Trophy, UserCheck, UserRound, Users, UsersRound, UserX } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherGradebookContext, TeachingAssignment } from '../../api/types';
-import { Section, StatusPill } from '../../components/ui';
-import { Async, useToast, DAY_LABEL, fmtDate } from './common';
+import type { Announcement, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment } from '../../api/types';
+import { Badge, Section, StatusPill } from '../../components/ui';
+import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, PaginatedData } from './common';
 import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 
@@ -78,7 +78,7 @@ export function TeacherClassesLive() {
           </div>
         </div>
       )}
-      <Async state={{ data: groups, loading: teachingAssignments.loading || classesApi.loading, error: teachingAssignments.error || classesApi.error }} empty="Chưa được phân công lớp nào">
+      <Async paginate state={{ data: groups, loading: teachingAssignments.loading || classesApi.loading, error: teachingAssignments.error || classesApi.error }} empty="Chưa được phân công lớp nào" itemLabel="lớp phụ trách">
         {(assignedGroups) => (
           <div className="teacher-class-table-wrap">
             <table className="live-table">
@@ -109,7 +109,7 @@ export function TeacherClassesLive() {
               ? <p><ShieldCheck size={16} /> Lớp chủ nhiệm · Được xem hồ sơ chi tiết</p>
               : <p className="limited"><LockKeyhole size={16} /> Lớp bộ môn · Chỉ xem danh sách cơ bản</p>}
           </div>
-          <Async state={students} empty="Lớp chưa có học sinh">
+          <Async paginate state={students} empty="Lớp chưa có học sinh" itemLabel="học sinh">
             {(l) => (
               <div className="teacher-class-table-wrap">
                 <table className="live-table"><thead><tr><th>STT</th><th>Mã học sinh</th><th>Họ và tên</th><th>Lớp</th><th></th></tr></thead>
@@ -339,10 +339,7 @@ export function TeacherAttendanceLive() {
       setBaseline(next);
       setHasSavedRegister(true);
       setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
-      const alerts = saved.filter((record) => record.status !== 'PRESENT').length;
-      toast.show('ok', alerts
-        ? `Đã lưu ${saved.length} học sinh. Hệ thống đã xử lý cảnh báo chuyên cần cho ${alerts} trường hợp.`
-        : `Đã lưu điểm danh ${saved.length} học sinh.`);
+      toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Mọi trạng thái thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
     } catch (e: any) {
       toast.show('err', e.message);
     } finally {
@@ -427,10 +424,11 @@ export function TeacherAttendanceLive() {
                 </div>
               </div>
 
-              <div className="attendance-table-wrap">
+              <PaginatedData items={filteredStudents} itemLabel="học sinh">
+                {(pagedStudents) => <div className="attendance-table-wrap">
                 <table className="attendance-table">
                   <thead><tr><th>STT</th><th>Học sinh</th><th>Trạng thái chuyên cần</th><th>Ghi chú</th></tr></thead>
-                  <tbody>{filteredStudents.map((student) => {
+                  <tbody>{pagedStudents.map((student) => {
                     const mark = marks[student.id] || { status: 'PRESENT', note: '' };
                     return <tr key={student.id} data-status={mark.status}>
                       <td>{(students.data || []).findIndex((item) => item.id === student.id) + 1}</td>
@@ -455,10 +453,11 @@ export function TeacherAttendanceLive() {
                   })}</tbody>
                 </table>
                 {!filteredStudents.length && <div className="attendance-filter-empty"><Search size={24} /><span>Không tìm thấy học sinh phù hợp bộ lọc.</span></div>}
-              </div>
+              </div>}
+              </PaginatedData>
               <footer className="attendance-register-footer">
                 <span>Hiển thị {filteredStudents.length}/{summary.total} học sinh</span>
-                <p><ShieldCheck size={15} /> Trường hợp vắng hoặc đi muộn sẽ được gửi cảnh báo đến phụ huynh sau khi lưu.</p>
+                <p><ShieldCheck size={15} /> Trạng thái thay đổi được tự động gửi tới học sinh và phụ huynh; dữ liệu không đổi sẽ không tạo thông báo trùng.</p>
               </footer>
             </>}
           </Async>
@@ -608,7 +607,7 @@ export function TeacherGradesLive() {
         reason,
         entries: batch.entries,
       })));
-      toast.show('ok', `Đã lưu ${entryCount} đầu điểm và cập nhật tổng kết học kỳ.`);
+      toast.show('ok', `Đã lưu ${entryCount} đầu điểm. Điểm mới hoặc điểm thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
       existing.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
@@ -648,13 +647,13 @@ export function TeacherGradesLive() {
       )}
 
       {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
-        <Async state={students} empty="Lớp chưa có học sinh">
-          {(list) => (
+        <Async paginate state={{ data: gradeRows, loading: students.loading, error: students.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
+          {(pagedGradeRows) => (
             <div className="gradebook-shell">
               <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
 
               <div className="gradebook-summary">
-                <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình lớp</small><strong>{formatScore(classAverage)}</strong><p>{averages.length}/{list.length} học sinh có điểm</p></div></article>
+                <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình lớp</small><strong>{formatScore(classAverage)}</strong><p>{averages.length}/{gradeRows.length} học sinh có điểm</p></div></article>
                 <article className="gradebook-stat"><span><Trophy size={19} /></span><div><small>Điểm cao nhất</small><strong>{formatScore(highest)}</strong><p>Theo tổng kết hiện tại</p></div></article>
                 <article className="gradebook-stat"><span><CheckCircle2 size={19} /></span><div><small>Tiến độ nhập</small><strong>{completion}%</strong><p>{completedCells}/{totalCells} đầu điểm</p></div></article>
               </div>
@@ -667,7 +666,7 @@ export function TeacherGradesLive() {
                     <th className="gradebook-total-head">Tổng kết</th>
                     <th>Trạng thái</th>
                   </tr></thead>
-                  <tbody>{gradeRows.map((row) => {
+                  <tbody>{pagedGradeRows.map((row) => {
                     const missing = columns.length - row.values.length;
                     return <tr key={row.student.id}>
                       <td className="gradebook-sticky-col"><strong>{row.student.fullName}</strong><small>{row.student.studentCode || row.student.username}</small></td>
@@ -687,5 +686,157 @@ export function TeacherGradesLive() {
         </Async>
       )}
     </Section>
+  );
+}
+
+const TEACHER_NOTIFICATION_CATEGORIES = [
+  { value: 'STUDENT_STATUS', label: 'Tình hình lớp học', hint: 'Nề nếp, học tập và hoạt động trên lớp', title: 'Thông báo tình hình học sinh tại lớp', body: 'Kính gửi quý phụ huynh và các em học sinh,\n\nGiáo viên gửi thông tin cập nhật về tình hình học tập và nề nếp tại lớp:' },
+];
+
+const TEACHER_NOTIFICATION_TARGETS = [
+  { value: 'CLASS_ALL', label: 'Học sinh & phụ huynh', hint: 'Gửi đồng thời tới cả hai nhóm', Icon: UsersRound },
+  { value: 'CLASS_STUDENTS', label: 'Học sinh', hint: 'Chỉ học sinh của lớp đã chọn', Icon: GraduationCap },
+  { value: 'CLASS_PARENTS', label: 'Phụ huynh', hint: 'Toàn bộ phụ huynh liên kết với lớp', Icon: UserRound },
+];
+
+const TEACHER_NOTIFICATION_CATEGORY_LABEL: Record<string, string> = {
+  GRADE: 'Điểm số', ATTENDANCE: 'Điểm danh', STUDENT_STATUS: 'Tình hình lớp học',
+};
+const TEACHER_NOTIFICATION_PRIORITY_LABEL: Record<string, string> = {
+  NORMAL: 'Thông thường', IMPORTANT: 'Quan trọng', URGENT: 'Khẩn cấp',
+};
+
+/* ===== B7 — Thông báo lớp học ===== */
+export function TeacherNotificationsLive() {
+  const scopes = useApi<TeacherAnnouncementScope[]>('/teacher/announcements/scopes');
+  const announcements = useApi<Announcement[]>('/teacher/announcements');
+  const toast = useToast();
+  const [sending, setSending] = useState(false);
+  const [form, setForm] = useState({ classId: '', target: 'CLASS_ALL', category: 'STUDENT_STATUS', priority: 'NORMAL', title: '', body: '' });
+
+  useEffect(() => {
+    if (!form.classId && scopes.data?.length) setForm((current) => ({ ...current, classId: scopes.data![0].classId }));
+  }, [form.classId, scopes.data]);
+
+  const selectedScope = (scopes.data || []).find((scope) => scope.classId === form.classId);
+  const selectedCategory = TEACHER_NOTIFICATION_CATEGORIES.find((category) => category.value === form.category) || TEACHER_NOTIFICATION_CATEGORIES[0];
+  const targetCount = form.target === 'CLASS_STUDENTS'
+    ? selectedScope?.studentCount || 0
+    : form.target === 'CLASS_PARENTS'
+      ? selectedScope?.parentCount || 0
+      : (selectedScope?.studentCount || 0) + (selectedScope?.parentCount || 0);
+  const selectedTarget = TEACHER_NOTIFICATION_TARGETS.find((target) => target.value === form.target) || TEACHER_NOTIFICATION_TARGETS[0];
+
+  const countForTarget = (target: string) => target === 'CLASS_STUDENTS'
+    ? selectedScope?.studentCount || 0
+    : target === 'CLASS_PARENTS'
+      ? selectedScope?.parentCount || 0
+      : (selectedScope?.studentCount || 0) + (selectedScope?.parentCount || 0);
+
+  const applyCategory = (category: typeof TEACHER_NOTIFICATION_CATEGORIES[number]) => {
+    const classSuffix = selectedScope ? ` - lớp ${selectedScope.classCode}` : '';
+    setForm((current) => ({ ...current, category: category.value, title: `${category.title}${classSuffix}`, body: category.body }));
+  };
+
+  const sendAnnouncement = async () => {
+    if (!form.classId) return toast.show('err', 'Vui lòng chọn lớp nhận thông báo');
+    if (!form.title.trim() || !form.body.trim()) return toast.show('err', 'Vui lòng nhập tiêu đề và nội dung thông báo');
+    if (!targetCount) return toast.show('err', 'Nhóm đã chọn hiện không có người nhận');
+    setSending(true);
+    try {
+      const sent = await api.post<Announcement>('/announcements', {
+        audience: `${form.target}:${form.classId}`,
+        category: form.category,
+        priority: form.priority,
+        title: form.title.trim(),
+        body: form.body.trim(),
+      });
+      toast.show('ok', `Đã gửi thông báo tới ${sent.recipientCount ?? targetCount} người nhận`);
+      setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL' }));
+      announcements.reload();
+    } catch (error: any) {
+      toast.show('err', error.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const historyAudience = (audience: string) => {
+    const separator = audience.indexOf(':');
+    if (separator < 0) return audience;
+    const target = TEACHER_NOTIFICATION_TARGETS.find((item) => item.value === audience.slice(0, separator));
+    const scope = (scopes.data || []).find((item) => item.classId === audience.slice(separator + 1));
+    return `${target?.label || 'Lớp học'} · ${scope?.classCode || audience.slice(separator + 1)}`;
+  };
+
+  return (
+    <div className="admin-notification-center teacher-notification-center">
+      {toast.node}
+      <Section title="Thông báo tự động" subtitle="Điểm số và trạng thái điểm danh được gửi ngay khi giáo viên lưu thay đổi" wide
+        action={<button className="live-btn ghost" onClick={() => { scopes.reload(); announcements.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
+        <div className="teacher-notification-automation">
+          <article><span><BarChart3 size={20} /></span><div><strong>Điểm số · Tự động</strong><small>Điểm mới hoặc điểm điều chỉnh được gửi ngay tới học sinh và phụ huynh.</small></div><Badge tone="green">Đang bật</Badge></article>
+          <article><span><CalendarCheck2 size={20} /></span><div><strong>Điểm danh · Tự động</strong><small>Mọi thay đổi có mặt, đi muộn hoặc vắng đều được thông báo; lưu lại không đổi sẽ không gửi trùng.</small></div><Badge tone="green">Đang bật</Badge></article>
+        </div>
+        <div className="teacher-notification-scope-note"><ShieldCheck size={20} /><div><strong>Phạm vi gửi được bảo vệ theo phân công</strong><small>Chỉ các lớp đang giảng dạy hoặc chủ nhiệm mới xuất hiện. Hệ thống tự xác định học sinh và phụ huynh liên kết.</small></div></div>
+
+        <div className="announcement-audience-summary">
+          <article className="active"><span><GraduationCap size={18} /></span><div><small>Lớp phụ trách</small><strong>{scopes.data?.length ?? '—'}</strong><p>lớp học</p></div></article>
+          <article><span><Users size={18} /></span><div><small>Học sinh lớp chọn</small><strong>{selectedScope?.studentCount ?? '—'}</strong><p>người nhận</p></div></article>
+          <article><span><UserRound size={18} /></span><div><small>Phụ huynh lớp chọn</small><strong>{selectedScope?.parentCount ?? '—'}</strong><p>người nhận</p></div></article>
+        </div>
+
+        <div className="announcement-compose-layout">
+          <div className="announcement-compose-form">
+            <div className="announcement-compose-heading"><span><Megaphone size={19} /></span><div><strong>Trao đổi tình hình lớp học</strong><small>Chỉ dùng khi giáo viên cần chủ động thông báo về nề nếp hoặc hoạt động tại lớp</small></div></div>
+
+            <div className="teacher-notification-class-picker">
+              <label><span>Lớp phụ trách</span><select value={form.classId} onChange={(event) => setForm({ ...form, classId: event.target.value })}>
+                {!scopes.data?.length && <option value="">Chưa có lớp được phân công</option>}
+                {(scopes.data || []).map((scope) => <option key={scope.classId} value={scope.classId}>{scope.classCode} · {scope.homeroom ? 'Chủ nhiệm' : scope.subjects.join(', ') || 'Giảng dạy'}</option>)}
+              </select></label>
+              {selectedScope && <div><strong>{selectedScope.classCode}</strong><span>{selectedScope.homeroom ? 'Giáo viên chủ nhiệm' : `Giảng dạy: ${selectedScope.subjects.join(', ')}`}</span></div>}
+            </div>
+
+            <div className="teacher-manual-status-note"><Megaphone size={17} /><div><strong>Tình hình lớp học</strong><small>{selectedCategory.hint}</small></div><button type="button" onClick={() => applyCategory(selectedCategory)}>Dùng nội dung mẫu</button></div>
+
+            <div className="announcement-field-group">
+              <label>Người nhận</label>
+              <div className="announcement-audience-grid teacher-audience-grid">
+                {TEACHER_NOTIFICATION_TARGETS.map(({ value, label, hint, Icon }) => {
+                  const count = countForTarget(value);
+                  return <button type="button" key={value} disabled={!count} className={form.target === value ? 'active' : ''} onClick={() => setForm({ ...form, target: value })}><span><Icon size={17} /></span><div><strong>{label}</strong><small>{hint}</small></div><b>{count}</b></button>;
+                })}
+              </div>
+            </div>
+
+            <div className="announcement-form-grid">
+              <label className="wide"><span>Tiêu đề</span><input maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Nhập tiêu đề rõ ràng, dễ hiểu" /></label>
+              <label><span>Mức độ</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
+              <label className="wide"><span>Nội dung</span><textarea maxLength={4000} rows={7} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Nhập nội dung giáo viên cần trao đổi…" /><small>{form.body.length}/4000 ký tự</small></label>
+            </div>
+          </div>
+
+          <aside className="announcement-preview">
+            <div className="announcement-preview-heading"><BellRing size={18} /><div><strong>Xem trước thông báo</strong><small>Nội dung học sinh và phụ huynh sẽ nhìn thấy</small></div></div>
+            <div className={`announcement-preview-card priority-${form.priority.toLowerCase()}`}>
+              <header><Badge tone={form.priority === 'URGENT' ? 'red' : 'blue'}>{selectedCategory.label}</Badge><span>{TEACHER_NOTIFICATION_PRIORITY_LABEL[form.priority]}</span></header>
+              <strong>{form.title || 'Tiêu đề thông báo'}</strong><p>{form.body || 'Nội dung thông báo sẽ hiển thị tại đây.'}</p><small>Vừa xong · Từ giáo viên phụ trách lớp {selectedScope?.classCode || '—'}</small>
+            </div>
+            <div className="announcement-send-summary"><span>Đối tượng</span><strong>{selectedTarget.label}</strong><span>Lớp nhận</span><strong>{selectedScope?.classCode || '—'}</strong><span>Dự kiến nhận</span><strong>{targetCount} người</strong></div>
+            <p className="announcement-send-note">Thông báo chỉ được gửi tới tài khoản đang hoạt động thuộc lớp giáo viên phụ trách.</p>
+            <button type="button" className="live-btn announcement-send-button" disabled={sending || !targetCount || !form.title.trim() || !form.body.trim()} onClick={sendAnnouncement}><Send size={16} /> {sending ? 'Đang gửi…' : `Gửi tới ${targetCount} người`}</button>
+          </aside>
+        </div>
+      </Section>
+
+      <Section title="Lịch sử thông báo lớp học" subtitle="Theo dõi nội dung đã gửi tới từng lớp và nhóm người nhận" wide>
+        <Async paginate state={announcements} empty="Chưa có thông báo lớp học nào được gửi" itemLabel="thông báo">
+          {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Lớp và người nhận</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead><tbody>
+            {items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{TEACHER_NOTIFICATION_CATEGORY_LABEL[item.category || ''] || item.category}</Badge></td><td><strong>{historyAudience(item.audience)}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{TEACHER_NOTIFICATION_PRIORITY_LABEL[item.priority || 'NORMAL']}</span></td><td><strong>{item.recipientCount || '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}
+          </tbody></table></div>}
+        </Async>
+      </Section>
+    </div>
   );
 }

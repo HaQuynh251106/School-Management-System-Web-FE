@@ -1,24 +1,28 @@
 import { useState } from 'react';
 import {
   BookOpenCheck, ClipboardCheck, Eye, EyeOff, GraduationCap, LockKeyhole,
-  LogIn, RefreshCcw, School, ShieldCheck, Sparkles, UserRound, UserRoundCog, UsersRound,
+  LogIn, Moon, RefreshCcw, School, ShieldCheck, Sparkles, Sun, UserRound, UserRoundCog, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
+import { useTheme } from '../../api/theme';
 import type { CSSProperties } from 'react';
 
 const env = (import.meta as any).env || {};
-const demos = env.VITE_SHOW_DEMO_ACCOUNTS === 'true' ? [
-  { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME, password: env.VITE_DEMO_ADMIN_PASSWORD, Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME, password: env.VITE_DEMO_TEACHER_PASSWORD, Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME, password: env.VITE_DEMO_STUDENT_PASSWORD, Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME, password: env.VITE_DEMO_PARENT_PASSWORD, Icon: RefreshCcw, color: '#c2410c' },
+const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
+  || (env.DEV && env.VITE_SHOW_DEMO_ACCOUNTS !== 'false');
+const demos = showDemoAccounts ? [
+  { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
+  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.hoa', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
+  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.minh', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
+  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.pham', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ].filter((account) => account.username && account.password) : [];
 
 type View = 'login' | 'forgot' | 'reset';
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const resetToken = new URLSearchParams(window.location.search).get('token');
   const [view, setView] = useState<View>(resetToken ? 'reset' : 'login');
   const [username, setUsername] = useState('');
@@ -56,6 +60,10 @@ export function LoginPage() {
 
   return (
     <div className="login-screen">
+      <button className="login-theme-toggle" type="button" onClick={toggleTheme} aria-label={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'} title={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'}>
+        {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+        <span>{theme === 'light' ? 'Chế độ tối' : 'Chế độ sáng'}</span>
+      </button>
       <main className="login-shell">
         <section className="login-visual" aria-label="Không gian học tập hiện đại">
           <img src="/images/school-login-campus.png" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" />

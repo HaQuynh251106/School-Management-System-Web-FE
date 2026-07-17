@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpenCheck, CalendarDays, CalendarOff, CheckCircle2,
-  Clock3, Pencil, Plus, Trash2, UserRoundCheck, UsersRound,
+  ChevronLeft, ChevronRight, Clock3, Pencil, Plus, RotateCcw, Search,
+  Trash2, UserRoundCheck, UsersRound, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
@@ -35,6 +36,12 @@ const workloadQuery = (semesterId: string) => {
   return `/teaching-assignments/workloads?${params.toString()}`;
 };
 
+const teacherAssignmentQuery = (teacherId: string, semesterId: string) => {
+  const params = new URLSearchParams({ teacherId });
+  if (semesterId) params.set('semesterId', semesterId);
+  return `/teaching-assignments?${params.toString()}`;
+};
+
 function matchesSpecialty(teacher: ApiUser, subject?: Subject) {
   if (!subject || !teacher.mainSubject) return false;
   const specialty = teacher.mainSubject.trim().toLocaleLowerCase('vi');
@@ -43,6 +50,11 @@ function matchesSpecialty(teacher: ApiUser, subject?: Subject) {
   return specialty === subjectId || specialty === subjectName
     || (specialty.length >= 3 && subjectName.includes(specialty))
     || (subjectName.length >= 3 && specialty.includes(subjectName));
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D').toLocaleLowerCase('vi');
 }
 
 type AssignmentForm = {
@@ -65,13 +77,22 @@ function TeachingAssignmentManager() {
   const toast = useToast();
   const [classFilter, setClassFilter] = useState('');
   const [semesterFilter, setSemesterFilter] = useState('');
+  const [teacherSearch, setTeacherSearch] = useState('');
   const assignments = useApi<TeachingAssignment[]>(assignmentQuery(classFilter, semesterFilter));
   const workloads = useApi<TeacherWorkload[]>(workloadQuery(semesterFilter));
   const [editing, setEditing] = useState<TeachingAssignment | null>(null);
+  const [managedTeacher, setManagedTeacher] = useState<TeacherWorkload | null>(null);
+  const managedAssignments = useApi<TeachingAssignment[]>(managedTeacher
+    ? teacherAssignmentQuery(managedTeacher.teacherId, semesterFilter) : null);
   const [form, setForm] = useState<AssignmentForm>(emptyAssignment);
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TeachingAssignment | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [workloadPage, setWorkloadPage] = useState(1);
+  const [workloadPageSize, setWorkloadPageSize] = useState(5);
 
   const selectedSubject = subjects.data?.find((subject) => subject.id === form.subjectId);
   const selectableTeachers = [...(teachers.data ?? [])]
@@ -85,11 +106,66 @@ function TeachingAssignmentManager() {
   const totalPlanned = (assignments.data ?? []).reduce((sum, item) => sum + item.weeklyPeriods, 0);
   const totalScheduled = (assignments.data ?? []).reduce((sum, item) => sum + item.scheduledPeriods, 0);
   const completed = (assignments.data ?? []).filter((item) => item.fullyScheduled).length;
-  const assignedTeachers = (workloads.data ?? []).filter((item) => item.classCount > 0).length;
+  const assignedTeachers = new Set((assignments.data ?? []).map((item) => item.teacherId)).size;
+  const visibleWorkloads = useMemo(() => {
+    const query = normalizeSearch(teacherSearch.trim());
+    return (workloads.data ?? []).map((item) => {
+      const details = (item.assignments ?? []).filter((assignment) => !classFilter || assignment.classId === classFilter);
+      const searchable = [
+        item.teacherName, item.teacherCode, item.mainSubject,
+        ...details.flatMap((assignment) => [assignment.classCode, assignment.subjectName]),
+      ].filter(Boolean).join(' ');
+      const normalizedSearchable = normalizeSearch(searchable);
+      if ((classFilter && details.length === 0) || (query && !normalizedSearchable.includes(query))) return null;
+      const classCodes = [...new Set(details.map((assignment) => assignment.classCode))];
+      const subjectNames = [...new Set(details.map((assignment) => assignment.subjectName))];
+      return {
+        ...item,
+        assignments: details,
+        classCodes,
+        subjectNames,
+        classCount: classCodes.length,
+        subjectCount: subjectNames.length,
+        weeklyPeriods: details.reduce((sum, assignment) => sum + assignment.weeklyPeriods, 0),
+        scheduledPeriods: details.reduce((sum, assignment) => sum + assignment.scheduledPeriods, 0),
+      };
+    }).filter((item): item is TeacherWorkload => item !== null);
+  }, [workloads.data, classFilter, teacherSearch]);
+  const workloadPageCount = Math.max(1, Math.ceil(visibleWorkloads.length / workloadPageSize));
+  const pagedWorkloads = useMemo(() => {
+    const start = (workloadPage - 1) * workloadPageSize;
+    return visibleWorkloads.slice(start, start + workloadPageSize);
+  }, [visibleWorkloads, workloadPage, workloadPageSize]);
+  const workloadPageNumbers = useMemo(() => {
+    const visiblePageCount = 5;
+    const start = Math.max(1, Math.min(workloadPage - 2, workloadPageCount - visiblePageCount + 1));
+    const end = Math.min(workloadPageCount, start + visiblePageCount - 1);
+    return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+  }, [workloadPage, workloadPageCount]);
+  const workloadRangeStart = visibleWorkloads.length === 0 ? 0 : (workloadPage - 1) * workloadPageSize + 1;
+  const workloadRangeEnd = Math.min(workloadPage * workloadPageSize, visibleWorkloads.length);
+  const hasAssignmentFilters = Boolean(teacherSearch || classFilter || semesterFilter);
+  const editingHasSchedule = Boolean(editing && editing.scheduledPeriods > 0);
+
+  useEffect(() => {
+    setWorkloadPage(1);
+  }, [teacherSearch, classFilter, semesterFilter, workloadPageSize]);
+
+  useEffect(() => {
+    setWorkloadPage((current) => Math.min(current, workloadPageCount));
+  }, [workloadPageCount]);
 
   const openCreate = () => {
     setEditing(null);
     setForm({ ...emptyAssignment, classId: classFilter, semesterId: semesterFilter });
+    setError(null);
+    setShow(true);
+  };
+
+  const openCreateForTeacher = (teacherId: string) => {
+    setEditing(null);
+    setManagedTeacher(null);
+    setForm({ ...emptyAssignment, classId: classFilter, semesterId: semesterFilter, teacherId });
     setError(null);
     setShow(true);
   };
@@ -103,15 +179,39 @@ function TeachingAssignmentManager() {
       teacherId: item.teacherId,
       weeklyPeriods: item.weeklyPeriods,
     });
+    setManagedTeacher(null);
     setError(null);
     setShow(true);
   };
 
-  const openCreateForTeacher = (teacherId: string) => {
-    setEditing(null);
-    setForm({ ...emptyAssignment, classId: classFilter, semesterId: semesterFilter, teacherId });
-    setError(null);
-    setShow(true);
+  const requestDelete = (item: TeachingAssignment) => {
+    setDeleteError(null);
+    setPendingDelete(item);
+  };
+
+  const removeAssignment = async () => {
+    if (!pendingDelete) return;
+    const item = pendingDelete;
+    setDeletingId(item.id);
+    setDeleteError(null);
+    try {
+      await api.del(`/teaching-assignments/${item.id}`);
+      toast.show('ok', 'Đã xóa phân công giảng dạy');
+      setPendingDelete(null);
+      assignments.reload();
+      managedAssignments.reload();
+      workloads.reload();
+    } catch (caught: unknown) {
+      setDeleteError(caught instanceof Error ? caught.message : 'Không thể xóa phân công.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const resetAssignmentFilters = () => {
+    setTeacherSearch('');
+    setClassFilter('');
+    setSemesterFilter('');
   };
 
   const save = async () => {
@@ -126,24 +226,14 @@ function TeachingAssignmentManager() {
       else await api.post('/teaching-assignments', form);
       toast.show('ok', editing ? 'Đã cập nhật phân công giảng dạy' : 'Đã phân công giáo viên bộ môn');
       setShow(false);
+      setEditing(null);
       assignments.reload();
+      managedAssignments.reload();
       workloads.reload();
     } catch (caught: unknown) {
       setError(caught instanceof Error ? caught.message : 'Không thể lưu phân công.');
     } finally {
       setBusy(false);
-    }
-  };
-
-  const remove = async (item: TeachingAssignment) => {
-    if (!confirm(`Xóa phân công ${item.subjectName} của lớp ${item.classCode}?`)) return;
-    try {
-      await api.del(`/teaching-assignments/${item.id}`);
-      toast.show('ok', 'Đã xóa phân công');
-      assignments.reload();
-      workloads.reload();
-    } catch (caught: unknown) {
-      toast.show('err', caught instanceof Error ? caught.message : 'Không thể xóa phân công.');
     }
   };
 
@@ -161,94 +251,131 @@ function TeachingAssignmentManager() {
         <article><CheckCircle2 size={19} /><div><small>Đã xếp đủ</small><strong>{completed} môn</strong></div></article>
         <article><UsersRound size={19} /><div><small>Giáo viên đã phân công</small><strong>{assignedTeachers}/{workloads.data?.length ?? 0}</strong></div></article>
       </div>
-      <div className="live-toolbar assignment-filter-bar">
-        <select className="live-select grow" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
-          <option value="">Tất cả lớp</option>
-          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
-        </select>
-        <select className="live-select grow" value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
-          <option value="">Tất cả học kỳ</option>
-          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
-        </select>
+      <div className="assignment-control-panel">
+        <div className="assignment-search-field">
+          <Search size={18} />
+          <input value={teacherSearch} onChange={(event) => setTeacherSearch(event.target.value)} aria-label="Tìm kiếm phân công" placeholder="Tìm theo tên, mã giáo viên, lớp hoặc môn…" />
+          {teacherSearch && <button type="button" onClick={() => setTeacherSearch('')} aria-label="Xóa nội dung tìm kiếm"><X size={16} /></button>}
+        </div>
+        <div className="assignment-filter-fields">
+          <label><span>Lớp học</span><select className="live-select" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
+            <option value="">Tất cả lớp</option>
+            {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
+          </select></label>
+          <label><span>Học kỳ</span><select className="live-select" value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
+            <option value="">Tất cả học kỳ</option>
+            {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+          </select></label>
+          <button type="button" className="assignment-reset-button" disabled={!hasAssignmentFilters} onClick={resetAssignmentFilters}><RotateCcw size={15} /> Đặt lại</button>
+        </div>
       </div>
       <div className="teacher-workload-panel">
         <div className="teacher-workload-head">
-          <div><strong>Giáo viên và lớp đang phụ trách</strong><small>Theo dõi môn, lớp và số tiết của từng giáo viên trong học kỳ đã chọn.</small></div>
+          <div><strong>Giáo viên và lớp đang phụ trách</strong><small>Mỗi dòng chi tiết thể hiện đúng lớp, môn học và số tiết dạy trong một tuần.</small></div>
+          <span className="teacher-workload-count">{visibleWorkloads.length} giáo viên</span>
         </div>
-        <Async state={workloads} empty="Chưa có hồ sơ giáo viên để phân công.">
+        <Async state={{ data: pagedWorkloads, loading: workloads.loading, error: workloads.error }} empty="Không có giáo viên hoặc phân công phù hợp với bộ lọc.">
           {(items) => (
             <div className="live-table-wrap">
               <table className="live-table teacher-workload-table">
-                <thead><tr><th>Giáo viên bộ môn</th><th>Chuyên môn hồ sơ</th><th>Lớp đang dạy</th><th>Môn phụ trách</th><th>Tiết/tuần</th><th /></tr></thead>
+                <thead><tr><th>Giáo viên bộ môn</th><th>Chuyên môn hồ sơ</th><th>Lớp đang dạy</th><th>Môn học phụ trách</th><th>Số tiết/tuần</th><th>Thao tác</th></tr></thead>
                 <tbody>{items.map((item) => (
                   <tr key={item.teacherId}>
                     <td><div className="assignment-teacher-cell"><span>{item.teacherName.slice(0, 1)}</span><div><strong>{item.teacherName}</strong><small>{item.teacherCode || 'Chưa có mã giáo viên'}</small></div></div></td>
                     <td><span className="teacher-specialty-pill">{item.mainSubject || 'Chưa cập nhật'}</span></td>
-                    <td>{item.classCodes.length > 0 ? <div className="teacher-class-chips">{item.classCodes.map((code) => <span key={code}>{code}</span>)}</div> : <span className="assignment-unassigned">Chưa phụ trách lớp</span>}</td>
-                    <td>{item.subjectNames.length > 0 ? item.subjectNames.join(', ') : '—'}</td>
-                    <td><strong>{item.scheduledPeriods}/{item.weeklyPeriods}</strong></td>
-                    <td><button className="live-btn compact" onClick={() => openCreateForTeacher(item.teacherId)}><Plus size={14} /> Phân công lớp</button></td>
+                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><span className="teacher-class-code">{assignment.classCode}</span></div>)}</div> : <span className="assignment-unassigned">Chưa phụ trách lớp</span>}</td>
+                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><strong>{assignment.subjectName}</strong></div>)}</div> : '—'}</td>
+                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack teacher-period-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><strong>{assignment.weeklyPeriods} tiết</strong><small>Đã xếp {assignment.scheduledPeriods}/{assignment.weeklyPeriods}</small></div>)}<div className="teacher-period-total"><span>Tổng tải tuần</span><strong>{item.weeklyPeriods} tiết</strong></div></div> : <strong>0 tiết</strong>}</td>
+                    <td><div className="teacher-workload-actions"><button className="live-btn compact" onClick={() => openCreateForTeacher(item.teacherId)}><Plus size={14} /> Thêm lớp dạy</button><button className="live-btn compact ghost" disabled={item.classCount === 0} onClick={() => setManagedTeacher(item)}><Pencil size={14} /> Quản lý phân công</button></div></td>
                   </tr>
                 ))}</tbody>
               </table>
             </div>
           )}
         </Async>
+        {visibleWorkloads.length > 0 && <div className="assignment-pagination">
+          <div className="assignment-pagination-summary">Hiển thị <strong>{workloadRangeStart}–{workloadRangeEnd}</strong> trong <strong>{visibleWorkloads.length}</strong> giáo viên</div>
+          <label className="assignment-page-size"><span>Số dòng</span><select value={workloadPageSize} onChange={(event) => setWorkloadPageSize(Number(event.target.value))}><option value={2}>2</option><option value={5}>5</option><option value={10}>10</option><option value={20}>20</option></select></label>
+          <nav className="assignment-page-nav" aria-label="Phân trang danh sách giáo viên">
+            <button type="button" aria-label="Trang trước" disabled={workloadPage === 1} onClick={() => setWorkloadPage((page) => Math.max(1, page - 1))}><ChevronLeft size={16} /></button>
+            {workloadPageNumbers.map((page) => <button type="button" key={page} className={page === workloadPage ? 'active' : ''} aria-current={page === workloadPage ? 'page' : undefined} onClick={() => setWorkloadPage(page)}>{page}</button>)}
+            <button type="button" aria-label="Trang sau" disabled={workloadPage === workloadPageCount} onClick={() => setWorkloadPage((page) => Math.min(workloadPageCount, page + 1))}><ChevronRight size={16} /></button>
+          </nav>
+        </div>}
       </div>
-      <Async state={assignments} empty="Chưa có phân công giáo viên bộ môn phù hợp với bộ lọc.">
-        {(items) => (
-          <div className="live-table-wrap assignment-table-wrap">
-            <table className="live-table assignment-table">
-              <thead><tr><th>Lớp</th><th>Môn học</th><th>Giáo viên phụ trách</th><th>Học kỳ</th><th>Tiến độ TKB</th><th>Trạng thái</th><th /></tr></thead>
-              <tbody>{items.map((item) => {
-                const semester = semesters.data?.find((entry) => entry.id === item.semesterId);
-                const percent = Math.min(100, Math.round(item.scheduledPeriods * 100 / Math.max(1, item.weeklyPeriods)));
-                return (
-                  <tr key={item.id}>
-                    <td><strong className="assignment-class-code">{item.classCode}</strong></td>
-                    <td><strong>{item.subjectName}</strong></td>
-                    <td><div className="assignment-teacher-cell"><span>{item.teacherName.slice(0, 1)}</span><div><strong>{item.teacherName}</strong><small>{item.teacherClassCount} lớp · {item.teacherScheduledPeriods}/{item.teacherWeeklyPeriods} tiết/tuần</small></div></div></td>
-                    <td>{semester?.name ?? item.semesterId}</td>
-                    <td><div className="assignment-progress"><div><span style={{ width: `${percent}%` }} /></div><small>{item.scheduledPeriods}/{item.weeklyPeriods} tiết/tuần</small></div></td>
-                    <td><span className={`assignment-status ${item.fullyScheduled ? 'complete' : 'pending'}`}>{item.fullyScheduled ? 'Đủ tiết lớp này' : `Còn ${item.remainingPeriods} tiết`}</span></td>
-                    <td><div className="assignment-actions"><button title="Sửa phân công" onClick={() => openEdit(item)}><Pencil size={15} /></button><button className="danger" title="Xóa phân công" onClick={() => remove(item)}><Trash2 size={15} /></button></div></td>
-                  </tr>
-                );
-              })}</tbody>
-            </table>
-          </div>
-        )}
-      </Async>
-
+      {managedTeacher && (
+        <Modal
+          title="Quản lý phân công giảng dạy"
+          size="wide"
+          onClose={() => setManagedTeacher(null)}
+          footer={<><button className="live-btn ghost" onClick={() => setManagedTeacher(null)}>Đóng</button><button className="live-btn" onClick={() => openCreateForTeacher(managedTeacher.teacherId)}><Plus size={15} /> Thêm lớp dạy</button></>}
+        >
+          <div className="assignment-manage-profile"><span>{managedTeacher.teacherName.slice(0, 1)}</span><div><strong>{managedTeacher.teacherName}</strong><small>{managedTeacher.teacherCode || 'Chưa có mã giáo viên'} · {managedTeacher.mainSubject || 'Chưa cập nhật chuyên môn'}</small></div><div><strong>{managedTeacher.classCount} lớp</strong><small>{managedTeacher.weeklyPeriods} tiết/tuần</small></div></div>
+          <div className="assignment-manage-intro"><strong>Chọn phân công cần thay đổi</strong><span>Sửa để cập nhật lớp, môn hoặc số tiết. Chỉ có thể xóa phân công chưa có tiết trong thời khóa biểu.</span></div>
+          <Async paginate pageSize={5} state={managedAssignments} empty="Giáo viên chưa có phân công trong học kỳ đã chọn." itemLabel="phân công">
+            {(items) => (
+              <div className="live-table-wrap">
+                <table className="live-table assignment-manage-table">
+                  <thead><tr><th>Lớp</th><th>Môn học</th><th>Học kỳ</th><th>Tải giảng dạy</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                  <tbody>{items.map((item) => {
+                    const semester = semesters.data?.find((entry) => entry.id === item.semesterId);
+                    return <tr key={item.id}>
+                      <td><span className="teacher-class-code">{item.classCode}</span></td>
+                      <td><strong>{item.subjectName}</strong></td>
+                      <td>{semester?.name ?? item.semesterId}</td>
+                      <td><div className="assignment-manage-load"><strong>{item.weeklyPeriods} tiết/tuần</strong><small>Đã xếp {item.scheduledPeriods}/{item.weeklyPeriods}</small></div></td>
+                      <td><span className={`assignment-manage-status ${item.scheduledPeriods > 0 ? 'scheduled' : 'open'}`}>{item.scheduledPeriods > 0 ? 'Đã có lịch' : 'Có thể xóa'}</span></td>
+                      <td><div className="assignment-manage-actions"><button className="assignment-row-action edit" onClick={() => openEdit(item)} title="Sửa phân công"><Pencil size={15} /><span>Sửa</span></button><button className="assignment-row-action delete" title={item.scheduledPeriods > 0 ? 'Xóa các tiết trong thời khóa biểu trước' : 'Xóa phân công'} disabled={item.scheduledPeriods > 0 || deletingId === item.id} onClick={() => requestDelete(item)}><Trash2 size={15} /><span>Xóa</span></button></div></td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>
+            )}
+          </Async>
+        </Modal>
+      )}
+      {pendingDelete && (
+        <Modal
+          title="Xác nhận xóa phân công"
+          onClose={() => { if (!deletingId) setPendingDelete(null); }}
+          footer={<><button className="live-btn ghost" disabled={Boolean(deletingId)} onClick={() => setPendingDelete(null)}>Hủy</button><button className="live-btn danger" disabled={Boolean(deletingId)} onClick={removeAssignment}><Trash2 size={15} />{deletingId ? 'Đang xóa…' : 'Xóa phân công'}</button></>}
+        >
+          <div className="assignment-delete-confirm"><span><Trash2 size={22} /></span><div><strong>{pendingDelete.subjectName} · Lớp {pendingDelete.classCode}</strong><small>{pendingDelete.teacherName} · {pendingDelete.weeklyPeriods} tiết/tuần</small></div></div>
+          <p className="assignment-delete-warning">Phân công sẽ bị xóa khỏi hệ thống. Thao tác này không thể hoàn tác.</p>
+          {deleteError && <div className="live-msg err">{deleteError}</div>}
+        </Modal>
+      )}
       {show && (
         <Modal
-          title={editing ? 'Cập nhật phân công' : 'Phân công giáo viên bộ môn'}
-          onClose={() => setShow(false)}
-          footer={<><button className="live-btn ghost" onClick={() => setShow(false)}>Hủy</button><button className="live-btn" disabled={busy} onClick={save}>{busy ? 'Đang lưu…' : 'Lưu phân công'}</button></>}
+          title={editing ? 'Cập nhật phân công giảng dạy' : 'Phân công giáo viên bộ môn'}
+          onClose={() => { setShow(false); setEditing(null); }}
+          footer={<><button className="live-btn ghost" onClick={() => { setShow(false); setEditing(null); }}>Hủy</button><button className="live-btn" disabled={busy} onClick={save}>{busy ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Lưu phân công'}</button></>}
         >
           {error && <div className="conflict-box"><AlertTriangle size={17} /><span>{error}</span></div>}
+          {editing && <div className="assignment-edit-context"><Pencil size={17} /><div><strong>{editing.subjectName} · Lớp {editing.classCode}</strong><span>{editing.teacherName} · {editing.weeklyPeriods} tiết/tuần</span></div></div>}
+          {editingHasSchedule && <div className="assignment-edit-lock"><AlertTriangle size={17} /><span>Phân công đã có {editing?.scheduledPeriods} tiết trong thời khóa biểu. Bạn chỉ có thể thay đổi số tiết/tuần và không được nhỏ hơn số tiết đã xếp.</span></div>}
           <div className="modal-grid2">
             <Field label="Lớp học">
-              <select value={form.classId} onChange={(event) => setForm((current) => ({ ...current, classId: event.target.value }))}>
+              <select disabled={editingHasSchedule} value={form.classId} onChange={(event) => setForm((current) => ({ ...current, classId: event.target.value }))}>
                 <option value="">— Chọn lớp —</option>
                 {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
               </select>
             </Field>
             <Field label="Học kỳ">
-              <select value={form.semesterId} onChange={(event) => setForm((current) => ({ ...current, semesterId: event.target.value }))}>
+              <select disabled={editingHasSchedule} value={form.semesterId} onChange={(event) => setForm((current) => ({ ...current, semesterId: event.target.value }))}>
                 <option value="">— Chọn học kỳ —</option>
                 {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
               </select>
             </Field>
           </div>
           <Field label="Môn học">
-            <select value={form.subjectId} onChange={(event) => setForm((current) => ({ ...current, subjectId: event.target.value }))}>
+            <select disabled={editingHasSchedule} value={form.subjectId} onChange={(event) => setForm((current) => ({ ...current, subjectId: event.target.value }))}>
               <option value="">— Chọn môn học —</option>
               {(subjects.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </Field>
           <Field label="Giáo viên bộ môn">
-            <select value={form.teacherId} onChange={(event) => setForm((current) => ({ ...current, teacherId: event.target.value }))}>
+            <select disabled={editingHasSchedule} value={form.teacherId} onChange={(event) => setForm((current) => ({ ...current, teacherId: event.target.value }))}>
               <option value="">— Chọn giáo viên —</option>
               {selectableTeachers.map((item) => <option key={item.id} value={item.id}>{item.fullName} · {item.mainSubject || 'Chưa cập nhật chuyên môn'}{matchesSpecialty(item, selectedSubject) ? ' · Phù hợp chuyên môn' : ''}</option>)}
             </select>
@@ -256,7 +383,7 @@ function TeachingAssignmentManager() {
             {selectedTeacherWorkload && <div className="selected-teacher-workload"><strong>{selectedTeacherWorkload.classCount} lớp đang phụ trách</strong><span>{selectedTeacherWorkload.classCodes.join(', ') || 'Chưa có lớp'} · {selectedTeacherWorkload.scheduledPeriods}/{selectedTeacherWorkload.weeklyPeriods} tiết/tuần</span></div>}
           </Field>
           <Field label="Số tiết mỗi tuần">
-            <input type="number" min={1} max={20} value={form.weeklyPeriods} onChange={(event) => setForm((current) => ({ ...current, weeklyPeriods: Number(event.target.value) }))} />
+            <input type="number" min={Math.max(1, editing?.scheduledPeriods ?? 1)} max={20} value={form.weeklyPeriods} onChange={(event) => setForm((current) => ({ ...current, weeklyPeriods: Number(event.target.value) }))} />
             <small className="field-help">Thời khóa biểu sẽ không cho xếp vượt quá số tiết đã giao.</small>
           </Field>
         </Modal>
@@ -511,7 +638,7 @@ function HolidayManager() {
         <input className="live-input grow" placeholder="Lý do nghỉ" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <button className="live-btn" onClick={add}><Plus size={15} /> Thêm ngày nghỉ</button>
       </div>
-      <Async state={holidays} empty="Chưa có ngày nghỉ">
+      <Async paginate state={holidays} empty="Chưa có ngày nghỉ" itemLabel="ngày nghỉ">
         {(items) => <table className="live-table"><thead><tr><th>Ngày</th><th>Lý do</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{fmtDate(item.date)}</strong></td><td>{item.name}</td><td><button className="live-btn danger" onClick={() => remove(item)}><Trash2 size={14} /> Xóa</button></td></tr>)}</tbody></table>}
       </Async>
     </Section>

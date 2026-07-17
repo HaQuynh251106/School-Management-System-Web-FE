@@ -1,18 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download } from 'lucide-react';
+import { useState } from 'react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, NotificationTemplate, Club, ClubRegistration,
-  ImportResult, LoginHistory, StudentYearlySummary,
+  ImportResult, LoginHistory, StudentYearlySummary, Announcement,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
-import { Async, useToast, money } from './common';
+import { Async, useToast, money, fmtDateTime } from './common';
 import { Modal, Field } from './Modal';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
-
-const PAGE_SIZE = 8;
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
@@ -26,7 +24,6 @@ const BLANK_USER = {
 export function AdminUsersLive() {
   const [role, setRole] = useState('');
   const [q, setQ] = useState('');
-  const [page, setPage] = useState(0);
   const params = [role && `role=${role}`, q && `q=${encodeURIComponent(q)}`].filter(Boolean).join('&');
   const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
   const classes = useApi<SchoolClass[]>('/classes');
@@ -41,11 +38,6 @@ export function AdminUsersLive() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
 
-  useEffect(() => setPage(0), [role, q]);
-
-  const all = users.data ?? [];
-  const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
-  const pageItems = all.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const toggleLock = async (u: ApiUser) => {
@@ -222,8 +214,8 @@ export function AdminUsersLive() {
         </div>
       )}
 
-      <Async state={users} empty="Không có người dùng">
-        {() => (
+      <Async paginate state={users} empty="Không có người dùng" itemLabel="người dùng" resetKey={`${role}:${q}`}>
+        {(pageItems) => (
           <>
             <table className="live-table">
               <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead>
@@ -247,11 +239,6 @@ export function AdminUsersLive() {
                 ))}
               </tbody>
             </table>
-            <div className="pager">
-              <span>{all.length} người dùng · trang {page + 1}/{totalPages}</span>
-              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>‹ Trước</button>
-              <button disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Sau ›</button>
-            </div>
           </>
         )}
       </Async>
@@ -362,8 +349,8 @@ export function AdminUsersLive() {
             {editingUser && (
               <section className="admin-user-form-section">
                 <header><span><KeyRound size={18} /></span><div><h4>Lịch sử đăng nhập</h4><p>50 lần đăng nhập gần nhất để phát hiện truy cập bất thường</p></div></header>
-                <Async state={history} empty="Chưa có lịch sử đăng nhập">
-                  {(items) => <div className="login-history-list">{items.slice(0, 8).map((item) => (
+                <Async paginate pageSize={5} state={history} empty="Chưa có lịch sử đăng nhập" itemLabel="lần đăng nhập">
+                  {(items) => <div className="login-history-list">{items.map((item) => (
                     <div key={item.id}><span className={item.success ? 'success-dot' : 'error-dot'} />
                       <strong>{item.success ? 'Thành công' : 'Thất bại'}</strong><span>{new Date(item.createdAt).toLocaleString('vi-VN')}</span>
                       <small>{item.ipAddress || 'Không rõ IP'}{item.failureReason ? ` · ${item.failureReason}` : ''}</small></div>
@@ -461,7 +448,7 @@ export function AdminAcademicLive() {
                 <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
                 <button className="live-btn" onClick={addYear}><Plus size={15} /> Tạo năm học</button>
               </div>
-              <Async state={years}>{(l) => (
+              <Async paginate state={years} itemLabel="năm học">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th></tr></thead>
                   <tbody>{l.map((y) => <tr key={y.id}><td><strong>{y.code}</strong></td><td>{y.name}</td><td>{y.startDate || '—'} → {y.endDate || '—'}</td><td><StatusPill value={y.status} /></td></tr>)}</tbody></table>
               )}</Async>
@@ -478,7 +465,7 @@ export function AdminAcademicLive() {
                 <input className="live-input" type="date" value={sf.endDate} onChange={(e) => setSf({ ...sf, endDate: e.target.value })} />
                 <button className="live-btn" onClick={addSemester}><Plus size={15} /> Tạo học kỳ</button>
               </div>
-              <Async state={semesters}>{(l) => (
+              <Async paginate state={semesters} itemLabel="học kỳ">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thứ tự</th><th>Trạng thái</th></tr></thead>
                   <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td><td>{s.sequence}</td><td><StatusPill value={s.status} /></td></tr>)}</tbody></table>
               )}</Async>
@@ -495,7 +482,7 @@ export function AdminAcademicLive() {
                 <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}><option value="">— GVCN (tùy chọn) —</option>{(teachers.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select>
                 <button className="live-btn" onClick={addClass}><Plus size={15} /> Tạo lớp</button>
               </div>
-              <Async state={classes}>{(l) => (
+              <Async paginate state={classes} itemLabel="lớp học">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th></tr></thead>
                   <tbody>{l.map((c) => <tr key={c.id}>
                     <td><strong>{c.code}</strong></td><td>{c.name}</td><td><Badge tone="violet">{c.gradeLevel}</Badge></td><td>{c.studentCount}/{c.capacity || 45} HS</td>
@@ -525,7 +512,7 @@ export function AdminAcademicLive() {
                 <input className="live-input" type="number" min="0.5" max="10" step="0.5" style={{ width: 100 }} title="Hệ số môn" value={sj.coefficient} onChange={(e) => setSj({ ...sj, coefficient: Number(e.target.value) })} />
                 <button className="live-btn" onClick={addSubject}><Plus size={15} /> Thêm môn</button>
               </div>
-              <Async state={subjects}>{(l) => (
+              <Async paginate state={subjects} itemLabel="môn học">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Hệ số tổng kết</th></tr></thead>
                   <tbody>{l.map((s) => <tr key={s.id}><td><strong>{s.code}</strong></td><td>{s.name}</td><td><input className="coefficient-input" type="number" min="0.5" max="10" step="0.5" defaultValue={s.coefficient || 1} onBlur={(e) => updateSubject(s, Number(e.target.value))} /></td></tr>)}</tbody></table>
               )}</Async>
@@ -539,7 +526,7 @@ export function AdminAcademicLive() {
                 <input className="live-input" type="number" style={{ width: 110 }} placeholder="Sức chứa" value={rm.capacity} onChange={(e) => setRm({ ...rm, capacity: Number(e.target.value) })} />
                 <button className="live-btn" onClick={addRoom}><Plus size={15} /> Thêm phòng</button>
               </div>
-              <Async state={rooms}>{(l) => (
+              <Async paginate state={rooms} itemLabel="phòng học">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Sức chứa</th></tr></thead>
                   <tbody>{l.map((r) => <tr key={r.id}><td><strong>{r.code}</strong></td><td>{r.name}</td><td>{r.capacity ?? '—'}</td></tr>)}</tbody></table>
               )}</Async>
@@ -590,7 +577,7 @@ function YearEndManager({ years }: { years: AcademicYear[] }) {
         {yearId && <button className="live-btn ghost" onClick={preview.reload}><RefreshCw size={14} /> Tính lại</button>}
       </div>
       {!yearId ? <div className="live-loading">Chọn năm học để kiểm tra điều kiện tổng kết.</div> : (
-        <Async state={preview} empty="Năm học chưa có học sinh">
+        <Async paginate state={preview} empty="Năm học chưa có học sinh" itemLabel="học sinh">
           {(rows) => <div className="admin-table-scroll"><table className="live-table year-end-table">
             <thead><tr><th>Học sinh</th><th>Điểm TB</th><th>Hạnh kiểm</th><th>Điều kiện</th><th>Kết quả</th></tr></thead>
             <tbody>{rows.map((row) => <tr key={row.id}>
@@ -633,7 +620,7 @@ export function AdminExamCategoriesLive() {
         <input className="live-input" type="number" step="0.5" style={{ width: 90 }} value={f.weight} onChange={(e) => setF({ ...f, weight: Number(e.target.value) })} />
         <button className="live-btn" onClick={add}><Plus size={15} /> Thêm</button>
       </div>
-      <Async state={cats}>{(l) => (
+      <Async paginate state={cats} itemLabel="đầu điểm">{(l) => (
         <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Hệ số</th></tr></thead>
           <tbody>{l.map((c) => <tr key={c.id}><td><strong>{c.code}</strong></td><td>{c.name}</td><td>×{c.weight}</td></tr>)}</tbody></table>
       )}</Async>
@@ -665,7 +652,7 @@ export function AdminFinanceLive() {
   };
   const open = async (id: string) => { try { await api.post(`/fee-periods/${id}/open`); toast.show('ok', 'Đã mở đợt thu'); periods.reload(); } catch (e: any) { toast.show('err', e.message); } };
   const generate = async (id: string) => {
-    try { const inv = await api.post<Invoice[]>(`/fee-periods/${id}/generate-invoices`); toast.show('ok', `Đã sinh ${inv.length} hóa đơn`); invoices.reload(); }
+    try { const inv = await api.post<Invoice[]>(`/fee-periods/${id}/generate-invoices`); toast.show('ok', `Đã phát hành ${inv.length} hóa đơn và tự động thông báo tới phụ huynh`); invoices.reload(); }
     catch (e: any) { toast.show('err', e.message); }
   };
   const confirmCash = async (inv: Invoice) => {
@@ -687,9 +674,10 @@ export function AdminFinanceLive() {
               <input className="live-input" placeholder="Mã (HK2-2025)" value={pf.code} onChange={(e) => setPf({ ...pf, code: e.target.value })} />
               <input className="live-input grow" placeholder="Tên đợt thu" value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} />
               <input className="live-input" placeholder="Khối (K10,K11 - trống=tất cả)" value={pf.applyToGrades} onChange={(e) => setPf({ ...pf, applyToGrades: e.target.value })} />
+              <input className="live-input" type="date" aria-label="Hạn thanh toán" title="Hạn thanh toán" value={pf.dueDate} onChange={(e) => setPf({ ...pf, dueDate: e.target.value })} />
               <button className="live-btn" onClick={createPeriod}><Plus size={15} /> Tạo đợt</button>
             </div>
-            <Async state={periods} empty="Chưa có đợt thu">
+            <Async paginate state={periods} empty="Chưa có đợt thu" itemLabel="đợt thu">
               {(l) => (
                 <table className="live-table">
                   <thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Trạng thái</th><th></th></tr></thead>
@@ -700,7 +688,7 @@ export function AdminFinanceLive() {
                       <td style={{ display: 'flex', gap: 6 }}>
                         <button className="live-btn subtle" onClick={() => setSel(p.id)}>Khoản thu</button>
                         {p.status === 'DRAFT' && <button className="live-btn ghost" onClick={() => open(p.id)}>Mở</button>}
-                        {p.status === 'OPEN' && <button className="live-btn" onClick={() => generate(p.id)}><Send size={14} /> Sinh HĐ</button>}
+                        {p.status === 'OPEN' && <button className="live-btn" onClick={() => generate(p.id)}><Send size={14} /> Phát hành & thông báo</button>}
                       </td>
                     </tr>
                   ))}</tbody>
@@ -714,7 +702,7 @@ export function AdminFinanceLive() {
                   <input className="live-input" type="number" step="100000" value={itf.amount} onChange={(e) => setItf({ ...itf, amount: Number(e.target.value) })} />
                   <button className="live-btn" onClick={addItem}><Plus size={15} /> Thêm khoản</button>
                 </div>
-                <Async state={items} empty="Chưa có khoản thu">
+                <Async paginate state={items} empty="Chưa có khoản thu" itemLabel="khoản thu">
                   {(l) => (<table className="live-table"><thead><tr><th>Khoản</th><th>Số tiền</th><th>Khối</th></tr></thead>
                     <tbody>{l.map((it) => <tr key={it.id}><td>{it.name}</td><td>{money(it.amount)}</td><td>{it.gradeLevel || 'Tất cả'}</td></tr>)}</tbody></table>)}
                 </Async>
@@ -725,7 +713,7 @@ export function AdminFinanceLive() {
         { id: 'invoices', label: 'Hóa đơn & thu tiền', Icon: FileText, content: (
           <Section title="Xác nhận thu học phí" subtitle="Theo dõi và xác nhận các khoản đã thanh toán" wide
             action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
-            <Async state={invoices} empty="Chưa có hóa đơn">
+            <Async paginate state={invoices} empty="Chưa có hóa đơn" itemLabel="hóa đơn">
               {(l) => (<table className="live-table"><thead><tr><th>Mã</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>{l.map((i) => (
                   <tr key={i.id}>
@@ -744,23 +732,142 @@ export function AdminFinanceLive() {
   );
 }
 
-/* ============ A9 — Template thông báo ============ */
-export function AdminTemplatesLive() {
+const ANNOUNCEMENT_CATEGORIES = [
+  { value: 'GENERAL', label: 'Thông báo chung', hint: 'Thông tin điều hành và nhắc nhở chung', title: 'Thông báo từ nhà trường', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường trân trọng thông báo:' },
+  { value: 'HOLIDAY', label: 'Nghỉ lễ', hint: 'Lịch nghỉ, ngày trở lại trường', title: 'Thông báo lịch nghỉ', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường thông báo lịch nghỉ và thời gian trở lại trường như sau:' },
+  { value: 'EVENT', label: 'Sự kiện', hint: 'Hoạt động, chương trình của nhà trường', title: 'Thông báo sự kiện nhà trường', body: 'Nhà trường trân trọng thông báo chương trình sắp diễn ra:' },
+  { value: 'PARENT_MEETING', label: 'Họp phụ huynh', hint: 'Thời gian, địa điểm và nội dung cuộc họp', title: 'Thông báo họp phụ huynh', body: 'Kính gửi quý phụ huynh,\n\nNhà trường trân trọng thông báo lịch họp phụ huynh như sau:' },
+];
+
+const ANNOUNCEMENT_AUDIENCES = [
+  { value: 'ALL', label: 'Toàn trường', hint: 'Giáo viên, học sinh và phụ huynh', Icon: School },
+  { value: 'TEACHER', label: 'Giáo viên', hint: 'Toàn bộ giáo viên đang hoạt động', Icon: UsersRound },
+  { value: 'STUDENT', label: 'Học sinh', hint: 'Toàn bộ học sinh đang hoạt động', Icon: GraduationCap },
+  { value: 'PARENT', label: 'Phụ huynh', hint: 'Toàn bộ phụ huynh đang hoạt động', Icon: UserRound },
+];
+
+const ANNOUNCEMENT_CATEGORY_LABEL = Object.fromEntries(ANNOUNCEMENT_CATEGORIES.map((item) => [item.value, item.label]));
+const ANNOUNCEMENT_AUDIENCE_LABEL = Object.fromEntries(ANNOUNCEMENT_AUDIENCES.map((item) => [item.value, item.label]));
+const ANNOUNCEMENT_PRIORITY_LABEL: Record<string, string> = { NORMAL: 'Thông thường', IMPORTANT: 'Quan trọng', URGENT: 'Khẩn cấp' };
+
+/* ============ A9 — Trung tâm thông báo ============ */
+export function AdminNotificationsLive() {
   const tpls = useApi<NotificationTemplate[]>('/notification-templates');
+  const announcements = useApi<Announcement[]>('/admin/announcements');
+  const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
+  const toast = useToast();
+  const [sending, setSending] = useState(false);
+  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '' });
+  const selectedCategory = ANNOUNCEMENT_CATEGORIES.find((item) => item.value === form.category) || ANNOUNCEMENT_CATEGORIES[0];
+  const recipientCount = audienceCounts.data?.[form.audience] ?? 0;
+
+  const applyCategory = (category: typeof ANNOUNCEMENT_CATEGORIES[number]) => {
+    setForm((current) => ({ ...current, category: category.value, title: category.title, body: category.body }));
+  };
+
+  const sendAnnouncement = async () => {
+    if (!form.title.trim() || !form.body.trim()) return toast.show('err', 'Vui lòng nhập tiêu đề và nội dung thông báo');
+    if (!recipientCount) return toast.show('err', 'Phạm vi đã chọn hiện không có người nhận');
+    setSending(true);
+    try {
+      const sent = await api.post<Announcement>('/announcements', {
+        audience: form.audience,
+        category: form.category,
+        priority: form.priority,
+        title: form.title.trim(),
+        body: form.body.trim(),
+      });
+      toast.show('ok', `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
+      setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL' }));
+      announcements.reload();
+    } catch (error: any) {
+      toast.show('err', error.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
-    <Section title="Mẫu thông báo" subtitle="Quản lý nội dung gửi đến người dùng" wide>
-      <Async state={tpls} empty="Chưa có template">
-        {(l) => (
-          <table className="live-table">
-            <thead><tr><th>Mã</th><th>Tên</th><th>Kênh</th><th>Nội dung</th><th>Bật</th></tr></thead>
-            <tbody>{l.map((t) => (
-              <tr key={t.id}><td><strong>{t.code}</strong></td><td>{t.name}</td><td><Badge tone="blue">{viLabel(t.channel)}</Badge></td>
-                <td><small>{t.bodyTemplate}</small></td><td>{t.active ? <Badge tone="green">Đang bật</Badge> : <Badge tone="red">Đang tắt</Badge>}</td></tr>
-            ))}</tbody>
-          </table>
-        )}
-      </Async>
-    </Section>
+    <div className="admin-notification-center">
+      {toast.node}
+      <Section title="Trung tâm thông báo" subtitle="Soạn và gửi thông tin đúng đối tượng trong toàn trường" wide
+        action={<button className="live-btn ghost" onClick={() => { announcements.reload(); audienceCounts.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
+        <div className="announcement-audience-summary">
+          {ANNOUNCEMENT_AUDIENCES.map(({ value, label, Icon }) => (
+            <article key={value} className={form.audience === value ? 'active' : ''}>
+              <span><Icon size={18} /></span><div><small>{label}</small><strong>{audienceCounts.data?.[value] ?? '—'}</strong><p>người nhận</p></div>
+            </article>
+          ))}
+        </div>
+
+        <div className="announcement-automation-note">
+          <span><CircleDollarSign size={20} /></span>
+          <div><strong>Thông báo khoản thu được gửi tự động</strong><small>Khi hóa đơn được phát hành, hệ thống tự gửi số tiền, hạn thanh toán và mã hóa đơn tới toàn bộ phụ huynh liên kết với học sinh.</small></div>
+          <Badge tone="green">Tự động</Badge>
+        </div>
+
+        <div className="announcement-compose-layout">
+          <div className="announcement-compose-form">
+            <div className="announcement-compose-heading"><span><Megaphone size={19} /></span><div><strong>Soạn thông báo mới</strong><small>Chọn mẫu tình huống hoặc tự nhập nội dung</small></div></div>
+
+            <div className="announcement-field-group">
+              <label>Loại thông báo</label>
+              <div className="announcement-category-grid">
+                {ANNOUNCEMENT_CATEGORIES.map((category) => (
+                  <button type="button" key={category.value} className={form.category === category.value ? 'active' : ''} onClick={() => applyCategory(category)}>
+                    <strong>{category.label}</strong><small>{category.hint}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="announcement-field-group">
+              <label>Phạm vi nhận</label>
+              <div className="announcement-audience-grid">
+                {ANNOUNCEMENT_AUDIENCES.map(({ value, label, hint, Icon }) => (
+                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} onClick={() => setForm({ ...form, audience: value })}>
+                    <span><Icon size={17} /></span><div><strong>{label}</strong><small>{hint}</small></div><b>{audienceCounts.data?.[value] ?? 0}</b>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="announcement-form-grid">
+              <label className="wide"><span>Tiêu đề</span><input maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Nhập tiêu đề rõ ràng, dễ hiểu" /></label>
+              <label><span>Mức độ</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
+              <label className="wide"><span>Nội dung</span><textarea maxLength={4000} rows={7} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Nhập đầy đủ thời gian, địa điểm và hướng dẫn cần thiết…" /><small>{form.body.length}/4000 ký tự</small></label>
+            </div>
+          </div>
+
+          <aside className="announcement-preview">
+            <div className="announcement-preview-heading"><BellRing size={18} /><div><strong>Xem trước thông báo</strong><small>Nội dung người nhận sẽ nhìn thấy</small></div></div>
+            <div className={`announcement-preview-card priority-${form.priority.toLowerCase()}`}>
+              <header><Badge tone={form.priority === 'URGENT' ? 'red' : 'blue'}>{selectedCategory.label}</Badge><span>{ANNOUNCEMENT_PRIORITY_LABEL[form.priority]}</span></header>
+              <strong>{form.title || 'Tiêu đề thông báo'}</strong>
+              <p>{form.body || 'Nội dung thông báo sẽ hiển thị tại đây.'}</p>
+              <small>Vừa xong · Từ Ban quản trị nhà trường</small>
+            </div>
+            <div className="announcement-send-summary"><span>Đối tượng</span><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[form.audience]}</strong><span>Dự kiến nhận</span><strong>{recipientCount} người</strong></div>
+            <p className="announcement-send-note">Thông báo được lưu vào hộp thư trong ứng dụng và gửi thêm qua email/push nếu người dùng đã bật kênh tương ứng.</p>
+            <button type="button" className="live-btn announcement-send-button" disabled={sending || !recipientCount || !form.title.trim() || !form.body.trim()} onClick={sendAnnouncement}><Send size={16} /> {sending ? 'Đang gửi…' : `Gửi ngay tới ${recipientCount} người`}</button>
+          </aside>
+        </div>
+      </Section>
+
+      <Section title="Lịch sử gửi thông báo" subtitle="Theo dõi phạm vi, nội dung và số lượng người nhận" wide>
+        <Async paginate state={announcements} empty="Chưa có thông báo nào được gửi" itemLabel="thông báo">
+          {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Đối tượng</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead>
+            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
+          </table></div>}
+        </Async>
+      </Section>
+
+      <Section title="Mẫu thông báo tự động" subtitle="Các mẫu dùng cho điểm số, chuyên cần, hóa đơn và tác vụ hệ thống" wide>
+        <Async paginate state={tpls} empty="Chưa có mẫu thông báo" itemLabel="mẫu thông báo">
+          {(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Kênh</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.name}</td><td><Badge tone="blue">{viLabel(item.channel)}</Badge></td><td><small>{item.bodyTemplate}</small></td><td>{item.active ? <Badge tone="green">Đang bật</Badge> : <Badge tone="red">Đang tắt</Badge>}</td></tr>)}</tbody></table>}
+        </Async>
+      </Section>
+    </div>
   );
 }
 
@@ -786,7 +893,7 @@ export function AdminClubsLive() {
         <input className="live-input" type="number" step="50000" style={{ width: 130 }} placeholder="Học phí (₫)" value={f.fee} onChange={(e) => setF({ ...f, fee: Number(e.target.value) })} />
         <button className="live-btn" onClick={add}><Plus size={15} /> Tạo CLB</button>
       </div>
-      <Async state={clubs} empty="Chưa có CLB">
+      <Async paginate state={clubs} empty="Chưa có CLB" itemLabel="câu lạc bộ">
         {(l) => (
           <table className="live-table"><thead><tr><th>Tên</th><th>Lịch</th><th>Sĩ số</th><th>Học phí</th><th></th></tr></thead>
             <tbody>{l.map((c) => <tr key={c.id} style={{ background: sel === c.id ? '#f1f5fd' : undefined }}>
@@ -796,7 +903,7 @@ export function AdminClubsLive() {
       </Async>
       {sel && (
         <div style={{ marginTop: 14 }}>
-          <Async state={regs} empty="Chưa có đăng ký">
+          <Async paginate state={regs} empty="Chưa có đăng ký" itemLabel="đăng ký">
             {(l) => (<table className="live-table"><thead><tr><th>Học sinh</th><th>Trạng thái</th></tr></thead>
               <tbody>{l.map((r) => <tr key={r.id}><td>{r.studentName}</td><td><StatusPill value={r.status} /></td></tr>)}</tbody></table>)}
           </Async>

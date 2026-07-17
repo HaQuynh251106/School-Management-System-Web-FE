@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Bell, BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
+import { BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
@@ -9,6 +9,13 @@ import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
 
 /* ===== TKB tuần (B2/C2) ===== */
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
+
+const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
+  GENERAL: 'Thông báo chung', HOLIDAY: 'Nghỉ lễ', GRADE: 'Điểm số', GRADE_PUBLISHED: 'Điểm số',
+  EVENT: 'Sự kiện', STUDENT_STATUS: 'Tình hình học sinh', ATTENDANCE: 'Điểm danh',
+  ATTENDANCE_ALERT: 'Chuyên cần', PARENT_MEETING: 'Họp phụ huynh', ASSIGNMENT: 'Bài tập',
+  FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán', ANNOUNCEMENT: 'Thông báo chung', EXTRACURRICULAR: 'Ngoại khóa',
+};
 
 function classLabel(value: string) {
   return value.replace(/^c-/i, '').replace(/-/g, ' ').toUpperCase();
@@ -254,7 +261,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
         <article><span><Send size={18} /></span><div><small>Đang phát hành</small><strong>{published}</strong></div></article>
         <article><span><Users size={18} /></span><div><small>{actor === 'teacher' ? 'Bài đã nộp' : 'Đã hoàn thành'}</small><strong>{actor === 'teacher' ? totalSubmissions : mySubmissions.data?.length || 0}</strong></div></article>
       </div>
-      <Async state={list} empty="Chưa có bài tập">
+      <Async paginate state={list} empty="Chưa có bài tập" itemLabel="bài tập">
         {(l) => (
           <div className="assignment-grid">{l.map((assignment) => {
             const submission = submissionMap.get(assignment.id);
@@ -284,7 +291,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
       </Async>
       {actor === 'teacher' && sel && <div className="submission-panel">
           <div className="submission-panel-head"><div><small>Bài tập đang xem</small><strong>{selectedAssignment?.title}</strong></div><button className="live-btn subtle" onClick={() => setSel(null)}>Đóng</button></div>
-          <Async state={subs} empty="Chưa có bài nộp">
+          <Async paginate state={subs} empty="Chưa có bài nộp" itemLabel="bài nộp">
             {(l) => (
               <table className="live-table assignment-submission-table"><thead><tr><th>Học sinh</th><th>Bài làm</th><th>Trạng thái</th><th>Điểm và phản hồi</th><th></th></tr></thead>
                 <tbody>{l.map((s) => (
@@ -325,7 +332,7 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
   return (
     <Section title={actor === 'student' ? 'Đăng ký ngoại khóa' : 'Đăng ký ngoại khóa cho con'} subtitle="Chọn hoạt động phù hợp và còn chỗ" wide>
       {toast.node}
-      <Async state={clubs} empty="Chưa có CLB nào">
+      <Async paginate state={clubs} empty="Chưa có CLB nào" itemLabel="câu lạc bộ">
         {(l) => (
           <table className="live-table">
             <thead><tr><th>CLB</th><th>Lịch</th><th>Sức chứa</th><th>Phí</th><th></th></tr></thead>
@@ -374,20 +381,21 @@ export function NotificationsLive() {
       </Section>
       <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
         action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
-        <Async state={inbox} empty="Không có thông báo">
+        <Async paginate state={inbox} empty="Không có thông báo" itemLabel="thông báo">
           {(l) => (
-            <div>
-              {l.map((n) => (
-                <div key={n.id} className={`noti-item ${n.read ? '' : 'unread'}`}>
-                  <Bell size={18} />
-                  <div className="noti-body">
-                    <strong>{n.title} <Badge tone="blue">{n.type}</Badge></strong>
-                    <span>{n.body}</span><br /><small>{fmtDateTime(n.createdAt)}</small>
-                  </div>
-                  {!n.read && <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đã đọc</button>}
-                </div>
-              ))}
-            </div>
+            <div className="admin-table-scroll"><table className="live-table notification-table">
+              <thead><tr><th>Thời gian</th><th>Loại</th><th>Nội dung</th><th>Mức độ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+              <tbody>{l.map((n) => (
+                <tr key={n.id} className={n.read ? '' : 'notification-row-unread'}>
+                  <td>{fmtDateTime(n.createdAt)}</td>
+                  <td><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[n.type] || n.type}</Badge></td>
+                  <td><strong>{n.title}</strong><small>{n.body}</small></td>
+                  <td>{n.priority && n.priority !== 'NORMAL' ? <Badge tone={n.priority === 'URGENT' ? 'red' : 'orange'}>{n.priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge> : <Badge tone="green">Thông thường</Badge>}</td>
+                  <td><StatusPill value={n.read ? 'READ' : 'UNREAD'} /></td>
+                  <td>{!n.read ? <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button> : <span>—</span>}</td>
+                </tr>
+              ))}</tbody>
+            </table></div>
           )}
         </Async>
       </Section>

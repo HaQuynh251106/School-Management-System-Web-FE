@@ -42,7 +42,7 @@ export function AdminAuditLive() {
           Tổng <strong>{stats.data.total}</strong> sự kiện · theo module: {Object.entries(stats.data.byModule).map(([k, v]) => `${k}(${v})`).join(', ')}
         </div>
       )}
-      <Async state={logs} empty="Chưa có sự kiện">
+      <Async paginate state={logs} empty="Chưa có sự kiện" itemLabel="sự kiện">
         {(list) => (
           <table className="live-table">
             <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Module</th><th>Chi tiết</th></tr></thead>

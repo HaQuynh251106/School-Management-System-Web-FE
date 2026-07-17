@@ -72,7 +72,7 @@ export function ParentMonitorLive() {
     <FunctionTabs tabs={[
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
         <Section title="Điểm của con" subtitle="Kết quả học tập theo từng môn" wide>
-          <Async state={grades} empty="Chưa có điểm">
+          <Async paginate state={grades} empty="Chưa có điểm" itemLabel="điểm số">
             {(l) => (<table className="live-table"><thead><tr><th>Môn</th><th>Loại điểm</th><th>Điểm</th><th>Ngày</th></tr></thead>
               <tbody>{l.map((g) => <tr key={g.id}><td><strong>{g.subjectName}</strong></td><td>{g.categoryName}</td><td><strong>{g.score?.toFixed(1)}</strong></td><td>{fmtDate(g.recordedAt)}</td></tr>)}</tbody></table>)}
           </Async>
@@ -80,7 +80,7 @@ export function ParentMonitorLive() {
       ) },
       { id: 'att', label: 'Chuyên cần', Icon: ClipboardCheck, content: (
         <Section title="Chuyên cần của con" subtitle="Lịch sử đi học và ghi chú" wide>
-          <Async state={att} empty="Chưa có dữ liệu">
+          <Async paginate state={att} empty="Chưa có dữ liệu" itemLabel="lượt điểm danh">
             {(l) => (<table className="live-table"><thead><tr><th>Ngày</th><th>Môn</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
               <tbody>{l.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((r) => <tr key={r.id}><td>{fmtDate(r.date)}</td><td>{r.subjectName}</td><td><StatusPill value={ATT_LABEL[r.status] || r.status} /></td><td><small>{r.note || '—'}</small></td></tr>)}</tbody></table>)}
           </Async>
@@ -110,7 +110,7 @@ export function ParentInvoiceLive() {
     <Section title="Học phí" subtitle="Theo dõi và thanh toán các khoản thu" wide
       action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
       {toast.node}
-      <Async state={invoices} empty="Chưa có hóa đơn. Vui lòng liên hệ nhà trường.">
+      <Async paginate state={invoices} empty="Chưa có hóa đơn. Vui lòng liên hệ nhà trường." itemLabel="hóa đơn">
         {(l) => (
           <table className="live-table">
             <thead><tr><th>Mã HĐ</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>

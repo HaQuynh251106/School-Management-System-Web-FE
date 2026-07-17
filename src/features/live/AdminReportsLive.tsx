@@ -16,6 +16,7 @@ export function AdminReportsLive() {
   const [yearId, setYearId] = useState('');
   const promotion = useApi<Record<string, number>>(yearId ? `/reports/promotion?academicYearId=${yearId}` : null);
   const toast = useToast();
+  const gradeTotal = (dist.data ?? []).reduce((sum, item) => sum + item.count, 0);
 
   const exportReport = async (type: string) => {
     try {
@@ -54,12 +55,11 @@ export function AdminReportsLive() {
 
       <div className="admin-dashboard-table-grid">
         <Section title="Phổ điểm toàn trường" subtitle="Phân bố kết quả học tập">
-          <Async state={dist}>{(d) => (
+          <Async paginate state={dist} itemLabel="khoảng điểm">{(d) => (
             <div className="admin-table-scroll"><table className="live-table admin-data-table">
               <thead><tr><th>Khoảng điểm</th><th>Số kết quả</th><th>Tỷ trọng</th></tr></thead>
               <tbody>{d.map((band) => {
-                const total = d.reduce((sum, item) => sum + item.count, 0);
-                return <tr key={band.band}><td><strong>{band.band}</strong></td><td className="admin-table-value">{band.count}</td><td>{total ? Math.round(band.count / total * 100) : 0}%</td></tr>;
+                return <tr key={band.band}><td><strong>{band.band}</strong></td><td className="admin-table-value">{band.count}</td><td>{gradeTotal ? Math.round(band.count / gradeTotal * 100) : 0}%</td></tr>;
               })}</tbody>
             </table></div>
           )}</Async>

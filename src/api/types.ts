@@ -99,9 +99,17 @@ export interface TeacherGradebookContext {
 
 export interface Notification {
   id: string; recipientId: string; type: string; title: string; body: string;
+  priority?: 'NORMAL' | 'IMPORTANT' | 'URGENT';
   read: boolean; refType?: string; refId?: string; createdAt: string;
 }
-export interface Announcement { id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string; }
+export interface Announcement {
+  id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string;
+  category?: string; priority?: string; status?: string; recipientCount?: number;
+}
+export interface TeacherAnnouncementScope {
+  classId: string; classCode: string; studentCount: number; parentCount: number;
+  subjects: string[]; homeroom: boolean;
+}
 export interface NotificationTemplate { id: string; code: string; name: string; channel: string; titleTemplate?: string; bodyTemplate?: string; active: boolean; }
 
 export interface Assignment {
@@ -148,3 +156,28 @@ export interface StudentYearlySummary {
 
 export interface Club { id: string; name: string; description?: string; capacity: number; schedule?: string; fee: number; status: string; }
 export interface ClubRegistration { id: string; clubId: string; clubName?: string; studentId: string; studentName?: string; status: string; registeredAt?: string; }
+
+export interface DashboardMetric {
+  key: string;
+  label: string;
+  value: number;
+  format: 'NUMBER' | 'PERCENT' | 'DECIMAL_1' | 'CURRENCY' | string;
+  hint: string;
+  tone: 'blue' | 'green' | 'orange' | 'red' | 'violet' | string;
+}
+
+export interface DashboardDatum { label: string; value: number; }
+
+export interface DashboardChart {
+  title: string;
+  subtitle: string;
+  type: 'BAR' | 'COLUMN' | string;
+  suffix: string;
+  max: number;
+  data: DashboardDatum[];
+}
+
+export interface DashboardResponse {
+  metrics: DashboardMetric[];
+  charts: DashboardChart[];
+}
