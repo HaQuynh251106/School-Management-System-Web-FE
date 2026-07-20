@@ -9,8 +9,7 @@ import { useTheme } from '../../api/theme';
 import type { CSSProperties } from 'react';
 
 const env = (import.meta as any).env || {};
-const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
-  || (env.DEV && env.VITE_SHOW_DEMO_ACCOUNTS !== 'false');
+const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true';
 const demos = showDemoAccounts ? [
   { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
   { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.hoa', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },

@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CircleDollarSign,
   ClipboardList,
-  Clock3,
   Database,
   Eye,
   FileSpreadsheet,
@@ -35,7 +34,6 @@ import {
   currency,
   feePeriods,
   gradeBands,
-  holidays,
   importRows,
   notificationTemplates,
   payments,
@@ -233,22 +231,6 @@ export function AdminTimetableFeature({
                   title: item.slot,
                   value: item.severity,
                   meta: item.reason,
-                }))}
-              />
-            </Section>
-          ),
-        },
-        {
-          id: 'holidays',
-          label: 'Ngày nghỉ',
-          Icon: Clock3,
-          content: (
-            <Section title="School holidays" subtitle="Ngày nghỉ dùng để chặn hoặc cảnh báo khi xếp lịch" wide>
-              <InfoGrid
-                items={holidays.map((item) => ({
-                  title: item.date,
-                  value: item.title,
-                  meta: item.scope,
                 }))}
               />
             </Section>

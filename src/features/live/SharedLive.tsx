@@ -1,21 +1,15 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
+import { Bell, BellRing, BookOpen, CalendarClock, CalendarPlus, CheckCircle2, Clock3, Download, FileText, Inbox, Lock, MailOpen, MapPin, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Search, School, Send, Settings2, Trash2, Upload, Users, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
+import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
-import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
+import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime } from './common';
+import { filterNotifications, notificationSummary, NOTIFICATION_TYPE_LABEL, type NotificationPriorityFilter, type NotificationReadFilter } from './notifications';
 
 /* ===== TKB tuần (B2/C2) ===== */
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
-
-const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
-  GENERAL: 'Thông báo chung', HOLIDAY: 'Nghỉ lễ', GRADE: 'Điểm số', GRADE_PUBLISHED: 'Điểm số',
-  EVENT: 'Sự kiện', STUDENT_STATUS: 'Tình hình học sinh', ATTENDANCE: 'Điểm danh',
-  ATTENDANCE_ALERT: 'Chuyên cần', PARENT_MEETING: 'Họp phụ huynh', ASSIGNMENT: 'Bài tập',
-  FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán', ANNOUNCEMENT: 'Thông báo chung', EXTRACURRICULAR: 'Ngoại khóa',
-};
 
 function classLabel(value: string) {
   return value.replace(/^c-/i, '').replace(/-/g, ' ').toUpperCase();
@@ -135,6 +129,8 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const [sel, setSel] = useState<string | null>(null);
   const subs = useApi<Submission[]>(actor === 'teacher' && sel ? `/assignments/${sel}/submissions` : null);
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deadlineDrafts, setDeadlineDrafts] = useState<Record<string, string>>({});
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
   const [submissionFile, setSubmissionFile] = useState<File | null>(null);
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
@@ -173,14 +169,26 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
     setBusy(true);
     try {
       const stored = await upload(assignmentFile);
-      await api.post('/assignments', {
-        ...f,
-        deadline: f.deadline ? new Date(f.deadline).toISOString() : null,
-        attachmentFileId: stored?.id || null,
-        publishNow,
-      });
-      toast.show('ok', publishNow ? 'Đã giao bài và thông báo cho học sinh' : 'Đã lưu bản nháp');
+      if (editingId) {
+        await api.put(`/assignments/${editingId}`, {
+          title: f.title,
+          description: f.description,
+          deadline: f.deadline ? new Date(f.deadline).toISOString() : undefined,
+          allowLate: f.allowLate,
+          attachmentFileId: stored?.id,
+        });
+        toast.show('ok', 'Đã cập nhật bài tập và thông báo thay đổi');
+      } else {
+        await api.post('/assignments', {
+          ...f,
+          deadline: f.deadline ? new Date(f.deadline).toISOString() : null,
+          attachmentFileId: stored?.id || null,
+          publishNow,
+        });
+        toast.show('ok', publishNow ? 'Đã giao bài và thông báo cho học sinh' : 'Đã lưu bản nháp');
+      }
       setF({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false });
+      setEditingId(null);
       setAssignmentFile(null);
       list.reload();
     } catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
@@ -216,6 +224,49 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
     catch (e: any) { toast.show('err', e.message); } finally { setBusy(false); }
   };
 
+  const startEdit = (assignment: Assignment) => {
+    setEditingId(assignment.id);
+    setF({
+      classId: assignment.classId, subjectId: assignment.subjectId, title: assignment.title,
+      description: assignment.description || '',
+      deadline: assignment.deadline ? new Date(assignment.deadline).toISOString().slice(0, 16) : '',
+      allowLate: assignment.allowLate,
+    });
+    setAssignmentFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const remove = async (assignment: Assignment) => {
+    if (!window.confirm(`Xóa bài tập “${assignment.title}”?`)) return;
+    setBusy(true);
+    try { await api.del(`/assignments/${assignment.id}`); toast.show('ok', 'Đã xóa bài tập'); list.reload(); }
+    catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
+  };
+
+  const transition = async (assignment: Assignment, action: 'close' | 'reopen') => {
+    setBusy(true);
+    try { await api.post(`/assignments/${assignment.id}/${action}`); toast.show('ok', action === 'close' ? 'Đã đóng bài tập' : 'Đã mở lại bài tập'); list.reload(); }
+    catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
+  };
+
+  const extend = async (assignment: Assignment) => {
+    const value = deadlineDrafts[assignment.id];
+    if (!value) return toast.show('err', 'Chọn hạn nộp mới');
+    setBusy(true);
+    try {
+      await api.post(`/assignments/${assignment.id}/extend`, { deadline: new Date(value).toISOString() });
+      toast.show('ok', 'Đã gia hạn và thông báo cho học sinh, phụ huynh');
+      setDeadlineDrafts({ ...deadlineDrafts, [assignment.id]: '' });
+      list.reload();
+    } catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
+  };
+
+  const allowResubmit = async (submission: Submission) => {
+    setBusy(true);
+    try { await api.post(`/submissions/${submission.id}/allow-resubmit`); toast.show('ok', `Đã cho ${submission.studentName} nộp lại`); subs.reload(); }
+    catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
+  };
+
   const grade = async (s: Submission) => {
     const draft = grading[s.id] || { score: s.score == null ? '' : String(s.score), feedback: s.feedback || '' };
     if (draft.score === '' || Number(draft.score) < 0 || Number(draft.score) > 10) return toast.show('err', 'Nhập điểm từ 0 đến 10');
@@ -242,9 +293,9 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
       {toast.node}
       {actor === 'teacher' && (
         <div className="assignment-composer">
-          <div className="assignment-composer-head"><span><Plus size={18} /></span><div><strong>Tạo bài tập mới</strong><small>Thiết lập yêu cầu và tài liệu cho học sinh</small></div></div>
+          <div className="assignment-composer-head"><span>{editingId ? <Pencil size={18} /> : <Plus size={18} />}</span><div><strong>{editingId ? 'Chỉnh sửa bài tập' : 'Tạo bài tập mới'}</strong><small>{editingId ? 'Các thay đổi của bài đã phát hành sẽ được thông báo tự động' : 'Thiết lập yêu cầu và tài liệu cho học sinh'}</small></div></div>
           <div className="assignment-form-grid">
-            <label><span>Lớp và môn giảng dạy</span><select className="live-select" value={`${f.classId}:${f.subjectId}`} onChange={(e) => { const [classId, subjectId] = e.target.value.split(':'); setF({ ...f, classId: classId || '', subjectId: subjectId || '' }); }}>
+            <label><span>Lớp và môn giảng dạy</span><select className="live-select" disabled={Boolean(editingId)} value={`${f.classId}:${f.subjectId}`} onChange={(e) => { const [classId, subjectId] = e.target.value.split(':'); setF({ ...f, classId: classId || '', subjectId: subjectId || '' }); }}>
               <option value=":">— Chọn phân công —</option>{teachingOptions.map((slot) => <option key={`${slot.classId}:${slot.subjectId}`} value={`${slot.classId}:${slot.subjectId}`}>{classLabel(slot.classId)} · {slot.subjectName}</option>)}
             </select></label>
             <label className="assignment-title-field"><span>Tiêu đề bài tập</span><input className="live-input" placeholder="Ví dụ: Ôn tập chương Hàm số" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
@@ -253,7 +304,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
             <label className="assignment-file-field"><span>Tệp đề bài</span><input className="assignment-file-input" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp" onChange={(e) => setAssignmentFile(e.target.files?.[0] || null)} /><small><Paperclip size={13} /> {assignmentFile?.name || 'PDF, Word, Excel hoặc hình ảnh · tối đa 10 MB'}</small></label>
             <label className="assignment-late-toggle"><input type="checkbox" checked={f.allowLate} onChange={(e) => setF({ ...f, allowLate: e.target.checked })} /><span>Cho phép nộp muộn</span></label>
           </div>
-          <div className="assignment-composer-actions"><button className="live-btn subtle" disabled={busy} onClick={() => create(false)}>Lưu nháp</button><button className="live-btn" disabled={busy} onClick={() => create(true)}><Send size={15} /> {busy ? 'Đang xử lý…' : 'Giao bài ngay'}</button></div>
+          <div className="assignment-composer-actions">{editingId ? <><button className="live-btn subtle" disabled={busy} onClick={() => { setEditingId(null); setF({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false }); }}><X size={14} /> Hủy sửa</button><button className="live-btn" disabled={busy} onClick={() => create(false)}><CheckCircle2 size={15} /> {busy ? 'Đang lưu…' : 'Lưu thay đổi'}</button></> : <><button className="live-btn subtle" disabled={busy} onClick={() => create(false)}>Lưu nháp</button><button className="live-btn" disabled={busy} onClick={() => create(true)}><Send size={15} /> {busy ? 'Đang xử lý…' : 'Giao bài ngay'}</button></>}</div>
         </div>
       )}
       <div className="assignment-summary">
@@ -273,7 +324,15 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
               {assignment.attachmentFileId && <button className="assignment-attachment" onClick={() => downloadFile(assignment.attachmentFileId, assignment.attachmentName)}><Download size={15} /><span>{assignment.attachmentName}</span><small>Tải đề</small></button>}
               {actor === 'teacher' ? <>
                 <div className="assignment-progress"><div><span>Tiến độ nộp bài</span><strong>{assignment.submissionCount || 0}/{assignment.studentCount || 0}</strong></div><i><b style={{ width: `${percent}%` }} /></i></div>
-                <div className="assignment-card-actions">{assignment.status === 'DRAFT' && <button className="live-btn" disabled={busy} onClick={() => publish(assignment.id)}><Send size={14} /> Phát hành</button>}<button className="live-btn subtle" onClick={() => setSel(assignment.id)}><Users size={14} /> Xem bài nộp</button></div>
+                <div className="assignment-deadline-editor"><input className="live-input" type="datetime-local" aria-label={`Hạn mới của ${assignment.title}`} min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)} value={deadlineDrafts[assignment.id] || ''} onChange={(event) => setDeadlineDrafts({ ...deadlineDrafts, [assignment.id]: event.target.value })} /><button className="live-btn subtle" disabled={busy} onClick={() => extend(assignment)}><CalendarPlus size={14} /> Gia hạn</button></div>
+                <div className="assignment-card-actions lifecycle-actions">
+                  {assignment.status === 'DRAFT' && <button className="live-btn" disabled={busy} onClick={() => publish(assignment.id)}><Send size={14} /> Phát hành</button>}
+                  {assignment.status === 'PUBLISHED' && <button className="live-btn subtle" disabled={busy} onClick={() => transition(assignment, 'close')}><Lock size={14} /> Đóng</button>}
+                  {assignment.status === 'CLOSED' && <button className="live-btn" disabled={busy} onClick={() => transition(assignment, 'reopen')}><RotateCcw size={14} /> Mở lại</button>}
+                  <button className="live-btn subtle" disabled={busy || assignment.status === 'CLOSED'} onClick={() => startEdit(assignment)}><Pencil size={14} /> Sửa</button>
+                  <button className="live-btn danger" disabled={busy} onClick={() => remove(assignment)}><Trash2 size={14} /> Xóa</button>
+                  <button className="live-btn subtle" onClick={() => setSel(assignment.id)}><Users size={14} /> Bài nộp</button>
+                </div>
               </> : <>
                 {(submission?.status === 'GRADED' || submission?.score != null) && <div className="assignment-grade-result">
                   <div className="assignment-grade-score"><span>Điểm bài làm</span><strong>{submission.score?.toFixed(1) ?? '—'}</strong><small>/ 10</small></div>
@@ -283,7 +342,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
                     {submission.gradedAt && <small>Chấm lúc {fmtDateTime(submission.gradedAt)}</small>}
                   </div>
                 </div>}
-                <div className="assignment-card-actions"><span className="assignment-submission-state">{submission ? `Đã nộp ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</span>{submission?.status !== 'GRADED' && <button className="live-btn" onClick={() => openSubmission(assignment)}><Upload size={14} /> {submission ? 'Nộp lại' : 'Nộp bài'}</button>}</div>
+                <div className="assignment-card-actions"><span className="assignment-submission-state">{submission ? `Lần ${submission.attemptNumber || 1} · ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</span>{(submission?.status !== 'GRADED' || submission?.resubmissionAllowed) && assignment.status === 'PUBLISHED' && <button className="live-btn" onClick={() => openSubmission(assignment)}><Upload size={14} /> {submission ? 'Nộp lại' : 'Nộp bài'}</button>}</div>
               </>}
             </article>;
           })}</div>
@@ -296,7 +355,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
               <table className="live-table assignment-submission-table"><thead><tr><th>Học sinh</th><th>Bài làm</th><th>Trạng thái</th><th>Điểm và phản hồi</th><th></th></tr></thead>
                 <tbody>{l.map((s) => (
                   <tr key={s.id}><td><strong>{s.studentName}</strong><small>{fmtDateTime(s.submittedAt)}</small></td><td><p>{s.content || 'Chỉ gửi tệp đính kèm'}</p>{s.attachmentFileId && <button className="assignment-file-link" onClick={() => downloadFile(s.attachmentFileId, s.attachmentName)}><Download size={13} /> {s.attachmentName}</button>}</td><td><StatusPill value={s.status} /></td><td><input className="gradebook-score-input" aria-label={`Điểm của ${s.studentName}`} type="number" min={0} max={10} step="0.1" value={grading[s.id]?.score ?? (s.score == null ? '' : String(s.score))} onChange={(e) => setGrading({ ...grading, [s.id]: { score: e.target.value, feedback: grading[s.id]?.feedback ?? s.feedback ?? '' } })} /><input className="live-input assignment-feedback" aria-label={`Phản hồi cho ${s.studentName}`} placeholder="Nhận xét" value={grading[s.id]?.feedback ?? s.feedback ?? ''} onChange={(e) => setGrading({ ...grading, [s.id]: { score: grading[s.id]?.score ?? (s.score == null ? '' : String(s.score)), feedback: e.target.value } })} /></td>
-                    <td><button className="live-btn subtle" disabled={busy} onClick={() => grade(s)}><CheckCircle2 size={14} /> Lưu chấm</button></td></tr>
+                    <td><div className="submission-actions"><button className="live-btn subtle" disabled={busy} onClick={() => grade(s)}><CheckCircle2 size={14} /> Lưu chấm</button>{s.status === 'GRADED' && !s.resubmissionAllowed && <button className="live-btn subtle" disabled={busy || selectedAssignment?.status !== 'PUBLISHED'} onClick={() => allowResubmit(s)}><RotateCcw size={14} /> Cho nộp lại</button>}</div></td></tr>
                 ))}</tbody></table>
             )}
           </Async>
@@ -311,66 +370,69 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   );
 }
 
-/* ===== Ngoại khóa (C6 + D5) ===== */
-export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'parent'; childId?: string | null }) {
-  const toast = useToast();
-  const clubs = useApi<Club[]>('/clubs');
-  const regsPath = actor === 'student' ? '/me/club-registrations' : childId ? `/me/club-registrations?studentId=${childId}` : null;
-  const myRegs = useApi<ClubRegistration[]>(regsPath);
-
-  const register = async (clubId: string) => {
-    if (actor === 'parent' && !childId) return toast.show('err', 'Vui lòng chọn học sinh trước');
-    try {
-      await api.post(`/clubs/${clubId}/register`, actor === 'parent' ? { studentId: childId } : {});
-      toast.show('ok', 'Đăng ký thành công');
-      myRegs.reload();
-    } catch (e: any) { toast.show('err', e.message); }
-  };
-
-  const joined = new Set((myRegs.data || []).filter((r) => r.status === 'REGISTERED').map((r) => r.clubId));
-
-  return (
-    <Section title={actor === 'student' ? 'Đăng ký ngoại khóa' : 'Đăng ký ngoại khóa cho con'} subtitle="Chọn hoạt động phù hợp và còn chỗ" wide>
-      {toast.node}
-      <Async paginate state={clubs} empty="Chưa có CLB nào" itemLabel="câu lạc bộ">
-        {(l) => (
-          <table className="live-table">
-            <thead><tr><th>CLB</th><th>Lịch</th><th>Sức chứa</th><th>Phí</th><th></th></tr></thead>
-            <tbody>{l.map((c) => (
-              <tr key={c.id}>
-                <td><strong>{c.name}</strong></td><td>{c.schedule || '—'}</td><td>{c.capacity}</td><td>{money(c.fee)}</td>
-                <td>{joined.has(c.id)
-                  ? <Badge tone="green">Đã đăng ký</Badge>
-                  : <button className="live-btn" onClick={() => register(c.id)}><Plus size={14} /> Đăng ký</button>}</td>
-              </tr>
-            ))}</tbody>
-          </table>
-        )}
-      </Async>
-    </Section>
-  );
-}
-
-/* ===== Thông báo in-app (C5) ===== */
-export function NotificationsLive() {
+/* ===== Hộp thư thông báo dùng chung (B7/C5/D5) ===== */
+export function NotificationsLive({ audience = 'student' }: { audience?: 'teacher' | 'student' | 'parent' }) {
   const inbox = useApi<Notification[]>('/notifications');
   const preferences = useApi<NotificationPreference[]>('/notification-preferences');
   const toast = useToast();
-  const markRead = async (id: string) => { try { await api.post(`/notifications/${id}/read`); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
-  const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
+  const [query, setQuery] = useState('');
+  const [readFilter, setReadFilter] = useState<NotificationReadFilter>('ALL');
+  const [priorityFilter, setPriorityFilter] = useState<NotificationPriorityFilter>('ALL');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [showPreferences, setShowPreferences] = useState(false);
+  const items = useMemo(() => inbox.data || [], [inbox.data]);
+  const summary = useMemo(() => notificationSummary(items), [items]);
+  const visibleNotifications = useMemo(() => filterNotifications(items, {
+    query, read: readFilter, priority: priorityFilter, type: typeFilter,
+  }), [items, priorityFilter, query, readFilter, typeFilter]);
+  const availableTypes = useMemo(() => Array.from(new Set(items.map((item) => item.type))).sort(), [items]);
+  const ownerLabel = audience === 'teacher' ? 'giáo viên' : audience === 'parent' ? 'phụ huynh' : 'học sinh';
+
+  const refresh = () => { inbox.reload(); preferences.reload(); };
+  const markRead = async (id: string) => {
+    try { await api.post(`/notifications/${id}/read`); inbox.reload(); }
+    catch (e: any) { toast.show('err', e.message); }
+  };
+  const markUnread = async (id: string) => {
+    try { await api.post(`/notifications/${id}/unread`); inbox.reload(); }
+    catch (e: any) { toast.show('err', e.message); }
+  };
+  const markAll = async () => {
+    try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả thông báo là đã đọc'); inbox.reload(); }
+    catch (e: any) { toast.show('err', e.message); }
+  };
   const togglePreference = async (preference: NotificationPreference) => {
     try {
       await api.put('/notification-preferences', { channel: preference.channel, enabled: !preference.enabled });
-      toast.show('ok', 'Đã cập nhật tùy chọn thông báo'); preferences.reload();
+      toast.show('ok', 'Đã cập nhật kênh nhận thông báo'); preferences.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
-    <div className="notification-page-grid">
+    <div className={`notification-page-grid notification-inbox notification-inbox--${audience}`}>
       {toast.node}
-      <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
+      <section className="notification-inbox-hero">
+        <div className="notification-inbox-hero-copy">
+          <span className="notification-inbox-icon"><Inbox size={25} /></span>
+          <div><small>Trung tâm cập nhật dành cho {ownerLabel}</small><h2>Hộp thư thông báo</h2><p>Thông tin từ nhà trường và các nghiệp vụ liên quan được tập trung tại một nơi.</p></div>
+        </div>
+        <div className="notification-inbox-actions">
+          <button type="button" className="live-btn ghost" onClick={() => setShowPreferences((value) => !value)}><Settings2 size={15} /> Kênh nhận</button>
+          <button type="button" className="live-btn ghost" onClick={refresh}><RefreshCw size={15} /> Cập nhật</button>
+          <button type="button" className="live-btn" onClick={markAll} disabled={!summary.unread}><CheckCircle2 size={15} /> Đọc tất cả</button>
+        </div>
+      </section>
+
+      <div className="notification-inbox-summary" aria-label="Tổng quan hộp thư">
+        <article><span className="blue"><Bell size={18} /></span><div><small>Tất cả</small><strong>{summary.total}</strong></div></article>
+        <article className={summary.unread ? 'highlight' : ''}><span className="violet"><MailOpen size={18} /></span><div><small>Chưa đọc</small><strong>{summary.unread}</strong></div></article>
+        <article><span className="orange"><BellRing size={18} /></span><div><small>Quan trọng</small><strong>{summary.important}</strong></div></article>
+        <article><span className="green"><Clock3 size={18} /></span><div><small>Hôm nay</small><strong>{summary.today}</strong></div></article>
+      </div>
+
+      {showPreferences && <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
         <Async state={preferences} empty="Chưa có tùy chọn thông báo">
-          {(items) => <div className="notification-preferences">{items.map((preference) => (
+          {(channelPreferences) => <div className="notification-preferences">{channelPreferences.map((preference) => (
             <label key={preference.id}>
               <span><strong>{{ IN_APP: 'Trong ứng dụng', PUSH: 'Thông báo đẩy', EMAIL: 'Email' }[preference.channel]}</strong>
                 <small>{preference.channel === 'IN_APP' ? 'Hiển thị trong hộp thư của hệ thống' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
@@ -378,25 +440,30 @@ export function NotificationsLive() {
             </label>
           ))}</div>}
         </Async>
-      </Section>
-      <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
-        action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
-        <Async paginate state={inbox} empty="Không có thông báo" itemLabel="thông báo">
-          {(l) => (
-            <div className="admin-table-scroll"><table className="live-table notification-table">
-              <thead><tr><th>Thời gian</th><th>Loại</th><th>Nội dung</th><th>Mức độ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-              <tbody>{l.map((n) => (
-                <tr key={n.id} className={n.read ? '' : 'notification-row-unread'}>
-                  <td>{fmtDateTime(n.createdAt)}</td>
-                  <td><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[n.type] || n.type}</Badge></td>
-                  <td><strong>{n.title}</strong><small>{n.body}</small></td>
-                  <td>{n.priority && n.priority !== 'NORMAL' ? <Badge tone={n.priority === 'URGENT' ? 'red' : 'orange'}>{n.priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge> : <Badge tone="green">Thông thường</Badge>}</td>
-                  <td><StatusPill value={n.read ? 'READ' : 'UNREAD'} /></td>
-                  <td>{!n.read ? <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button> : <span>—</span>}</td>
-                </tr>
-              ))}</tbody>
-            </table></div>
-          )}
+      </Section>}
+
+      <Section title="Danh sách thông báo" subtitle={`${visibleNotifications.length} thông báo phù hợp với bộ lọc hiện tại`} wide>
+        <div className="notification-inbox-toolbar">
+          <label className="notification-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung…" /></label>
+          <div className="notification-read-filter" role="group" aria-label="Lọc trạng thái đọc">
+            {([['ALL', 'Tất cả'], ['UNREAD', `Chưa đọc (${summary.unread})`], ['READ', 'Đã đọc']] as const).map(([value, label]) => <button type="button" key={value} className={readFilter === value ? 'active' : ''} onClick={() => setReadFilter(value)}>{label}</button>)}
+          </div>
+          <select className="live-select" aria-label="Lọc loại thông báo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="ALL">Tất cả loại</option>{availableTypes.map((type) => <option key={type} value={type}>{NOTIFICATION_TYPE_LABEL[type] || type}</option>)}</select>
+          <select className="live-select" aria-label="Lọc mức độ thông báo" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as NotificationPriorityFilter)}><option value="ALL">Tất cả mức độ</option><option value="URGENT">Khẩn cấp</option><option value="IMPORTANT">Quan trọng</option><option value="NORMAL">Thông thường</option></select>
+        </div>
+
+        <Async paginate pageSize={5} resetKey={`${query}:${readFilter}:${priorityFilter}:${typeFilter}`} state={{ ...inbox, data: visibleNotifications }} empty="Không có thông báo phù hợp" itemLabel="thông báo">
+          {(pageItems) => <div className="notification-inbox-list">{pageItems.map((notification) => {
+            const priority = notification.priority || 'NORMAL';
+            return <article key={notification.id} className={`notification-inbox-item ${notification.read ? 'read' : 'unread'} priority-${priority.toLowerCase()}`}>
+              <span className="notification-item-icon">{notification.read ? <MailOpen size={19} /> : <Bell size={19} />}</span>
+              <div className="notification-item-content">
+                <header><div><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[notification.type] || notification.type}</Badge>{priority !== 'NORMAL' && <Badge tone={priority === 'URGENT' ? 'red' : 'orange'}>{priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge>}</div><time>{fmtDateTime(notification.createdAt)}</time></header>
+                <strong>{notification.title}</strong><p>{notification.body}</p>
+                <footer><span>{notification.refType === 'ANNOUNCEMENT' ? 'Từ Ban quản trị nhà trường' : 'Cập nhật tự động từ hệ thống'}</span><button type="button" onClick={() => notification.read ? markUnread(notification.id) : markRead(notification.id)}>{notification.read ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}</button></footer>
+              </div>
+            </article>;
+          })}</div>}
         </Async>
       </Section>
     </div>

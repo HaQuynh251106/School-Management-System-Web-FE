@@ -36,7 +36,10 @@ export interface SchoolClass {
 }
 export interface Subject { id: string; code: string; name: string; coefficient: number; }
 export interface AcademicYear { id: string; code: string; name: string; status: string; startDate?: string; endDate?: string; }
-export interface Semester { id: string; academicYearId: string; code: string; name: string; sequence: number; status: string; }
+export interface Semester {
+  id: string; academicYearId: string; code: string; name: string; sequence: number; status: string;
+  startDate?: string; endDate?: string;
+}
 export interface Room { id: string; code: string; name?: string; capacity?: number; }
 
 export interface TimetableSlot {
@@ -105,6 +108,16 @@ export interface Notification {
 export interface Announcement {
   id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string;
   category?: string; priority?: string; status?: string; recipientCount?: number;
+  holidayStartDate?: string | null; holidayEndDate?: string | null;
+}
+export interface AttendanceDayStatus {
+  attendanceRequired: boolean; announcementId?: string | null; title?: string | null; reason?: string | null;
+  holidayStartDate?: string | null; holidayEndDate?: string | null;
+}
+export interface AttendanceSessionStatus {
+  state: 'HOLIDAY' | 'INVALID' | 'UPCOMING' | 'OPEN' | 'LOCKED_REASON_REQUIRED' | 'LATE_UNLOCKED' | 'COMPLETED' | 'COMPLETED_LATE';
+  canMark: boolean; requiresUnlockReason: boolean; message: string; date: string;
+  startTime?: string | null; endTime?: string | null; unlockReason?: string | null; unlockedAt?: string | null;
 }
 export interface TeacherAnnouncementScope {
   classId: string; classCode: string; studentCount: number; parentCount: number;
@@ -115,13 +128,22 @@ export interface NotificationTemplate { id: string; code: string; name: string; 
 export interface Assignment {
   id: string; classId: string; subjectId: string; subjectName: string; teacherId: string; teacherName: string;
   title: string; description?: string; status: string; deadline?: string; allowLate: boolean; createdAt: string;
-  attachmentFileId?: string | null; attachmentName?: string | null; submissionCount?: number; studentCount?: number;
+  attachmentFileId?: string | null; attachmentName?: string | null; submissionCount?: number; studentCount?: number; updatedAt?: string | null;
 }
 export interface NotificationPreference { id: string; userId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; enabled: boolean; updatedAt: string; }
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
   attachmentFileId?: string | null; attachmentName?: string | null; gradedAt?: string | null;
+  resubmissionAllowed?: boolean; attemptNumber?: number;
+}
+export interface LeaveRequest {
+  id: string; studentId: string; studentName: string; classId: string; classCode?: string;
+  startDate: string; endDate: string; reason: string;
+  status: 'PENDING_PARENT' | 'PENDING_HOMEROOM' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+  parentId?: string | null; parentName?: string | null; parentConfirmedAt?: string | null;
+  homeroomTeacherId?: string | null; homeroomTeacherName?: string | null;
+  decidedAt?: string | null; decisionNote?: string | null; createdAt: string; updatedAt?: string | null;
 }
 export interface StoredFile { id: string; originalName: string; contentType: string; sizeBytes: number; createdAt: string; }
 
@@ -129,13 +151,33 @@ export interface FeePeriod { id: string; code: string; name?: string; status: st
 export interface FeePeriodItem { id: string; feePeriodId: string; name: string; amount: number; gradeLevel?: string | null; }
 export interface Invoice {
   id: string; code: string; studentId: string; studentName: string; parentId?: string; feePeriodId?: string;
+  classId?: string | null; classCode?: string | null; gradeLevel?: string | null;
   totalAmount: number; paidAmount: number; status: string; issuedAt?: string; dueDate?: string;
 }
 export interface Payment { id: string; invoiceId: string; amount: number; method: string; status: string; txnRef?: string; paidAt?: string; }
+export interface InvoiceDetail { invoice: Invoice; items: Array<{ id: string; invoiceId: string; name: string; amount: number }>; payments: Payment[]; }
+export interface FinancePeriodSummary {
+  periodId: string; code: string; name?: string; status: string; invoiceCount: number;
+  totalAmount: number; paidAmount: number; outstanding: number; collectionRate: number;
+}
+export interface FinanceOverview {
+  invoiceCount: number; paidInvoiceCount: number; partialInvoiceCount: number;
+  overdueInvoiceCount: number; dueSoonInvoiceCount: number; totalAmount: number;
+  paidAmount: number; outstanding: number; collectedThisMonth: number;
+  collectionRate: number; periods: FinancePeriodSummary[];
+}
+export interface FinanceClassSummary {
+  classId: string; classCode: string; gradeLevel?: string | null;
+  homeroomTeacherId?: string | null; homeroomTeacherName?: string | null;
+  invoiceCount: number; paidCount: number; partialCount: number; overdueCount: number;
+  totalAmount: number; paidAmount: number; outstanding: number; collectionRate: number;
+  completed: boolean; completionNotified: boolean;
+}
+export interface ClassReminderResult { invoiceCount: number; recipientCount: number; sentAt: string; }
 export interface PaymentCallback { txnRef: string; status: 'SUCCESS' | 'FAILED'; amount: number; signature: string; }
 export interface PaymentInitResponse {
   payment: Payment; invoice: Invoice; gatewayStatus: string;
-  callbackUrl?: string; sandboxCallback?: PaymentCallback;
+  callbackUrl?: string; sandboxCallback?: PaymentCallback; paymentUrl?: string; gateway?: string;
 }
 
 export interface LoginHistory {
@@ -154,8 +196,6 @@ export interface StudentYearlySummary {
   missingRequirements?: string | null; nextClassId?: string | null; finalizedAt?: string | null;
 }
 
-export interface Club { id: string; name: string; description?: string; capacity: number; schedule?: string; fee: number; status: string; }
-export interface ClubRegistration { id: string; clubId: string; clubName?: string; studentId: string; studentName?: string; status: string; registeredAt?: string; }
 
 export interface DashboardMetric {
   key: string;

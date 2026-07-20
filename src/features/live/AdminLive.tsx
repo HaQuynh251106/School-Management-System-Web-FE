@@ -1,14 +1,14 @@
-import { useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, NotificationTemplate, Club, ClubRegistration,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, InvoiceDetail,
   ImportResult, LoginHistory, StudentYearlySummary, Announcement,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
-import { Async, useToast, money, fmtDateTime } from './common';
+import { Async, PaginatedData, useToast, money, fmtDateTime, fmtDate } from './common';
 import { Modal, Field } from './Modal';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
 
@@ -21,10 +21,41 @@ const BLANK_USER = {
   guardianName: '', guardianPhone: '',
 };
 
-export function AdminUsersLive() {
+type ManagedUserRole = 'STUDENT' | 'TEACHER' | 'PARENT';
+
+const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: string; createLabel: string; itemLabel: string; empty: string }> = {
+  STUDENT: {
+    title: 'Quản lý học sinh',
+    subtitle: 'Hồ sơ, tài khoản, lớp học và trạng thái của học sinh',
+    createLabel: 'Thêm học sinh',
+    itemLabel: 'học sinh',
+    empty: 'Chưa có học sinh',
+  },
+  TEACHER: {
+    title: 'Quản lý giáo viên',
+    subtitle: 'Hồ sơ, chuyên môn và trạng thái tài khoản giáo viên',
+    createLabel: 'Thêm giáo viên',
+    itemLabel: 'giáo viên',
+    empty: 'Chưa có giáo viên',
+  },
+  PARENT: {
+    title: 'Quản lý phụ huynh',
+    subtitle: 'Tài khoản phụ huynh và liên kết với học sinh',
+    createLabel: 'Thêm phụ huynh',
+    itemLabel: 'phụ huynh',
+    empty: 'Chưa có phụ huynh',
+  },
+};
+
+export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   const [role, setRole] = useState('');
   const [q, setQ] = useState('');
-  const params = [role && `role=${role}`, q && `q=${encodeURIComponent(q)}`].filter(Boolean).join('&');
+  const [gradeLevel, setGradeLevel] = useState('ALL');
+  const [classId, setClassId] = useState('ALL');
+  const selectedRole = fixedRole || role;
+  const supportsClassScope = fixedRole === 'STUDENT' || fixedRole === 'PARENT';
+  const params = [selectedRole && `role=${selectedRole}`, q && `q=${encodeURIComponent(q)}`,
+    supportsClassScope && classId !== 'ALL' && `classId=${encodeURIComponent(classId)}`].filter(Boolean).join('&');
   const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
   const classes = useApi<SchoolClass[]>('/classes');
   const students = useApi<ApiUser[]>('/users?role=STUDENT');
@@ -37,8 +68,43 @@ export function AdminUsersLive() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
+  const roleConfig = fixedRole ? USER_ROLE_CONFIG[fixedRole] : null;
+  const availableGrades = useMemo(() => [...new Set((classes.data || [])
+    .map((schoolClass) => schoolClass.gradeLevel).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'vi')), [classes.data]);
+  const availableClasses = useMemo(() => (classes.data || [])
+    .filter((schoolClass) => gradeLevel === 'ALL' || schoolClass.gradeLevel === gradeLevel)
+    .sort((a, b) => a.code.localeCompare(b.code, 'vi')), [classes.data, gradeLevel]);
+  const selectedClass = (classes.data || []).find((schoolClass) => schoolClass.id === classId);
+  const scopeFiltered = classId !== 'ALL' || gradeLevel !== 'ALL';
+  const visibleUsers = useMemo(() => {
+    const rows = users.data || [];
+    if (gradeLevel === 'ALL' || classId !== 'ALL') return rows;
+    const classIdsInGrade = new Set((classes.data || [])
+      .filter((schoolClass) => schoolClass.gradeLevel === gradeLevel).map((schoolClass) => schoolClass.id));
+    if (fixedRole === 'STUDENT') return rows.filter((user) => !!user.classId && classIdsInGrade.has(user.classId));
+    if (fixedRole === 'PARENT') {
+      const studentIdsInGrade = new Set((students.data || [])
+        .filter((student) => !!student.classId && classIdsInGrade.has(student.classId)).map((student) => student.id));
+      return rows.filter((user) => (user.childrenIds || []).some((studentId) => studentIdsInGrade.has(studentId)));
+    }
+    return rows;
+  }, [classId, classes.data, fixedRole, gradeLevel, students.data, users.data]);
+  const userStats = {
+    total: visibleUsers.length,
+    active: visibleUsers.filter((user) => user.status === 'ACTIVE').length,
+    locked: visibleUsers.filter((user) => user.status !== 'ACTIVE').length,
+  };
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const changeGrade = (value: string) => {
+    setGradeLevel(value);
+    if (classId !== 'ALL' && !(classes.data || []).some((schoolClass) => schoolClass.id === classId
+      && (value === 'ALL' || schoolClass.gradeLevel === value))) setClassId('ALL');
+  };
+  const linkedStudentsInScope = (parent: ApiUser) => (students.data || []).filter((student) =>
+    (parent.childrenIds || []).includes(student.id)
+    && (classId !== 'ALL' ? student.classId === classId : gradeLevel === 'ALL'
+      || classes.data?.some((schoolClass) => schoolClass.id === student.classId && schoolClass.gradeLevel === gradeLevel)));
 
   const toggleLock = async (u: ApiUser) => {
     try {
@@ -51,7 +117,7 @@ export function AdminUsersLive() {
   const closeEditor = () => {
     setShowEditor(false);
     setEditingUser(null);
-    setForm({ ...BLANK_USER });
+    setForm({ ...BLANK_USER, role: fixedRole || BLANK_USER.role });
   };
 
   const resetPassword = async (u: ApiUser) => {
@@ -108,7 +174,7 @@ export function AdminUsersLive() {
 
   const openCreate = () => {
     setEditingUser(null);
-    setForm({ ...BLANK_USER });
+    setForm({ ...BLANK_USER, role: fixedRole || BLANK_USER.role });
     setShowEditor(true);
   };
 
@@ -188,15 +254,26 @@ export function AdminUsersLive() {
   };
 
   return (
-    <Section title="Người dùng & phân quyền" subtitle="Quản lý tài khoản và quyền truy cập" wide
-      action={<button className="live-btn" onClick={openCreate}><Plus size={15} /> Tạo người dùng</button>}>
+    <Section title={roleConfig?.title || 'Người dùng & phân quyền'} subtitle={roleConfig?.subtitle || 'Quản lý tài khoản và quyền truy cập'} wide
+      action={<button className="live-btn" onClick={openCreate}><Plus size={15} /> {roleConfig?.createLabel || 'Tạo người dùng'}</button>}>
       {toast.node}
+      {roleConfig && <div className="admin-user-summary" aria-label={`Thống kê ${roleConfig.itemLabel}`}>
+        <article><span><UsersRound size={18} /></span><div><small>{scopeFiltered ? 'Đang hiển thị' : 'Tổng số'}</small><strong>{userStats.total}</strong></div></article>
+        <article><span><CheckCircle2 size={18} /></span><div><small>Đang hoạt động</small><strong>{userStats.active}</strong></div></article>
+        <article><span><Lock size={18} /></span><div><small>Đã khóa</small><strong>{userStats.locked}</strong></div></article>
+      </div>}
+      {supportsClassScope && <div className="admin-account-scope-filter">
+        <div className="admin-account-scope-heading"><span><School size={19} /></span><div><strong>Xem tài khoản theo lớp học</strong><small>{fixedRole === 'PARENT' ? 'Phụ huynh được xác định theo lớp của học sinh đã liên kết' : 'Thu hẹp danh sách học sinh theo khối và lớp cụ thể'}</small></div></div>
+        <label><span>Khối</span><select className="live-select" value={gradeLevel} onChange={(event) => changeGrade(event.target.value)}><option value="ALL">Tất cả khối</option>{availableGrades.map((grade) => <option key={grade} value={grade}>{grade}</option>)}</select></label>
+        <label><span>Lớp</span><select className="live-select" value={classId} onChange={(event) => setClassId(event.target.value)}><option value="ALL">Tất cả lớp</option>{availableClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code} · {schoolClass.name}</option>)}</select></label>
+        <div className={`admin-account-scope-result ${scopeFiltered ? 'active' : ''}`}><GraduationCap size={17} /><span>{selectedClass ? <>Đang xem <strong>lớp {selectedClass.code}</strong> · {selectedClass.gradeLevel}</> : gradeLevel !== 'ALL' ? <>Đang xem <strong>toàn bộ khối {gradeLevel}</strong></> : <>Đang xem <strong>toàn bộ trường</strong></>}</span></div>
+      </div>}
       <div className="live-toolbar">
-        <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
+        {!fixedRole && <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="">Tất cả vai trò</option>
           <option value="ADMIN">Quản trị viên</option><option value="TEACHER">Giáo viên</option>
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
-        </select>
+        </select>}
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className={`live-btn ghost ${importing ? 'is-disabled' : ''}`}>
           <Upload size={15} /> {importing ? 'Đang nhập…' : 'Nhập Excel'}
@@ -214,17 +291,25 @@ export function AdminUsersLive() {
         </div>
       )}
 
-      <Async paginate state={users} empty="Không có người dùng" itemLabel="người dùng" resetKey={`${role}:${q}`}>
+      <Async paginate state={{ ...users, data: visibleUsers }} empty={scopeFiltered ? `Không có ${roleConfig?.itemLabel || 'người dùng'} trong phạm vi đã chọn` : roleConfig?.empty || 'Không có người dùng'} itemLabel={roleConfig?.itemLabel || 'người dùng'} resetKey={`${selectedRole}:${q}:${gradeLevel}:${classId}`}>
         {(pageItems) => (
           <>
             <table className="live-table">
-              <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th></th></tr></thead>
+              <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>{fixedRole === 'STUDENT' ? 'Lớp học' : fixedRole === 'TEACHER' ? 'Chuyên môn' : fixedRole === 'PARENT' ? 'Liên kết học sinh' : 'Vai trò'}</th><th>Trạng thái</th><th></th></tr></thead>
               <tbody>
                 {pageItems.map((u) => (
                   <tr key={u.id}>
-                    <td><strong>{u.fullName}</strong>{u.studentCode && <small style={{ color: 'var(--muted)' }}> · {u.studentCode}</small>}{u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</td>
+                    <td><strong>{u.fullName}</strong>{!fixedRole && u.studentCode && <small style={{ color: 'var(--muted)' }}> · {u.studentCode}</small>}{!fixedRole && u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</td>
                     <td>@{u.username}</td>
-                    <td><Badge tone="blue">{viLabel(u.role)}</Badge></td>
+                    <td>{fixedRole === 'STUDENT'
+                      ? <><strong>{u.className || 'Chưa xếp lớp'}</strong>{u.studentCode && <small style={{ color: 'var(--muted)' }}> · {u.studentCode}</small>}</>
+                      : fixedRole === 'TEACHER'
+                        ? <><strong>{u.mainSubject || 'Chưa cập nhật môn'}</strong>{u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</>
+                        : fixedRole === 'PARENT'
+                          ? <div className="parent-account-class-links">{linkedStudentsInScope(u).length
+                            ? linkedStudentsInScope(u).map((student) => <span key={student.id}><strong>{student.fullName}</strong><small>{student.className || 'Chưa xếp lớp'}</small></span>)
+                            : <Badge tone="blue">{u.childrenIds?.length || 0} học sinh</Badge>}</div>
+                          : <Badge tone="blue">{viLabel(u.role)}</Badge>}</td>
                     <td><StatusPill value={u.status} /></td>
                     <td>
                       <div className="admin-user-actions">
@@ -244,7 +329,7 @@ export function AdminUsersLive() {
       </Async>
 
       {showEditor && (
-        <Modal title={editingUser ? `Chỉnh sửa hồ sơ · ${editingUser.fullName}` : 'Tạo người dùng mới'} onClose={closeEditor}
+        <Modal title={editingUser ? `Chỉnh sửa hồ sơ · ${editingUser.fullName}` : roleConfig?.createLabel || 'Tạo người dùng mới'} onClose={closeEditor}
           footer={<>
             <button className="live-btn ghost" onClick={closeEditor} disabled={saving}>Hủy</button>
             <button className="live-btn" onClick={saveUser} disabled={saving}>
@@ -256,7 +341,7 @@ export function AdminUsersLive() {
               <header><span><UserRound size={18} /></span><div><h4>Thông tin tài khoản</h4><p>Thông tin nhận diện và đăng nhập hệ thống</p></div></header>
               <div className="admin-user-form-grid">
                 <Field label="Vai trò">
-                  <select value={form.role} disabled={Boolean(editingUser)} onChange={(e) => set('role', e.target.value)}>
+                  <select value={form.role} disabled={Boolean(editingUser || fixedRole)} onChange={(e) => set('role', e.target.value)}>
                     <option value="STUDENT">Học sinh</option><option value="TEACHER">Giáo viên</option>
                     <option value="PARENT">Phụ huynh</option><option value="ADMIN">Quản trị viên</option>
                   </select>
@@ -366,7 +451,7 @@ export function AdminUsersLive() {
 }
 
 /* ============ A2 — Cơ cấu đào tạo (thêm tạo phòng học) ============ */
-export function AdminAcademicLive() {
+export function AdminAcademicLegacyLive() {
   const years = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
   const classes = useApi<SchoolClass[]>('/classes');
@@ -538,8 +623,7 @@ export function AdminAcademicLive() {
     </>
   );
 }
-
-function YearEndManager({ years }: { years: AcademicYear[] }) {
+export function YearEndManager({ years }: { years: AcademicYear[] }) {
   const [yearId, setYearId] = useState('');
   const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
   const toast = useToast();
@@ -628,107 +712,357 @@ export function AdminExamCategoriesLive() {
   );
 }
 
-/* ============ A7 — Tài chính (xác nhận thu tiền mặt) ============ */
+/* ============ A7 — Tài chính nội bộ ============ */
+const EMPTY_PERIOD_FORM = { code: '', name: '', applyToGrades: '', dueDate: '' };
+
+function effectiveInvoiceStatus(invoice: Invoice) {
+  if (invoice.status !== 'PAID' && invoice.dueDate && new Date(`${invoice.dueDate}T23:59:59`) < new Date()) return 'OVERDUE';
+  return invoice.status;
+}
+
+function downloadInvoiceCsv(rows: Invoice[]) {
+  const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  const data = [
+    ['Mã hóa đơn', 'Học sinh', 'Khối', 'Lớp', 'Tổng tiền', 'Đã thu', 'Còn lại', 'Hạn thanh toán', 'Trạng thái'],
+    ...rows.map((invoice) => [invoice.code, invoice.studentName, invoice.gradeLevel || '', invoice.classCode || '', invoice.totalAmount, invoice.paidAmount,
+      invoice.totalAmount - invoice.paidAmount, invoice.dueDate || '', viLabel(effectiveInvoiceStatus(invoice))]),
+  ];
+  const blob = new Blob([`\uFEFF${data.map((row) => row.map(quote).join(',')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `cong-no-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AdminFinanceLive() {
   const periods = useApi<FeePeriod[]>('/fee-periods');
   const invoices = useApi<Invoice[]>('/invoices');
+  const overview = useApi<FinanceOverview>('/finance/overview');
   const toast = useToast();
-  const [sel, setSel] = useState<string | null>(null);
-  const items = useApi<FeePeriodItem[]>(sel ? `/fee-periods/${sel}/items` : null);
-  const [pf, setPf] = useState({ code: '', name: '', applyToGrades: '', dueDate: '' });
-  const [itf, setItf] = useState({ name: '', amount: 1000000 });
+  const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
+  const selectedPeriod = periods.data?.find((period) => period.id === selectedPeriodId) || null;
+  const items = useApi<FeePeriodItem[]>(selectedPeriodId ? `/fee-periods/${selectedPeriodId}/items` : null);
+  const [periodQuery, setPeriodQuery] = useState('');
+  const [invoiceQuery, setInvoiceQuery] = useState('');
+  const [invoiceStatus, setInvoiceStatus] = useState('ALL');
+  const [invoicePeriod, setInvoicePeriod] = useState('ALL');
+  const [invoiceGrade, setInvoiceGrade] = useState('ALL');
+  const [invoiceClass, setInvoiceClass] = useState('ALL');
+  const classSummaries = useApi<FinanceClassSummary[]>(invoicePeriod === 'ALL'
+    ? '/finance/classes'
+    : `/finance/classes?periodId=${encodeURIComponent(invoicePeriod)}`);
+  const [showPeriodEditor, setShowPeriodEditor] = useState(false);
+  const [editingPeriod, setEditingPeriod] = useState<FeePeriod | null>(null);
+  const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
+  const [itemForm, setItemForm] = useState({ name: '', amount: 1000000, gradeLevel: '' });
+  const [busy, setBusy] = useState(false);
+  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
+  const invoiceDetail = useApi<InvoiceDetail>(viewInvoice ? `/invoices/${viewInvoice.id}` : null);
+  const [cashTarget, setCashTarget] = useState<Invoice | null>(null);
+  const [cashAmount, setCashAmount] = useState('');
 
-  const createPeriod = async () => {
-    if (!pf.code) return toast.show('err', 'Nhập mã đợt thu');
-    try {
-      await api.post('/fee-periods', { ...pf, applyToGrades: pf.applyToGrades || null, dueDate: pf.dueDate || null });
-      toast.show('ok', 'Đã tạo đợt thu'); setPf({ code: '', name: '', applyToGrades: '', dueDate: '' }); periods.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+  const refreshFinance = () => {
+    periods.reload();
+    invoices.reload();
+    overview.reload();
+    classSummaries.reload();
+    if (selectedPeriodId) items.reload();
+    if (viewInvoice) invoiceDetail.reload();
   };
+
+  const filteredPeriods = useMemo(() => {
+    const query = periodQuery.trim().toLocaleLowerCase('vi');
+    return (periods.data || []).filter((period) => !query
+      || period.code.toLocaleLowerCase('vi').includes(query)
+      || (period.name || '').toLocaleLowerCase('vi').includes(query));
+  }, [periodQuery, periods.data]);
+
+  const filteredInvoices = useMemo(() => {
+    const query = invoiceQuery.trim().toLocaleLowerCase('vi');
+    return (invoices.data || []).filter((invoice) => {
+      const matchesQuery = !query || invoice.code.toLocaleLowerCase('vi').includes(query)
+        || invoice.studentName.toLocaleLowerCase('vi').includes(query);
+      const matchesStatus = invoiceStatus === 'ALL' || effectiveInvoiceStatus(invoice) === invoiceStatus;
+      const matchesPeriod = invoicePeriod === 'ALL' || invoice.feePeriodId === invoicePeriod;
+      const matchesGrade = invoiceGrade === 'ALL' || invoice.gradeLevel === invoiceGrade;
+      const matchesClass = invoiceClass === 'ALL' || invoice.classId === invoiceClass;
+      return matchesQuery && matchesStatus && matchesPeriod && matchesGrade && matchesClass;
+    });
+  }, [invoiceClass, invoiceGrade, invoicePeriod, invoiceQuery, invoiceStatus, invoices.data]);
+
+  const availableGrades = useMemo(() => [...new Set((classSummaries.data || [])
+    .map((item) => item.gradeLevel).filter(Boolean) as string[])].sort(), [classSummaries.data]);
+  const availableClasses = useMemo(() => (classSummaries.data || []).filter((item) =>
+    invoiceGrade === 'ALL' || item.gradeLevel === invoiceGrade), [classSummaries.data, invoiceGrade]);
+
+  const openCreatePeriod = () => {
+    setEditingPeriod(null);
+    setPeriodForm(EMPTY_PERIOD_FORM);
+    setShowPeriodEditor(true);
+  };
+
+  const openEditPeriod = (period: FeePeriod) => {
+    setEditingPeriod(period);
+    setPeriodForm({ code: period.code, name: period.name || '', applyToGrades: period.applyToGrades || '', dueDate: period.dueDate || '' });
+    setShowPeriodEditor(true);
+  };
+
+  const savePeriod = async () => {
+    if (!periodForm.code.trim() || !periodForm.name.trim()) return toast.show('err', 'Vui lòng nhập mã và tên đợt thu');
+    setBusy(true);
+    try {
+      const payload = { ...periodForm, applyToGrades: periodForm.applyToGrades.trim() || null, dueDate: periodForm.dueDate || null };
+      if (editingPeriod) await api.put(`/fee-periods/${editingPeriod.id}`, payload);
+      else await api.post('/fee-periods', payload);
+      toast.show('ok', editingPeriod ? 'Đã cập nhật đợt thu' : 'Đã tạo đợt thu mới');
+      setShowPeriodEditor(false);
+      refreshFinance();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setBusy(false); }
+  };
+
+  const deletePeriod = async (period: FeePeriod) => {
+    if (!confirm(`Xóa đợt thu nháp “${period.name || period.code}” và toàn bộ khoản thu bên trong?`)) return;
+    try {
+      await api.del(`/fee-periods/${period.id}`);
+      if (selectedPeriodId === period.id) setSelectedPeriodId(null);
+      toast.show('ok', 'Đã xóa đợt thu nháp');
+      refreshFinance();
+    } catch (error: any) { toast.show('err', error.message); }
+  };
+
   const addItem = async () => {
-    if (!sel || !itf.name) return toast.show('err', 'Chọn đợt thu + nhập tên khoản');
-    try { await api.post(`/fee-periods/${sel}/items`, itf); toast.show('ok', 'Đã thêm khoản'); items.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
-  };
-  const open = async (id: string) => { try { await api.post(`/fee-periods/${id}/open`); toast.show('ok', 'Đã mở đợt thu'); periods.reload(); } catch (e: any) { toast.show('err', e.message); } };
-  const generate = async (id: string) => {
-    try { const inv = await api.post<Invoice[]>(`/fee-periods/${id}/generate-invoices`); toast.show('ok', `Đã phát hành ${inv.length} hóa đơn và tự động thông báo tới phụ huynh`); invoices.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
-  };
-  const confirmCash = async (inv: Invoice) => {
-    if (!confirm(`Xác nhận học sinh ${inv.studentName} đã đóng ${money(inv.totalAmount - inv.paidAmount)} tại trường?`)) return;
+    if (!selectedPeriodId || !itemForm.name.trim() || itemForm.amount <= 0) return toast.show('err', 'Nhập đầy đủ tên và số tiền khoản thu');
     try {
-      await api.post('/payments/cash', { invoiceId: inv.id, method: 'CASH' });
-      toast.show('ok', `Đã ghi nhận thu tiền mặt ${inv.code}`);
-      invoices.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+      await api.post(`/fee-periods/${selectedPeriodId}/items`, {
+        ...itemForm, name: itemForm.name.trim(), gradeLevel: itemForm.gradeLevel.trim() || null,
+      });
+      setItemForm({ name: '', amount: 1000000, gradeLevel: '' });
+      toast.show('ok', 'Đã thêm khoản thu');
+      items.reload();
+    } catch (error: any) { toast.show('err', error.message); }
   };
+
+  const deleteItem = async (item: FeePeriodItem) => {
+    if (!selectedPeriodId || !confirm(`Xóa khoản “${item.name}”?`)) return;
+    try {
+      await api.del(`/fee-periods/${selectedPeriodId}/items/${item.id}`);
+      toast.show('ok', 'Đã xóa khoản thu');
+      items.reload();
+    } catch (error: any) { toast.show('err', error.message); }
+  };
+
+  const changePeriodStatus = async (period: FeePeriod, action: 'open' | 'close') => {
+    try {
+      await api.post(`/fee-periods/${period.id}/${action}`);
+      toast.show('ok', action === 'open' ? 'Đợt thu đã sẵn sàng phát hành' : 'Đã đóng đợt thu');
+      refreshFinance();
+    } catch (error: any) { toast.show('err', error.message); }
+  };
+
+  const generateInvoices = async (period: FeePeriod) => {
+    if (!confirm(`Phát hành hóa đơn cho đợt “${period.name || period.code}”? Phụ huynh sẽ nhận được thông báo tự động.`)) return;
+    setBusy(true);
+    try {
+      const result = await api.post<Invoice[]>(`/fee-periods/${period.id}/generate-invoices`);
+      toast.show('ok', `Đã đồng bộ ${result.length} hóa đơn và gửi thông báo tới phụ huynh`);
+      refreshFinance();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setBusy(false); }
+  };
+
+  const openCashPayment = (invoice: Invoice) => {
+    setCashTarget(invoice);
+    setCashAmount(String(invoice.totalAmount - invoice.paidAmount));
+  };
+
+  const confirmCashPayment = async () => {
+    if (!cashTarget) return;
+    const amount = Number(cashAmount);
+    const remaining = cashTarget.totalAmount - cashTarget.paidAmount;
+    if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) return toast.show('err', 'Số tiền thu không hợp lệ');
+    setBusy(true);
+    try {
+      await api.post('/payments/cash', { invoiceId: cashTarget.id, amount });
+      toast.show('ok', `Đã ghi nhận ${money(amount)} cho hóa đơn ${cashTarget.code}`);
+      setCashTarget(null);
+      refreshFinance();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setBusy(false); }
+  };
+
+  const notifyHomeroomCompletion = async (summary: FinanceClassSummary) => {
+    if (!summary.homeroomTeacherId) return toast.show('err', `Lớp ${summary.classCode} chưa có giáo viên chủ nhiệm`);
+    try {
+      const suffix = invoicePeriod === 'ALL' ? '' : `?periodId=${encodeURIComponent(invoicePeriod)}`;
+      await api.post(`/finance/classes/${summary.classId}/notify-completion${suffix}`);
+      toast.show('ok', `Đã thông báo lớp ${summary.classCode} hoàn thành tới giáo viên chủ nhiệm`);
+      classSummaries.reload();
+    } catch (error: any) { toast.show('err', error.message); }
+  };
+
+  const collectionRate = Math.min(100, Math.max(0, overview.data?.collectionRate || 0));
+  const configuredTotal = (items.data || []).reduce((sum, item) => sum + item.amount, 0);
 
   return (
-    <>
+    <div className="finance-page">
       {toast.node}
+      <header className="finance-hero">
+        <div>
+          <span className="finance-eyebrow"><CircleGauge size={15} /> Trung tâm điều hành tài chính</span>
+          <h2>Dòng tiền minh bạch, công nợ dễ kiểm soát</h2>
+          <p>Theo dõi thu học phí theo thời gian thực, xử lý khoản thu và chủ động nhắc phụ huynh trên một màn hình.</p>
+        </div>
+        <div className="finance-hero-actions">
+          <button className="live-btn ghost" type="button" onClick={refreshFinance}><RefreshCw size={15} /> Đồng bộ</button>
+          <button className="live-btn" type="button" onClick={openCreatePeriod}><Plus size={15} /> Tạo đợt thu</button>
+        </div>
+      </header>
+
+      <section className="finance-kpi-grid" aria-label="Tổng quan tài chính">
+        <article className="finance-kpi-card primary"><span><TrendingUp size={20} /></span><div><small>Đã thu toàn trường</small><strong>{money(overview.data?.paidAmount || 0)}</strong><p>{collectionRate.toFixed(1)}% tổng phải thu</p></div></article>
+        <article className="finance-kpi-card"><span><WalletCards size={20} /></span><div><small>Công nợ còn lại</small><strong>{money(overview.data?.outstanding || 0)}</strong><p>{Math.max(0, (overview.data?.invoiceCount || 0) - (overview.data?.paidInvoiceCount || 0))} hóa đơn chưa hoàn tất</p></div></article>
+        <article className="finance-kpi-card success"><span><ReceiptText size={20} /></span><div><small>Thu trong tháng</small><strong>{money(overview.data?.collectedThisMonth || 0)}</strong><p>{overview.data?.paidInvoiceCount || 0} hóa đơn đã thanh toán</p></div></article>
+        <article className={`finance-kpi-card ${(overview.data?.overdueInvoiceCount || 0) > 0 ? 'danger' : ''}`}><span><AlertTriangle size={20} /></span><div><small>Cần xử lý</small><strong>{overview.data?.overdueInvoiceCount || 0} quá hạn</strong><p>{overview.data?.dueSoonInvoiceCount || 0} hóa đơn sắp đến hạn</p></div></article>
+      </section>
+
       <FunctionTabs tabs={[
-        { id: 'periods', label: 'Đợt thu', Icon: CircleDollarSign, content: (
-          <Section title="Đợt thu học phí" subtitle="Quản lý khoản thu và phát hành hóa đơn" wide>
-            <div className="live-toolbar">
-              <input className="live-input" placeholder="Mã (HK2-2025)" value={pf.code} onChange={(e) => setPf({ ...pf, code: e.target.value })} />
-              <input className="live-input grow" placeholder="Tên đợt thu" value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} />
-              <input className="live-input" placeholder="Khối (K10,K11 - trống=tất cả)" value={pf.applyToGrades} onChange={(e) => setPf({ ...pf, applyToGrades: e.target.value })} />
-              <input className="live-input" type="date" aria-label="Hạn thanh toán" title="Hạn thanh toán" value={pf.dueDate} onChange={(e) => setPf({ ...pf, dueDate: e.target.value })} />
-              <button className="live-btn" onClick={createPeriod}><Plus size={15} /> Tạo đợt</button>
-            </div>
-            <Async paginate state={periods} empty="Chưa có đợt thu" itemLabel="đợt thu">
-              {(l) => (
-                <table className="live-table">
-                  <thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Trạng thái</th><th></th></tr></thead>
-                  <tbody>{l.map((p) => (
-                    <tr key={p.id} style={{ background: sel === p.id ? '#f1f5fd' : undefined }}>
-                      <td><strong>{p.code}</strong></td><td>{p.name}</td><td>{p.applyToGrades || 'Tất cả'}</td>
-                      <td><StatusPill value={p.status} /></td>
-                      <td style={{ display: 'flex', gap: 6 }}>
-                        <button className="live-btn subtle" onClick={() => setSel(p.id)}>Khoản thu</button>
-                        {p.status === 'DRAFT' && <button className="live-btn ghost" onClick={() => open(p.id)}>Mở</button>}
-                        {p.status === 'OPEN' && <button className="live-btn" onClick={() => generate(p.id)}><Send size={14} /> Phát hành & thông báo</button>}
-                      </td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              )}
-            </Async>
-            {sel && (
-              <div style={{ marginTop: 16 }}>
-                <div className="live-toolbar">
-                  <input className="live-input grow" placeholder="Tên khoản (Học phí…)" value={itf.name} onChange={(e) => setItf({ ...itf, name: e.target.value })} />
-                  <input className="live-input" type="number" step="100000" value={itf.amount} onChange={(e) => setItf({ ...itf, amount: Number(e.target.value) })} />
-                  <button className="live-btn" onClick={addItem}><Plus size={15} /> Thêm khoản</button>
-                </div>
-                <Async paginate state={items} empty="Chưa có khoản thu" itemLabel="khoản thu">
-                  {(l) => (<table className="live-table"><thead><tr><th>Khoản</th><th>Số tiền</th><th>Khối</th></tr></thead>
-                    <tbody>{l.map((it) => <tr key={it.id}><td>{it.name}</td><td>{money(it.amount)}</td><td>{it.gradeLevel || 'Tất cả'}</td></tr>)}</tbody></table>)}
-                </Async>
+        { id: 'overview', label: 'Tổng quan', Icon: TrendingUp, content: (
+          <div className="finance-overview-grid">
+            <Section title="Tiến độ thu học phí" subtitle="Tỷ lệ thu trên tổng giá trị hóa đơn đã phát hành" wide>
+              <div className="finance-progress-summary">
+                <div><strong>{collectionRate.toFixed(1)}%</strong><span>Đã hoàn thành</span></div>
+                <div className="finance-progress-track"><span style={{ width: `${collectionRate}%` }} /></div>
+                <footer><span>Đã thu <b>{money(overview.data?.paidAmount || 0)}</b></span><span>Tổng phải thu <b>{money(overview.data?.totalAmount || 0)}</b></span></footer>
               </div>
-            )}
+              <div className="finance-insight-row">
+                <article><Clock3 size={18} /><div><strong>{overview.data?.dueSoonInvoiceCount || 0} hóa đơn sắp hạn</strong><span>Cần theo dõi trong 7 ngày tới</span></div></article>
+                <article><CheckCircle2 size={18} /><div><strong>{overview.data?.partialInvoiceCount || 0} hóa đơn thu một phần</strong><span>Tiếp tục đối soát số dư còn lại</span></div></article>
+              </div>
+            </Section>
+            <Section title="Hiệu quả theo đợt thu" subtitle="So sánh tiến độ và công nợ từng đợt" wide>
+              <Async state={overview} allowEmpty>{(data) => data.periods.length ? (
+                <div className="finance-period-performance">
+                  {data.periods.slice(0, 6).map((period) => (
+                    <article key={period.periodId}>
+                      <header><div><strong>{period.name || period.code}</strong><span>{period.invoiceCount} hóa đơn</span></div><StatusPill value={period.status} /></header>
+                      <div className="finance-mini-progress"><span style={{ width: `${Math.min(100, period.collectionRate)}%` }} /></div>
+                      <footer><span>{period.collectionRate.toFixed(1)}% đã thu</span><b>Còn {money(period.outstanding)}</b></footer>
+                    </article>
+                  ))}
+                </div>
+              ) : <div className="empty-state"><strong>Chưa có dữ liệu đợt thu</strong></div>}</Async>
+            </Section>
+          </div>
+        ) },
+        { id: 'periods', label: 'Đợt thu', Icon: CircleDollarSign, content: (
+          <Section title="Quản lý đợt thu" subtitle="Tạo định mức, kiểm tra phạm vi và phát hành hóa đơn theo quy trình" wide
+            action={<button className="live-btn" type="button" onClick={openCreatePeriod}><Plus size={15} /> Tạo đợt thu</button>}>
+            <div className="finance-filterbar">
+              <label className="finance-search"><Search size={16} /><input placeholder="Tìm theo mã hoặc tên đợt thu" value={periodQuery} onChange={(event) => setPeriodQuery(event.target.value)} /></label>
+              <span>{filteredPeriods.length} đợt thu</span>
+            </div>
+            <Async state={{ ...periods, data: filteredPeriods }} empty="Chưa có đợt thu">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="đợt thu" resetKey={periodQuery}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table"><thead><tr><th>Đợt thu</th><th>Phạm vi</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                  <tbody>{pageRows.map((period) => <tr key={period.id} className={selectedPeriodId === period.id ? 'selected' : ''}>
+                    <td><strong>{period.name || 'Chưa đặt tên'}</strong><small>{period.code}</small></td>
+                    <td>{period.applyToGrades || 'Toàn trường'}</td><td>{fmtDate(period.dueDate)}</td><td><StatusPill value={period.status} /></td>
+                    <td><div className="finance-row-actions">
+                      <button className="icon-action" type="button" title="Quản lý khoản thu" onClick={() => setSelectedPeriodId(period.id)}><Eye size={16} /></button>
+                      {period.status === 'DRAFT' && <><button className="icon-action" type="button" title="Chỉnh sửa" onClick={() => openEditPeriod(period)}><Pencil size={16} /></button><button className="icon-action danger" type="button" title="Xóa" onClick={() => deletePeriod(period)}><Trash2 size={16} /></button></>}
+                      {period.status === 'DRAFT' && <button className="live-btn subtle" type="button" onClick={() => changePeriodStatus(period, 'open')}>Mở đợt</button>}
+                      {period.status === 'OPEN' && <><button className="live-btn" type="button" disabled={busy} onClick={() => generateInvoices(period)}><Send size={14} /> Phát hành</button><button className="live-btn ghost" type="button" onClick={() => changePeriodStatus(period, 'close')}>Đóng đợt</button></>}
+                    </div></td>
+                  </tr>)}</tbody></table></div>}
+              </PaginatedData>}
+            </Async>
+
+            {selectedPeriod && <div className="finance-period-workspace">
+              <header><div><span>Đang quản lý</span><h3>{selectedPeriod.name || selectedPeriod.code}</h3><p>{selectedPeriod.code} · {selectedPeriod.applyToGrades || 'Toàn trường'} · hạn {fmtDate(selectedPeriod.dueDate)}</p></div><div><small>Tổng định mức</small><strong>{money(configuredTotal)}</strong></div></header>
+              {selectedPeriod.status === 'DRAFT' && <div className="finance-item-form">
+                <Field label="Tên khoản thu"><input className="live-input" placeholder="Ví dụ: Học phí tháng 9" value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} /></Field>
+                <Field label="Số tiền"><input className="live-input" type="number" min="1" step="50000" value={itemForm.amount} onChange={(event) => setItemForm({ ...itemForm, amount: Number(event.target.value) })} /></Field>
+                <Field label="Khối áp dụng"><input className="live-input" placeholder="Để trống = tất cả" value={itemForm.gradeLevel} onChange={(event) => setItemForm({ ...itemForm, gradeLevel: event.target.value })} /></Field>
+                <button className="live-btn" type="button" onClick={addItem}><Plus size={15} /> Thêm khoản</button>
+              </div>}
+              <Async state={items} empty="Chưa có khoản thu trong đợt này">
+                {(rows) => <div className="finance-item-list">{rows.map((item) => <article key={item.id}><span><ReceiptText size={17} /></span><div><strong>{item.name}</strong><small>{item.gradeLevel || 'Áp dụng toàn trường'}</small></div><b>{money(item.amount)}</b>{selectedPeriod.status === 'DRAFT' && <button className="icon-action danger" type="button" title="Xóa khoản thu" onClick={() => deleteItem(item)}><Trash2 size={15} /></button>}</article>)}</div>}
+              </Async>
+            </div>}
           </Section>
         ) },
-        { id: 'invoices', label: 'Hóa đơn & thu tiền', Icon: FileText, content: (
-          <Section title="Xác nhận thu học phí" subtitle="Theo dõi và xác nhận các khoản đã thanh toán" wide
-            action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
-            <Async paginate state={invoices} empty="Chưa có hóa đơn" itemLabel="hóa đơn">
-              {(l) => (<table className="live-table"><thead><tr><th>Mã</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>
-                <tbody>{l.map((i) => (
-                  <tr key={i.id}>
-                    <td><strong>{i.code}</strong></td><td>{i.studentName}</td><td>{money(i.totalAmount)}</td><td>{money(i.paidAmount)}</td>
-                    <td><StatusPill value={i.status} /></td>
-                    <td>{i.status !== 'PAID'
-                      ? <button className="live-btn" onClick={() => confirmCash(i)}><CheckCircle2 size={14} /> Xác nhận thu</button>
-                      : <Badge tone="green">Đã thu</Badge>}</td>
-                  </tr>
-                ))}</tbody></table>)}
+        { id: 'invoices', label: 'Hóa đơn & công nợ', Icon: FileText, content: (
+          <Section title="Hóa đơn và công nợ" subtitle="Tra cứu, đối soát, ghi nhận thu tiền và nhắc thanh toán" wide
+            action={<button className="live-btn ghost" type="button" onClick={() => downloadInvoiceCsv(filteredInvoices)}><Download size={15} /> Xuất CSV</button>}>
+            <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Điều hành theo lớp, phối hợp cùng giáo viên chủ nhiệm</strong><small>Admin theo dõi tiến độ toàn trường. Khi một lớp hoàn thành, hệ thống cho phép gửi xác nhận tới giáo viên chủ nhiệm; việc nhắc hạn hằng ngày được giao cho GVCN.</small></div></div>
+            <Async state={classSummaries} empty="Chưa có dữ liệu công nợ theo lớp">
+              {(summaries) => <div className="finance-class-grid">{summaries.map((summary) => (
+                <article key={summary.classId} className={`${summary.completed ? 'complete' : ''} ${invoiceClass === summary.classId ? 'selected' : ''}`}>
+                  <button type="button" className="finance-class-main" onClick={() => setInvoiceClass(invoiceClass === summary.classId ? 'ALL' : summary.classId)}>
+                    <header><span>{summary.gradeLevel || '—'}</span><strong>Lớp {summary.classCode}</strong><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} /></header>
+                    <div className="finance-mini-progress"><span style={{ width: `${Math.min(100, summary.collectionRate)}%` }} /></div>
+                    <footer><span><b>{summary.collectionRate.toFixed(1)}%</b> · {summary.paidCount}/{summary.invoiceCount} học sinh</span><strong>Còn {money(summary.outstanding)}</strong></footer>
+                  </button>
+                  <div className="finance-class-owner"><span>GVCN: <b>{summary.homeroomTeacherName || 'Chưa phân công'}</b></span>{summary.completed && <button type="button" disabled={summary.completionNotified || !summary.homeroomTeacherId} onClick={() => notifyHomeroomCompletion(summary)}><BellRing size={14} /> {summary.completionNotified ? 'Đã báo GVCN' : 'Báo hoàn thành'}</button>}</div>
+                </article>
+              ))}</div>}
+            </Async>
+            <div className="finance-filterbar invoice-filters">
+              <label className="finance-search"><Search size={16} /><input placeholder="Tìm mã hóa đơn hoặc học sinh" value={invoiceQuery} onChange={(event) => setInvoiceQuery(event.target.value)} /></label>
+              <select className="live-input" value={invoiceStatus} onChange={(event) => setInvoiceStatus(event.target.value)} aria-label="Lọc trạng thái">
+                <option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option>
+              </select>
+              <select className="live-input" value={invoicePeriod} onChange={(event) => setInvoicePeriod(event.target.value)} aria-label="Lọc đợt thu">
+                <option value="ALL">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}
+              </select>
+              <select className="live-input" value={invoiceGrade} onChange={(event) => { setInvoiceGrade(event.target.value); setInvoiceClass('ALL'); }} aria-label="Lọc khối">
+                <option value="ALL">Tất cả khối</option>{availableGrades.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+              </select>
+              <select className="live-input" value={invoiceClass} onChange={(event) => setInvoiceClass(event.target.value)} aria-label="Lọc lớp">
+                <option value="ALL">Tất cả lớp</option>{availableClasses.map((item) => <option key={item.classId} value={item.classId}>{item.classCode}</option>)}
+              </select>
+              <span>{filteredInvoices.length} hóa đơn</span>
+            </div>
+            <Async state={{ ...invoices, data: filteredInvoices }} empty="Không có hóa đơn phù hợp">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${invoiceQuery}-${invoiceStatus}-${invoicePeriod}-${invoiceGrade}-${invoiceClass}`}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table invoice-table"><thead><tr><th>Hóa đơn</th><th>Học sinh</th><th>Khối / Lớp</th><th>Phải thu</th><th>Đã thu / Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                  <tbody>{pageRows.map((invoice) => { const remaining = invoice.totalAmount - invoice.paidAmount; const status = effectiveInvoiceStatus(invoice); return <tr key={invoice.id}>
+                    <td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.classCode || '—'}</strong><small>{invoice.gradeLevel || 'Chưa xác định khối'}</small></td><td>{money(invoice.totalAmount)}</td>
+                    <td><strong className="finance-paid-value">{money(invoice.paidAmount)}</strong><small>Còn {money(remaining)}</small></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={status} /></td>
+                    <td><div className="finance-row-actions"><button className="icon-action" type="button" title="Xem chi tiết" onClick={() => setViewInvoice(invoice)}><Eye size={16} /></button>{status !== 'PAID' && <button className="live-btn" type="button" onClick={() => openCashPayment(invoice)}><CheckCircle2 size={14} /> Ghi nhận thu</button>}</div></td>
+                  </tr>; })}</tbody></table></div>}
+              </PaginatedData>}
             </Async>
           </Section>
         ) },
       ]} />
-    </>
+
+      {showPeriodEditor && <Modal title={editingPeriod ? 'Chỉnh sửa đợt thu nháp' : 'Tạo đợt thu mới'} onClose={() => setShowPeriodEditor(false)} footer={<><button className="live-btn ghost" type="button" onClick={() => setShowPeriodEditor(false)}>Hủy</button><button className="live-btn" type="button" disabled={busy} onClick={savePeriod}><Save size={15} /> {editingPeriod ? 'Lưu thay đổi' : 'Tạo đợt thu'}</button></>}>
+        <div className="finance-modal-form">
+          <Field label="Mã đợt thu"><input className="live-input" disabled={!!editingPeriod} placeholder="Ví dụ: HP-HK1-2026" value={periodForm.code} onChange={(event) => setPeriodForm({ ...periodForm, code: event.target.value.toUpperCase() })} /></Field>
+          <Field label="Tên đợt thu"><input className="live-input" placeholder="Học phí học kỳ I" value={periodForm.name} onChange={(event) => setPeriodForm({ ...periodForm, name: event.target.value })} /></Field>
+          <Field label="Khối áp dụng"><input className="live-input" placeholder="K10,K11 hoặc để trống cho toàn trường" value={periodForm.applyToGrades} onChange={(event) => setPeriodForm({ ...periodForm, applyToGrades: event.target.value })} /></Field>
+          <Field label="Hạn thanh toán"><input className="live-input" type="date" value={periodForm.dueDate} onChange={(event) => setPeriodForm({ ...periodForm, dueDate: event.target.value })} /></Field>
+        </div>
+        <div className="finance-guidance"><ReceiptText size={18} /><p>Đợt thu được tạo ở trạng thái nháp. Hãy thêm đầy đủ các khoản trước khi mở và phát hành hóa đơn.</p></div>
+      </Modal>}
+
+      {cashTarget && <Modal title="Ghi nhận thu tiền tại trường" onClose={() => setCashTarget(null)} footer={<><button className="live-btn ghost" type="button" onClick={() => setCashTarget(null)}>Hủy</button><button className="live-btn" type="button" disabled={busy} onClick={confirmCashPayment}><CheckCircle2 size={15} /> Xác nhận giao dịch</button></>}>
+        <div className="finance-payment-summary"><span><ReceiptText size={22} /></span><div><small>{cashTarget.code}</small><strong>{cashTarget.studentName}</strong><p>Công nợ còn lại: {money(cashTarget.totalAmount - cashTarget.paidAmount)}</p></div></div>
+        <Field label="Số tiền thực thu"><input className="live-input finance-money-input" type="number" min="1" max={cashTarget.totalAmount - cashTarget.paidAmount} step="50000" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} /></Field>
+        <div className="finance-guidance"><CheckCircle2 size={18} /><p>Hệ thống hỗ trợ thu một phần. Giao dịch được lưu vào lịch sử và phụ huynh nhận biên nhận tự động.</p></div>
+      </Modal>}
+
+      {viewInvoice && <Modal title={`Chi tiết hóa đơn ${viewInvoice.code}`} size="wide" onClose={() => setViewInvoice(null)} footer={<><button className="live-btn ghost" type="button" onClick={() => setViewInvoice(null)}>Đóng</button>{effectiveInvoiceStatus(viewInvoice) !== 'PAID' && <button className="live-btn" type="button" onClick={() => { setViewInvoice(null); openCashPayment(viewInvoice); }}><CheckCircle2 size={15} /> Ghi nhận thu</button>}</>}>
+        <Async state={invoiceDetail} allowEmpty>{(detail) => <div className="finance-invoice-detail">
+          <div className="finance-detail-summary"><article><small>Học sinh</small><strong>{detail.invoice.studentName}</strong></article><article><small>Khối / Lớp</small><strong>{detail.invoice.gradeLevel || '—'} · {detail.invoice.classCode || '—'}</strong></article><article><small>Phải thu</small><strong>{money(detail.invoice.totalAmount)}</strong></article><article><small>Đã thu</small><strong>{money(detail.invoice.paidAmount)}</strong></article><article><small>Còn lại</small><strong>{money(detail.invoice.totalAmount - detail.invoice.paidAmount)}</strong></article></div>
+          <div className="finance-detail-columns"><section><h4>Các khoản trong hóa đơn</h4>{detail.items.map((item) => <div className="finance-detail-line" key={item.id}><span>{item.name}</span><strong>{money(item.amount)}</strong></div>)}</section><section><h4>Lịch sử giao dịch</h4>{detail.payments.length ? detail.payments.map((payment) => <div className="finance-detail-line" key={payment.id}><span><b>{viLabel(payment.method)}</b><small>{fmtDateTime(payment.paidAt)}</small></span><strong>{money(payment.amount)}</strong></div>) : <p className="finance-empty-note">Chưa phát sinh giao dịch</p>}</section></div>
+        </div>}</Async>
+      </Modal>}
+    </div>
   );
 }
 
@@ -752,21 +1086,30 @@ const ANNOUNCEMENT_PRIORITY_LABEL: Record<string, string> = { NORMAL: 'Thông th
 
 /* ============ A9 — Trung tâm thông báo ============ */
 export function AdminNotificationsLive() {
-  const tpls = useApi<NotificationTemplate[]>('/notification-templates');
   const announcements = useApi<Announcement[]>('/admin/announcements');
   const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
   const toast = useToast();
   const [sending, setSending] = useState(false);
-  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '' });
+  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '', holidayStartDate: '', holidayEndDate: '' });
   const selectedCategory = ANNOUNCEMENT_CATEGORIES.find((item) => item.value === form.category) || ANNOUNCEMENT_CATEGORIES[0];
   const recipientCount = audienceCounts.data?.[form.audience] ?? 0;
 
   const applyCategory = (category: typeof ANNOUNCEMENT_CATEGORIES[number]) => {
-    setForm((current) => ({ ...current, category: category.value, title: category.title, body: category.body }));
+    setForm((current) => ({
+      ...current,
+      category: category.value,
+      audience: category.value === 'HOLIDAY' ? 'ALL' : current.audience,
+      title: category.title,
+      body: category.body,
+      holidayStartDate: category.value === 'HOLIDAY' ? current.holidayStartDate : '',
+      holidayEndDate: category.value === 'HOLIDAY' ? current.holidayEndDate : '',
+    }));
   };
 
   const sendAnnouncement = async () => {
     if (!form.title.trim() || !form.body.trim()) return toast.show('err', 'Vui lòng nhập tiêu đề và nội dung thông báo');
+    if (form.category === 'HOLIDAY' && (!form.holidayStartDate || !form.holidayEndDate)) return toast.show('err', 'Vui lòng chọn đầy đủ thời gian nghỉ');
+    if (form.category === 'HOLIDAY' && form.holidayEndDate < form.holidayStartDate) return toast.show('err', 'Ngày kết thúc không được trước ngày bắt đầu');
     if (!recipientCount) return toast.show('err', 'Phạm vi đã chọn hiện không có người nhận');
     setSending(true);
     try {
@@ -776,9 +1119,13 @@ export function AdminNotificationsLive() {
         priority: form.priority,
         title: form.title.trim(),
         body: form.body.trim(),
+        holidayStartDate: form.category === 'HOLIDAY' ? form.holidayStartDate : null,
+        holidayEndDate: form.category === 'HOLIDAY' ? form.holidayEndDate : null,
       });
-      toast.show('ok', `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
-      setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL' }));
+      toast.show('ok', form.category === 'HOLIDAY'
+        ? `Đã thông báo nghỉ và tự động miễn điểm danh trong ${form.holidayStartDate === form.holidayEndDate ? 'ngày đã chọn' : 'khoảng thời gian đã chọn'}`
+        : `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
+      setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL', holidayStartDate: '', holidayEndDate: '' }));
       announcements.reload();
     } catch (error: any) {
       toast.show('err', error.message);
@@ -825,14 +1172,19 @@ export function AdminNotificationsLive() {
               <label>Phạm vi nhận</label>
               <div className="announcement-audience-grid">
                 {ANNOUNCEMENT_AUDIENCES.map(({ value, label, hint, Icon }) => (
-                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} onClick={() => setForm({ ...form, audience: value })}>
+                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} disabled={form.category === 'HOLIDAY' && value !== 'ALL'} onClick={() => setForm({ ...form, audience: value })}>
                     <span><Icon size={17} /></span><div><strong>{label}</strong><small>{hint}</small></div><b>{audienceCounts.data?.[value] ?? 0}</b>
                   </button>
                 ))}
               </div>
+              {form.category === 'HOLIDAY' && <small className="announcement-holiday-help">Thông báo nghỉ luôn áp dụng cho toàn trường và tự động tắt yêu cầu điểm danh trong thời gian đã chọn.</small>}
             </div>
 
             <div className="announcement-form-grid">
+              {form.category === 'HOLIDAY' && <>
+                <label><span>Ngày bắt đầu nghỉ</span><input type="date" value={form.holidayStartDate} onChange={(event) => setForm({ ...form, holidayStartDate: event.target.value, holidayEndDate: form.holidayEndDate && form.holidayEndDate < event.target.value ? event.target.value : form.holidayEndDate })} /></label>
+                <label><span>Ngày kết thúc nghỉ</span><input type="date" min={form.holidayStartDate} value={form.holidayEndDate} onChange={(event) => setForm({ ...form, holidayEndDate: event.target.value })} /></label>
+              </>}
               <label className="wide"><span>Tiêu đề</span><input maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Nhập tiêu đề rõ ràng, dễ hiểu" /></label>
               <label><span>Mức độ</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
               <label className="wide"><span>Nội dung</span><textarea maxLength={4000} rows={7} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Nhập đầy đủ thời gian, địa điểm và hướng dẫn cần thiết…" /><small>{form.body.length}/4000 ký tự</small></label>
@@ -845,6 +1197,7 @@ export function AdminNotificationsLive() {
               <header><Badge tone={form.priority === 'URGENT' ? 'red' : 'blue'}>{selectedCategory.label}</Badge><span>{ANNOUNCEMENT_PRIORITY_LABEL[form.priority]}</span></header>
               <strong>{form.title || 'Tiêu đề thông báo'}</strong>
               <p>{form.body || 'Nội dung thông báo sẽ hiển thị tại đây.'}</p>
+              {form.category === 'HOLIDAY' && <small><CalendarDays size={14} /> {form.holidayStartDate || 'Chọn ngày bắt đầu'} → {form.holidayEndDate || 'Chọn ngày kết thúc'}</small>}
               <small>Vừa xong · Từ Ban quản trị nhà trường</small>
             </div>
             <div className="announcement-send-summary"><span>Đối tượng</span><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[form.audience]}</strong><span>Dự kiến nhận</span><strong>{recipientCount} người</strong></div>
@@ -857,58 +1210,11 @@ export function AdminNotificationsLive() {
       <Section title="Lịch sử gửi thông báo" subtitle="Theo dõi phạm vi, nội dung và số lượng người nhận" wide>
         <Async paginate state={announcements} empty="Chưa có thông báo nào được gửi" itemLabel="thông báo">
           {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Đối tượng</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
+            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small>{item.category === 'HOLIDAY' && item.holidayStartDate && <small>Thời gian nghỉ: {item.holidayStartDate} → {item.holidayEndDate}</small>}</td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
           </table></div>}
         </Async>
       </Section>
 
-      <Section title="Mẫu thông báo tự động" subtitle="Các mẫu dùng cho điểm số, chuyên cần, hóa đơn và tác vụ hệ thống" wide>
-        <Async paginate state={tpls} empty="Chưa có mẫu thông báo" itemLabel="mẫu thông báo">
-          {(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Kênh</th><th>Nội dung</th><th>Trạng thái</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.code}</strong></td><td>{item.name}</td><td><Badge tone="blue">{viLabel(item.channel)}</Badge></td><td><small>{item.bodyTemplate}</small></td><td>{item.active ? <Badge tone="green">Đang bật</Badge> : <Badge tone="red">Đang tắt</Badge>}</td></tr>)}</tbody></table>}
-        </Async>
-      </Section>
     </div>
-  );
-}
-
-/* ============ A5 — CLB ngoại khóa (có học phí) ============ */
-export function AdminClubsLive() {
-  const clubs = useApi<Club[]>('/clubs');
-  const toast = useToast();
-  const [sel, setSel] = useState<string | null>(null);
-  const regs = useApi<ClubRegistration[]>(sel ? `/clubs/${sel}/registrations` : null);
-  const [f, setF] = useState({ name: '', schedule: '', capacity: 20, fee: 0 });
-  const add = async () => {
-    if (!f.name) return toast.show('err', 'Nhập tên CLB');
-    try { await api.post('/clubs', f); toast.show('ok', 'Đã tạo CLB'); setF({ name: '', schedule: '', capacity: 20, fee: 0 }); clubs.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
-  };
-  return (
-    <Section title="Khóa ngoại khóa" subtitle="Quản lý lớp, học phí và đăng ký" wide>
-      {toast.node}
-      <div className="live-toolbar">
-        <input className="live-input grow" placeholder="Tên CLB" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-        <input className="live-input" placeholder="Lịch (Chiều T4)" value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} />
-        <input className="live-input" type="number" style={{ width: 90 }} placeholder="Sĩ số" value={f.capacity} onChange={(e) => setF({ ...f, capacity: Number(e.target.value) })} />
-        <input className="live-input" type="number" step="50000" style={{ width: 130 }} placeholder="Học phí (₫)" value={f.fee} onChange={(e) => setF({ ...f, fee: Number(e.target.value) })} />
-        <button className="live-btn" onClick={add}><Plus size={15} /> Tạo CLB</button>
-      </div>
-      <Async paginate state={clubs} empty="Chưa có CLB" itemLabel="câu lạc bộ">
-        {(l) => (
-          <table className="live-table"><thead><tr><th>Tên</th><th>Lịch</th><th>Sĩ số</th><th>Học phí</th><th></th></tr></thead>
-            <tbody>{l.map((c) => <tr key={c.id} style={{ background: sel === c.id ? '#f1f5fd' : undefined }}>
-              <td><strong>{c.name}</strong></td><td>{c.schedule || '—'}</td><td>{c.capacity}</td><td>{money(c.fee)}</td>
-              <td><button className="live-btn subtle" onClick={() => setSel(c.id)}>Đăng ký</button></td></tr>)}</tbody></table>
-        )}
-      </Async>
-      {sel && (
-        <div style={{ marginTop: 14 }}>
-          <Async paginate state={regs} empty="Chưa có đăng ký" itemLabel="đăng ký">
-            {(l) => (<table className="live-table"><thead><tr><th>Học sinh</th><th>Trạng thái</th></tr></thead>
-              <tbody>{l.map((r) => <tr key={r.id}><td>{r.studentName}</td><td><StatusPill value={r.status} /></td></tr>)}</tbody></table>)}
-          </Async>
-        </div>
-      )}
-    </Section>
   );
 }

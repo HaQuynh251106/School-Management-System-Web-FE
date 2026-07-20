@@ -128,9 +128,11 @@ export function Badge({ tone, children }: { tone: 'green' | 'blue' | 'orange' | 
 }
 
 const VI_LABELS: Record<string, string> = {
-  ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý',
+  ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý', PLANNED: 'Dự kiến',
   PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở',
   SUBMITTED: 'Đã nộp', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
+  PENDING_PARENT: 'Chờ phụ huynh xác nhận', PENDING_HOMEROOM: 'Chờ GVCN duyệt',
+  APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối', CANCELLED: 'Đã hủy', RESUBMISSION_ALLOWED: 'Được nộp lại',
   PAID: 'Đã thanh toán', PARTIAL: 'Thanh toán một phần', OVERDUE: 'Quá hạn',
   SUCCESS: 'Thành công', FAILED: 'Thất bại', REFUNDED: 'Đã hoàn tiền',
   SENT: 'Đã gửi', RETRYING: 'Đang gửi lại', MAINTENANCE: 'Đang bảo trì',
@@ -138,6 +140,10 @@ const VI_LABELS: Record<string, string> = {
   PRESENT: 'Có mặt', ABSENT: 'Vắng mặt', ABSENT_EXCUSED: 'Vắng có phép', ABSENT_UNEXCUSED: 'Vắng không phép',
   ADMIN: 'Quản trị viên', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
   LOGIN: 'Đăng nhập', LOGIN_FAILED: 'Đăng nhập thất bại', CREATE: 'Tạo mới', UPDATE: 'Cập nhật', DELETE: 'Xóa', EXPORT: 'Xuất dữ liệu', PAYMENT: 'Thanh toán',
+  ATTENDANCE_REMINDER: 'Nhắc điểm danh', ATTENDANCE_UNLOCK: 'Mở khóa điểm danh', ATTENDANCE_SESSION: 'Phiên điểm danh',
+  FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
+  FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
+  CASH: 'Tiền mặt', VNPAY: 'VNPay', MOMO: 'MoMo',
   PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
 };
 
@@ -151,9 +157,9 @@ export function StatusPill({ value }: { value: string }) {
   const tone =
     normalized === 'active' || normalized === 'paid' || normalized === 'success' || normalized === 'read' || normalized.includes('có mặt') || normalized.includes('đang học')
       ? 'green'
-      : normalized === 'pending' || normalized === 'partial' || normalized === 'unread' || normalized.includes('trễ') || normalized.includes('cần')
+      : normalized === 'pending' || normalized === 'planned' || normalized === 'partial' || normalized === 'unread' || normalized.includes('trễ') || normalized.includes('cần')
         ? 'orange'
-        : normalized.includes('vắng') || normalized === 'locked' || normalized === 'inactive' || normalized === 'failed'
+        : normalized.includes('vắng') || normalized === 'locked' || normalized === 'inactive' || normalized === 'failed' || normalized === 'overdue'
           ? 'red'
           : 'blue';
 

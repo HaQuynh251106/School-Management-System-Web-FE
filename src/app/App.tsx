@@ -104,7 +104,7 @@ export default function App() {
           </header>
 
           {activePage === 'dashboard' ? (
-            <GeneralDashboard roleId={role.id} />
+            <GeneralDashboard roleId={role.id} onNavigate={selectPage} />
           ) : (
             <FeaturePage module={activeModule} role={role} />
           )}

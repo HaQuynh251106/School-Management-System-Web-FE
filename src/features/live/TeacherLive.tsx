@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Megaphone, Phone, RefreshCw, RotateCcw, Search, Send, ShieldCheck, Trophy, UserCheck, UserRound, Users, UsersRound, UserX } from 'lucide-react';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment } from '../../api/types';
+import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
-import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, PaginatedData } from './common';
+import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData } from './common';
 import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
+import { NotificationsLive } from './SharedLive';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -224,6 +225,7 @@ function homeroomGenderLabel(value?: string | null) {
 export function TeacherAttendanceLive() {
   const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
+  const classes = useApi<SchoolClass[]>('/classes');
   const [slotId, setSlotId] = useState('');
   const [date, setDate] = useState(TODAY);
   const toast = useToast();
@@ -235,7 +237,18 @@ export function TeacherAttendanceLive() {
       || item.subjectName.trim().toLocaleLowerCase('vi') === mainSubject
     ));
   }, [slots.data, user?.mainSubject]);
+  const classMap = useMemo(
+    () => new Map((classes.data || []).map((schoolClass) => [schoolClass.id, schoolClass.code || schoolClass.name])),
+    [classes.data],
+  );
+  const classLabel = (classId: string) => classMap.get(classId) || 'Lớp chưa xác định';
   const slot = attendanceSlots.find((item) => item.id === slotId);
+  const dayStatus = useApi<AttendanceDayStatus>(slot
+    ? `/attendance/day-status?date=${encodeURIComponent(date)}`
+    : null);
+  const sessionStatus = useApi<AttendanceSessionStatus>(slot
+    ? `/attendance/session-status?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
+    : null);
   const students = useApi<ApiUser[]>(slot ? `/classes/${slot.classId}/students` : null);
   const attendance = useApi<AttendanceRecord[]>(slot
     ? `/attendance?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
@@ -247,6 +260,8 @@ export function TeacherAttendanceLive() {
   const [saving, setSaving] = useState(false);
   const [hasSavedRegister, setHasSavedRegister] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
+  const [unlockReason, setUnlockReason] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     if (!slot || !students.data || attendance.loading) return;
@@ -282,11 +297,13 @@ export function TeacherAttendanceLive() {
     setSlotId(nextSlotId);
     setSearch('');
     setStatusFilter('ALL');
+    setUnlockReason('');
   };
 
   const changeDate = (nextDate: string) => {
     if (!confirmDiscard()) return;
     setDate(nextDate);
+    setUnlockReason('');
   };
 
   const updateStatus = (studentId: string, status: string) => {
@@ -311,6 +328,8 @@ export function TeacherAttendanceLive() {
 
   const submit = async () => {
     if (!slot) return toast.show('err', 'Vui lòng chọn tiết học');
+    if (dayStatus.data?.attendanceRequired === false) return toast.show('err', `Không cần điểm danh ngày nghỉ: ${dayStatus.data.title || 'Theo thông báo của nhà trường'}`);
+    if (!sessionStatus.data?.canMark) return toast.show('err', sessionStatus.data?.message || 'Sổ điểm danh hiện chưa được mở');
     const missingNotes = (students.data || []).filter((student) => {
       const mark = marks[student.id];
       return mark && mark.status !== 'PRESENT' && !mark.note.trim();
@@ -339,11 +358,31 @@ export function TeacherAttendanceLive() {
       setBaseline(next);
       setHasSavedRegister(true);
       setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
+      sessionStatus.reload();
       toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Mọi trạng thái thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
     } catch (e: any) {
       toast.show('err', e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const unlockLateAttendance = async () => {
+    if (!slot) return;
+    if (unlockReason.trim().length < 10) return toast.show('err', 'Vui lòng ghi lý do cụ thể, tối thiểu 10 ký tự');
+    setUnlocking(true);
+    try {
+      const result = await api.post<AttendanceSessionStatus>('/attendance/unlock', {
+        slotId: slot.id,
+        date,
+        reason: unlockReason.trim(),
+      });
+      toast.show('ok', result.message || 'Đã mở khóa điểm danh muộn');
+      sessionStatus.reload();
+    } catch (error: any) {
+      toast.show('err', error.message);
+    } finally {
+      setUnlocking(false);
     }
   };
 
@@ -371,7 +410,7 @@ export function TeacherAttendanceLive() {
 
   return (
     <Section title="Sổ điểm danh điện tử" subtitle="Chỉ điểm danh các tiết đúng môn chuyên ngành được phân công" wide
-      action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired}><Send size={15} /> {saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
+      action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired || dayStatus.loading || sessionStatus.loading || !sessionStatus.data?.canMark}><Send size={15} /> {dayStatus.data?.attendanceRequired === false ? 'Ngày nghỉ · Không cần lưu' : sessionStatus.data?.requiresUnlockReason ? 'Đã khóa · Cần lý do' : saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
       {toast.node}
       <div className="attendance-register-shell">
         <div className="attendance-session-panel">
@@ -384,14 +423,14 @@ export function TeacherAttendanceLive() {
             <label><span>Tiết học phụ trách</span><select className="live-select" value={slotId} onChange={(event) => changeSlot(event.target.value)}>
               <option value="">{attendanceSlots.length ? '— Chọn tiết học —' : '— Chưa có tiết đúng môn chuyên ngành —'}</option>
               {attendanceSlots.map((item) => (
-                <option key={item.id} value={item.id}>{DAY_LABEL[item.dayOfWeek]} · Tiết {item.periodNo} · {item.subjectName} · {item.classId}</option>
+                <option key={item.id} value={item.id}>{DAY_LABEL[item.dayOfWeek]} · Tiết {item.periodNo} · {item.subjectName} · {classLabel(item.classId)}</option>
               ))}
             </select></label>
             <label><span>Ngày điểm danh</span><input className="live-input" type="date" value={date} onChange={(event) => changeDate(event.target.value)} /></label>
           </div>
           {slot && <div className="attendance-session-context">
             <div><span><CalendarCheck2 size={19} /></span><p><small>Môn học</small><strong>{slot.subjectName}</strong></p></div>
-            <div><span><Users size={19} /></span><p><small>Lớp</small><strong>{slot.classId}</strong></p></div>
+            <div><span><Users size={19} /></span><p><small>Lớp</small><strong>{classLabel(slot.classId)}</strong></p></div>
             <div><span><Clock3 size={19} /></span><p><small>Thời gian</small><strong>Tiết {slot.periodNo} · {slot.startTime || '—'}–{slot.endTime || '—'}</strong></p></div>
             <div><span><MapPin size={19} /></span><p><small>Phòng học</small><strong>{slot.roomCode || 'Chưa xếp phòng'}</strong></p></div>
           </div>}
@@ -399,10 +438,33 @@ export function TeacherAttendanceLive() {
             {dirty || !hasSavedRegister ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
             <span>{dirty ? 'Có thay đổi chưa lưu' : lastSavedAt}</span>
           </div>}
+          {slot && sessionStatus.data && <div className={`attendance-session-policy state-${sessionStatus.data.state.toLowerCase()}`}>
+            {sessionStatus.data.canMark ? <CheckCircle2 size={16} /> : <LockKeyhole size={16} />}
+            <div><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><small>{sessionStatus.data.message}</small></div>
+            <span>{sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</span>
+          </div>}
         </div>
 
-        {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : (
-          <Async state={{ data: students.data, loading: students.loading || attendance.loading, error: students.error || attendance.error }} empty="Lớp chưa có học sinh">
+        {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : dayStatus.data?.attendanceRequired === false ? (
+          <div className="attendance-holiday-state">
+            <span><CalendarDays size={38} /></span>
+            <div><small>Thông báo nghỉ từ nhà trường</small><strong>{dayStatus.data.title || 'Ngày nghỉ toàn trường'}</strong><p>{dayStatus.data.reason || 'Giáo viên không cần thực hiện điểm danh trong ngày này.'}</p><b>Thời gian nghỉ: {fmtDate(dayStatus.data.holidayStartDate || date)} → {fmtDate(dayStatus.data.holidayEndDate || date)}</b></div>
+            <Badge tone="green">Đã miễn điểm danh</Badge>
+          </div>
+        ) : sessionStatus.data?.requiresUnlockReason ? (
+          <div className="attendance-late-unlock">
+            <div className="attendance-late-unlock-icon"><LockKeyhole size={34} /></div>
+            <div className="attendance-late-unlock-copy"><small>Tiết học đã kết thúc</small><strong>Điểm danh muộn cần được ghi nhận lý do</strong><p>Để bảo đảm tính minh bạch của sổ chuyên cần, thầy/cô vui lòng mô tả cụ thể nguyên nhân chưa điểm danh trong thời gian tiết học.</p></div>
+            <label><span>Lý do quên điểm danh <b>*</b></span><textarea rows={4} maxLength={1000} value={unlockReason} onChange={(event) => setUnlockReason(event.target.value)} placeholder="Ví dụ: Thiết bị lớp học mất kết nối mạng trong suốt tiết học…" /><small>{unlockReason.trim().length}/1000 ký tự · Tối thiểu 10 ký tự</small></label>
+            <div className="attendance-late-unlock-note"><ShieldCheck size={17} /><span>Lý do và thời điểm mở khóa sẽ được lưu vào lịch sử hệ thống, đồng thời thông báo tới quản trị viên.</span></div>
+            <button type="button" className="live-btn attendance-unlock-button" disabled={unlocking || unlockReason.trim().length < 10} onClick={unlockLateAttendance}><LockKeyhole size={16} /> {unlocking ? 'Đang mở khóa…' : 'Gửi lý do và mở khóa điểm danh'}</button>
+          </div>
+        ) : sessionStatus.data && !sessionStatus.data.canMark ? (
+          <div className="attendance-locked-state">
+            <span><Clock3 size={34} /></span><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><p>{sessionStatus.data.message}</p><small>Thời gian tiết học: {sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</small>
+          </div>
+        ) : (
+          <Async state={{ data: students.data, loading: students.loading || attendance.loading || dayStatus.loading || sessionStatus.loading, error: students.error || attendance.error || dayStatus.error || sessionStatus.error }} empty="Lớp chưa có học sinh">
             {() => <>
               <div className="attendance-summary-grid">
                 <article className="total"><span><Users size={19} /></span><div><small>Sĩ số lớp</small><strong>{summary.total}</strong></div></article>
@@ -457,7 +519,7 @@ export function TeacherAttendanceLive() {
               </PaginatedData>
               <footer className="attendance-register-footer">
                 <span>Hiển thị {filteredStudents.length}/{summary.total} học sinh</span>
-                <p><ShieldCheck size={15} /> Trạng thái thay đổi được tự động gửi tới học sinh và phụ huynh; dữ liệu không đổi sẽ không tạo thông báo trùng.</p>
+                <p><ShieldCheck size={15} /> {sessionStatus.data?.state === 'LATE_UNLOCKED' || sessionStatus.data?.state === 'COMPLETED_LATE' ? `Điểm danh muộn · Lý do: ${sessionStatus.data.unlockReason}` : 'Trạng thái thay đổi được tự động gửi tới học sinh và phụ huynh; dữ liệu không đổi sẽ không tạo thông báo trùng.'}</p>
               </footer>
             </>}
           </Async>
@@ -479,6 +541,19 @@ function attendanceStatusTone(status: string) {
   if (status === 'LATE') return 'late';
   if (status === 'ABSENT_EXCUSED') return 'excused';
   return 'unexcused';
+}
+
+function attendanceSessionLabel(state: AttendanceSessionStatus['state']) {
+  return ({
+    HOLIDAY: 'Ngày nghỉ',
+    INVALID: 'Không đúng lịch học',
+    UPCOMING: 'Tiết học chưa bắt đầu',
+    OPEN: 'Đang trong thời gian điểm danh',
+    LOCKED_REASON_REQUIRED: 'Đã khóa điểm danh',
+    LATE_UNLOCKED: 'Đã mở khóa điểm danh muộn',
+    COMPLETED: 'Đã hoàn tất điểm danh',
+    COMPLETED_LATE: 'Đã hoàn tất điểm danh muộn',
+  } as Record<AttendanceSessionStatus['state'], string>)[state];
 }
 
 /* ===== B4 — Bảng điểm ===== */
@@ -712,6 +787,7 @@ export function TeacherNotificationsLive() {
   const announcements = useApi<Announcement[]>('/teacher/announcements');
   const toast = useToast();
   const [sending, setSending] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<'inbox' | 'compose'>('inbox');
   const [form, setForm] = useState({ classId: '', target: 'CLASS_ALL', category: 'STUDENT_STATUS', priority: 'NORMAL', title: '', body: '' });
 
   useEffect(() => {
@@ -772,6 +848,12 @@ export function TeacherNotificationsLive() {
   return (
     <div className="admin-notification-center teacher-notification-center">
       {toast.node}
+      <div className="notification-workspace-tabs" role="tablist" aria-label="Không gian thông báo giáo viên">
+        <button type="button" role="tab" aria-selected={workspaceTab === 'inbox'} className={workspaceTab === 'inbox' ? 'active' : ''} onClick={() => setWorkspaceTab('inbox')}><Inbox size={17} /><span>Hộp thư của tôi</span></button>
+        <button type="button" role="tab" aria-selected={workspaceTab === 'compose'} className={workspaceTab === 'compose' ? 'active' : ''} onClick={() => setWorkspaceTab('compose')}><Megaphone size={17} /><span>Gửi thông báo lớp</span></button>
+      </div>
+
+      {workspaceTab === 'inbox' ? <NotificationsLive audience="teacher" /> : <>
       <Section title="Thông báo tự động" subtitle="Điểm số và trạng thái điểm danh được gửi ngay khi giáo viên lưu thay đổi" wide
         action={<button className="live-btn ghost" onClick={() => { scopes.reload(); announcements.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
         <div className="teacher-notification-automation">
@@ -837,6 +919,116 @@ export function TeacherNotificationsLive() {
           </tbody></table></div>}
         </Async>
       </Section>
+      </>}
+    </div>
+  );
+}
+
+/* ===== B8 — Công nợ lớp chủ nhiệm ===== */
+function teacherInvoiceStatus(invoice: Invoice) {
+  if (invoice.status !== 'PAID' && invoice.dueDate && new Date(`${invoice.dueDate}T23:59:59`) < new Date()) return 'OVERDUE';
+  return invoice.status;
+}
+
+export function TeacherFinanceLive() {
+  const periods = useApi<FeePeriod[]>('/fee-periods');
+  const [periodId, setPeriodId] = useState('');
+  const summaries = useApi<FinanceClassSummary[]>(periodId
+    ? `/finance/classes?periodId=${encodeURIComponent(periodId)}`
+    : '/finance/classes');
+  const [classId, setClassId] = useState('');
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('ALL');
+  const [sending, setSending] = useState(false);
+  const toast = useToast();
+  const invoiceUrl = classId
+    ? `/invoices?classId=${encodeURIComponent(classId)}${periodId ? `&periodId=${encodeURIComponent(periodId)}` : ''}`
+    : null;
+  const invoices = useApi<Invoice[]>(invoiceUrl);
+
+  useEffect(() => {
+    if (!periodId && periods.data?.length) {
+      const active = periods.data.find((item) => item.status === 'OPEN') || periods.data[0];
+      setPeriodId(active.id);
+    }
+  }, [periodId, periods.data]);
+
+  useEffect(() => {
+    const rows = summaries.data || [];
+    if (!rows.length) {
+      setClassId('');
+      return;
+    }
+    if (!rows.some((item) => item.classId === classId)) setClassId(rows[0].classId);
+  }, [classId, summaries.data]);
+
+  const selected = (summaries.data || []).find((item) => item.classId === classId);
+  const filtered = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase('vi');
+    return (invoices.data || []).filter((invoice) => {
+      const matchesQuery = !normalized || invoice.code.toLocaleLowerCase('vi').includes(normalized)
+        || invoice.studentName.toLocaleLowerCase('vi').includes(normalized);
+      return matchesQuery && (status === 'ALL' || teacherInvoiceStatus(invoice) === status);
+    });
+  }, [invoices.data, query, status]);
+  const total = (summaries.data || []).reduce((sum, item) => sum + item.totalAmount, 0);
+  const paid = (summaries.data || []).reduce((sum, item) => sum + item.paidAmount, 0);
+  const outstanding = total - paid;
+  const overdue = (summaries.data || []).reduce((sum, item) => sum + item.overdueCount, 0);
+
+  const remindClass = async () => {
+    if (!selected) return;
+    if (!confirm(`Gửi nhắc hạn tới phụ huynh của các học sinh còn công nợ lớp ${selected.classCode}?`)) return;
+    setSending(true);
+    try {
+      const suffix = periodId ? `?periodId=${encodeURIComponent(periodId)}` : '';
+      const result = await api.post<ClassReminderResult>(`/finance/homeroom/classes/${selected.classId}/remind${suffix}`);
+      toast.show('ok', `Đã gửi ${result.invoiceCount} nhắc hạn tới ${result.recipientCount} phụ huynh`);
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setSending(false); }
+  };
+
+  const refresh = () => {
+    periods.reload();
+    summaries.reload();
+    invoices.reload();
+  };
+
+  return (
+    <div className="finance-page teacher-finance-page">
+      {toast.node}
+      <header className="finance-hero teacher-finance-hero">
+        <div><span className="finance-eyebrow"><ShieldCheck size={15} /> Không gian tài chính lớp chủ nhiệm</span><h2>Đồng hành cùng phụ huynh, giảm tải cho nhà trường</h2><p>Theo dõi tiến độ khoản thu của đúng lớp chủ nhiệm và gửi nhắc hạn tập trung tới phụ huynh còn công nợ.</p></div>
+        <div className="finance-hero-actions"><select className="live-input" value={periodId} onChange={(event) => { setPeriodId(event.target.value); setClassId(''); }} aria-label="Chọn đợt thu"><option value="">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}</select><button className="live-btn ghost" type="button" onClick={refresh}><RefreshCw size={15} /> Đồng bộ</button></div>
+      </header>
+
+      <div className="finance-delegation-note teacher"><UsersRound size={20} /><div><strong>Phân quyền rõ ràng</strong><small>Giáo viên chỉ nhìn thấy lớp mình làm chủ nhiệm. Admin chịu trách nhiệm phát hành và ghi nhận thanh toán; GVCN theo dõi, phối hợp và nhắc hạn phụ huynh.</small></div></div>
+
+      <section className="finance-kpi-grid" aria-label="Tổng quan công nợ lớp chủ nhiệm">
+        <article className="finance-kpi-card primary"><span><TrendingUp size={20} /></span><div><small>Đã thu</small><strong>{money(paid)}</strong><p>{total ? (paid * 100 / total).toFixed(1) : 0}% tổng phải thu</p></div></article>
+        <article className="finance-kpi-card"><span><WalletCards size={20} /></span><div><small>Còn phải thu</small><strong>{money(outstanding)}</strong><p>{(summaries.data || []).length} lớp chủ nhiệm có dữ liệu</p></div></article>
+        <article className="finance-kpi-card success"><span><CheckCircle2 size={20} /></span><div><small>Lớp hoàn thành</small><strong>{(summaries.data || []).filter((item) => item.completed).length}</strong><p>Đã đạt 100% yêu cầu tài chính</p></div></article>
+        <article className={`finance-kpi-card ${overdue ? 'danger' : ''}`}><span><AlertTriangle size={20} /></span><div><small>Hóa đơn quá hạn</small><strong>{overdue}</strong><p>Cần chủ động trao đổi với phụ huynh</p></div></article>
+      </section>
+
+      <Section title="Tiến độ theo lớp chủ nhiệm" subtitle="Chọn lớp để xem chi tiết hóa đơn và thực hiện nhắc hạn" wide>
+        <Async state={summaries} empty="Chưa có khoản thu nào được phát hành cho lớp chủ nhiệm">
+          {(rows) => <div className="finance-class-grid teacher-class-finance-grid">{rows.map((summary) => <button type="button" key={summary.classId} className={`teacher-finance-class ${classId === summary.classId ? 'selected' : ''} ${summary.completed ? 'complete' : ''}`} onClick={() => setClassId(summary.classId)}>
+            <header><span><GraduationCap size={17} /></span><div><strong>Lớp {summary.classCode}</strong><small>{summary.gradeLevel || 'Chưa xác định khối'} · {summary.invoiceCount} học sinh</small></div><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} /></header>
+            <div className="finance-mini-progress"><span style={{ width: `${Math.min(100, summary.collectionRate)}%` }} /></div>
+            <footer><span>{summary.collectionRate.toFixed(1)}% đã thu</span><strong>Còn {money(summary.outstanding)}</strong></footer>
+          </button>)}</div>}
+        </Async>
+      </Section>
+
+      {selected && <Section title={`Công nợ lớp ${selected.classCode}`} subtitle={`${selected.paidCount}/${selected.invoiceCount} học sinh đã hoàn thành · Còn ${money(selected.outstanding)}`} wide
+        action={!selected.completed ? <button className="live-btn" type="button" disabled={sending} onClick={remindClass}><BellRing size={15} /> {sending ? 'Đang gửi…' : 'Nhắc phụ huynh còn nợ'}</button> : <Badge tone="green">Lớp đã hoàn thành</Badge>}>
+        <div className="finance-filterbar"><label className="finance-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm học sinh hoặc mã hóa đơn" /></label><select className="live-input" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option></select><span>{filtered.length} hóa đơn</span></div>
+        <Async state={{ ...invoices, data: filtered }} empty="Không có hóa đơn phù hợp">
+          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th></tr></thead><tbody>{pageRows.map((invoice) => <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={teacherInvoiceStatus(invoice)} /></td></tr>)}</tbody></table></div>}</PaginatedData>}
+        </Async>
+        <div className="finance-guidance"><ReceiptText size={18} /><p>Giáo viên chủ nhiệm chỉ theo dõi và gửi nhắc hạn. Mọi thao tác tạo khoản thu, phát hành hóa đơn và ghi nhận thanh toán vẫn do Admin thực hiện để bảo đảm đối soát.</p></div>
+      </Section>}
     </div>
   );
 }
