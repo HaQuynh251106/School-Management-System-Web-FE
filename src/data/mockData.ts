@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bell,
   BookOpenCheck,
+  CalendarClock,
   CalendarDays,
   CircleDollarSign,
   ClipboardCheck,
@@ -66,7 +67,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A1P', title: 'Phụ huynh', phase: 'GĐ1', priority: 1, summary: 'Tài khoản phụ huynh và liên kết với học sinh.', Icon: Users },
     { code: 'A2', title: 'Cơ cấu đào tạo', phase: 'GĐ1', priority: 1, summary: 'Năm học, học kỳ, khối, lớp, môn, GVCN, phân lớp.', Icon: School },
     { code: 'A3', title: 'Xếp thời khóa biểu', phase: 'GĐ1', priority: 2, summary: 'Kiểm tra xung đột giáo viên, phòng học và lớp học.', Icon: CalendarDays },
-    { code: 'A4', title: 'Cấu hình khảo thí', phase: 'GĐ1', priority: 2, summary: 'Loại điểm, hệ số môn học, quy tắc trung bình.', Icon: Settings },
+    { code: 'A4', title: 'Khảo thí & học bạ', phase: 'GĐ1', priority: 2, summary: 'Tổ chức kỳ thi, lịch thi, lớp dự thi, phòng và giám thị.', Icon: Settings },
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ, VNPAY/MoMo.', Icon: CircleDollarSign },
     { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Tổng hợp điểm, chuyên cần và doanh thu.', Icon: FileSpreadsheet },
@@ -84,6 +85,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B9', title: 'Duyệt đơn xin nghỉ', phase: 'GĐ2', priority: 1, summary: 'Duyệt đơn đã được phụ huynh xác nhận của lớp chủ nhiệm.', Icon: ClipboardCheck },
     { code: 'B10', title: 'Báo cáo giảng dạy', phase: 'GĐ2', priority: 2, summary: 'Thống kê học tập, chuyên cần và xuất dữ liệu lớp phụ trách.', Icon: FileSpreadsheet },
     { code: 'B11', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
+    { code: 'B12', title: 'Khảo thí giáo viên', phase: 'GĐ1', priority: 1, summary: 'Lịch coi thi, nhập điểm lớp phụ trách và xử lý phúc khảo.', Icon: CalendarClock },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },
@@ -95,6 +97,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'C7', title: 'Trao đổi giáo viên', phase: 'GĐ2', priority: 1, summary: 'Hỏi bài và trao đổi trực tiếp với giáo viên phụ trách.', Icon: MessageSquareText },
     { code: 'C8', title: 'Báo cáo cá nhân', phase: 'GĐ2', priority: 2, summary: 'Thống kê kết quả học tập, chuyên cần và xuất báo cáo.', Icon: FileSpreadsheet },
     { code: 'C9', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
+    { code: 'C10', title: 'Thi & phúc khảo', phase: 'GĐ1', priority: 1, summary: 'Lịch thi, số báo danh, kết quả và yêu cầu phúc khảo.', Icon: CalendarClock },
   ],
   parent: [
     { code: 'D1', title: 'Chọn học sinh', phase: 'GĐ1', priority: 1, summary: 'Chọn con cần theo dõi.', Icon: RefreshCcw },
@@ -105,6 +108,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'D6', title: 'Xác nhận nghỉ học', phase: 'GĐ2', priority: 1, summary: 'Xác nhận đơn xin nghỉ trước khi chuyển giáo viên chủ nhiệm duyệt.', Icon: ClipboardCheck },
     { code: 'D7', title: 'Báo cáo của con', phase: 'GĐ2', priority: 2, summary: 'Thống kê học tập, chuyên cần, học phí và xuất báo cáo.', Icon: FileSpreadsheet },
     { code: 'D8', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
+    { code: 'D9', title: 'Lịch thi của con', phase: 'GĐ1', priority: 1, summary: 'Theo dõi lịch thi, phòng thi và số báo danh của từng học sinh.', Icon: CalendarClock },
   ],
 };
 

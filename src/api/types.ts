@@ -92,6 +92,72 @@ export interface TeacherWorkload {
   assignments: TeacherClassAssignment[];
 }
 export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
+export interface ExamPeriod {
+  id: string; code: string; name: string; academicYearId: string; semesterId: string;
+  gradeLevel?: string | null; startDate: string; endDate: string; status: string;
+  scoreEntryLocked: boolean; confirmedAt?: string | null; confirmedBy?: string | null;
+  schedulePublished: boolean; scheduleRevision: number;
+  schedulePublishedAt?: string | null; schedulePublishedBy?: string | null;
+  createdAt: string; updatedAt: string;
+}
+export interface ExamPeriodSummary {
+  period: ExamPeriod; scheduleCount: number; roomCount: number; candidateCount: number;
+  resultCount: number; pendingReviewCount: number;
+}
+export interface ExamSchedule {
+  id: string; examPeriodId: string; subjectId: string; subjectName: string;
+  examDate: string; startTime: string; durationMinutes: number; notes?: string | null;
+  classIds: string[];
+}
+export interface ExamRoom {
+  id: string; scheduleId: string; roomCode: string; capacity: number;
+  proctorOneId?: string | null; proctorOneName?: string | null;
+  proctorTwoId?: string | null; proctorTwoName?: string | null;
+}
+export interface ExamCandidate {
+  id: string; examPeriodId: string; scheduleId: string; examRoomId: string;
+  studentId: string; studentName: string; studentCode?: string | null; classId: string;
+  classCode: string; candidateNo: string; seatNo: number;
+}
+export interface ExamResult {
+  id: string; examPeriodId: string; scheduleId: string; studentId: string; subjectId: string;
+  score?: number | null; status: string; note?: string | null; recordedAt?: string | null;
+  updatedAt?: string | null; version: number;
+}
+export interface ExamReviewRequest {
+  id: string; examPeriodId: string; resultId: string; studentId: string; studentName: string;
+  subjectId: string; subjectName: string; originalScore?: number | null; reason: string; status: string;
+  resolution?: string | null; resolvedScore?: number | null; requestedAt: string; resolvedAt?: string | null;
+}
+export interface ExamScoreAdjustment {
+  id: string; examPeriodId: string; resultId: string; reviewRequestId?: string | null;
+  oldScore?: number | null; newScore?: number | null; reason: string; adjustedAt: string; adjustedBy: string;
+}
+export interface ExamAgendaItem {
+  id: string; taskType: 'CANDIDATE' | 'PROCTOR' | 'GRADE_ENTRY'; taskLabel: string;
+  examPeriodId: string; examPeriodName: string; scheduleRevision: number;
+  scheduleId: string; subjectId: string; subjectName: string; examDate: string;
+  startTime: string; durationMinutes: number; notes?: string | null; roomCode?: string | null;
+  studentId?: string | null; studentName?: string | null; classCode?: string | null;
+  candidateNo?: string | null; seatNo?: number | null; proctorNames?: string | null;
+  status: 'UPCOMING' | 'TODAY' | 'COMPLETED' | 'NOT_STARTED' | 'PENDING' | 'IN_PROGRESS' | 'LOCKED';
+}
+export interface TeacherExamCandidateRow {
+  candidateId: string; studentId: string; studentName: string; studentCode?: string | null;
+  candidateNo: string; seatNo?: number | null; roomCode?: string | null; resultId?: string | null;
+  score?: number | null; note?: string | null; resultStatus: string; version?: number | null;
+}
+export interface TeacherGradingTask {
+  examPeriodId: string; examPeriodName: string; scheduleId: string; subjectId: string;
+  subjectName: string; classId: string; classCode: string; examDate: string; startTime: string;
+  scoreEntryLocked: boolean; candidates: TeacherExamCandidateRow[];
+}
+export interface StudentExamResultView {
+  resultId: string; examPeriodId: string; examPeriodName: string; scheduleId: string;
+  subjectId: string; subjectName: string; score?: number | null; note?: string | null;
+  resultStatus: string; reviewId?: string | null; reviewStatus?: string | null;
+  reviewReason?: string | null; reviewResolution?: string | null; resolvedScore?: number | null;
+}
 export interface GradebookSubject {
   subjectId: string; subjectName: string; teacherName?: string | null; editable: boolean;
 }

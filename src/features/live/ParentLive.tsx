@@ -175,16 +175,18 @@ export function ParentMonitorLive() {
 export function ParentInvoiceLive() {
   const invoices = useApi<Invoice[]>('/invoices');
   const toast = useToast();
+  const reloadInvoices = invoices.reload;
+  const showToast = toast.show;
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const responseCode = params.get('vnp_ResponseCode');
     if (!responseCode) return;
-    toast.show(responseCode === '00' ? 'ok' : 'err', responseCode === '00'
+    showToast(responseCode === '00' ? 'ok' : 'err', responseCode === '00'
       ? 'VNPAY đã tiếp nhận giao dịch. Hệ thống đang xác nhận qua kênh IPN an toàn.'
       : `Giao dịch chưa hoàn tất (mã ${responseCode}).`);
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    window.setTimeout(() => invoices.reload(), 1200);
-  }, []);
+    window.setTimeout(() => reloadInvoices(), 1200);
+  }, [reloadInvoices, showToast]);
   const pay = async (inv: Invoice) => {
     try {
       const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VNPAY' });

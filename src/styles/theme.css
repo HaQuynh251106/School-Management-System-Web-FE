@@ -992,6 +992,146 @@ body {
 [data-theme="dark"] .login-success { border-color: #245c4c; background: #17382f; }
 [data-theme="dark"] .modal-overlay { background: rgba(2, 8, 18, 0.76); }
 
+/* Complete dark-mode coverage for legacy screens and newer workflows. */
+[data-theme="dark"] .app-shell {
+  --line: var(--border);
+  --muted: var(--text-soft);
+}
+
+[data-theme="dark"] .app-shell :is(
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea,
+  .live-input, .live-select, .seg button, .child-tabs button, .logout-btn,
+  .attendance-search input, .attendance-quick-actions button, .attendance-status-options button,
+  .chat-sidebar > header > button, .chat-search input, .chat-file-picker,
+  .announcement-audience-grid button, .teacher-notification-class-picker select,
+  .teacher-manual-status-note button, .academic-action, .assignment-row-action,
+  .assignment-selected-class-list article > button, .icon-action
+) {
+  border-color: var(--border) !important;
+  background-color: var(--surface-soft) !important;
+  color: var(--text) !important;
+}
+
+[data-theme="dark"] .app-shell :is(input, textarea)::placeholder { color: #718198; opacity: 1; }
+[data-theme="dark"] .app-shell :is(input, select, textarea):focus {
+  border-color: var(--portal-accent, #60a5fa) !important;
+  background-color: var(--surface) !important;
+}
+
+[data-theme="dark"] .app-shell :is(
+  .live-table, .live-table td, .attendance-table-wrap, .attendance-table td,
+  .attendance-summary-grid article, .parent-assignment-result, .leave-request-card,
+  .personal-report-panel, .profile-settings-card, .notification-channel-list label,
+  .chat-shell, .chat-conversation-head, .chat-message p, .chat-file-message,
+  .announcement-preview-card, .admin-timetable-grid .time-cell.has-slot
+) {
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+
+[data-theme="dark"] .app-shell :is(
+  .parent-child-context, .leave-composer, .personal-report-kpis article,
+  .profile-settings-hero, .homeroom-profile-hero, .announcement-preview
+) {
+  border-color: var(--border) !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--portal-accent, #60a5fa) 11%, var(--surface)),
+    var(--surface)
+  ) !important;
+  color: var(--text) !important;
+}
+
+[data-theme="dark"] .app-shell :is(
+  .parent-child-context small, .leave-request-date, .leave-request-info em,
+  .personal-attendance-stats div, .chat-attachment-preview,
+  .announcement-audience-grid b, .teacher-notification-class-picker,
+  .attendance-subject-scope, .assignment-edit-context
+) {
+  border-color: var(--border) !important;
+  background: var(--surface-soft) !important;
+  color: var(--text-soft) !important;
+}
+
+[data-theme="dark"] .app-shell :is(
+  .parent-child-context strong, .personal-report-kpis strong,
+  .personal-attendance-stats strong, .profile-settings-hero h3,
+  .attendance-summary-grid article strong, .chat-sidebar > header strong,
+  .chat-message p, .live-table td, .attendance-table td
+) { color: var(--text) !important; }
+
+[data-theme="dark"] .app-shell :is(
+  .parent-assignment-result p, .leave-request-info p, .leave-request-info > small,
+  .personal-report-kpis small, .personal-report-kpis p, .personal-attendance-stats span,
+  .profile-settings-hero p, .profile-settings-hero small,
+  .profile-settings-card > header small, .profile-settings-card > footer span,
+  .notification-channel-list small, .chat-message-sender, .chat-message > small
+) { color: var(--text-soft) !important; }
+
+[data-theme="dark"] .chat-sidebar { background: var(--surface-soft) !important; }
+[data-theme="dark"] .chat-sidebar > header,
+[data-theme="dark"] .chat-conversation-head,
+[data-theme="dark"] .chat-composer { border-color: var(--border) !important; background: var(--surface) !important; }
+[data-theme="dark"] .chat-contact-list > button:hover,
+[data-theme="dark"] .chat-contact-list > button.active {
+  border-color: var(--portal-border, var(--border)) !important;
+  background: color-mix(in srgb, var(--portal-accent, #60a5fa) 13%, var(--surface)) !important;
+}
+[data-theme="dark"] .chat-message.mine p {
+  border-color: color-mix(in srgb, var(--portal-accent, #60a5fa) 65%, var(--border)) !important;
+  background: var(--portal-accent, #2563eb) !important;
+  color: #fff !important;
+}
+[data-theme="dark"] .chat-file-message { background: color-mix(in srgb, var(--surface-raised) 82%, transparent) !important; }
+
+[data-theme="dark"] .modal-card,
+[data-theme="dark"] .modal-head,
+[data-theme="dark"] .admin-user-form-section,
+[data-theme="dark"] .homeroom-profile-card,
+[data-theme="dark"] .homeroom-profile-highlights > span {
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+}
+[data-theme="dark"] .modal-card :is(input, select, textarea),
+[data-theme="dark"] .pager button {
+  border-color: var(--border) !important;
+  background: var(--surface-soft) !important;
+  color: var(--text) !important;
+}
+[data-theme="dark"] .homeroom-profile-identity b { border-color: var(--border) !important; background: var(--surface-raised) !important; }
+
+/* Semantic states keep their meaning without introducing light islands. */
+[data-theme="dark"] .app-shell :is(.live-btn.danger, .academic-action.danger, .assignment-row-action.delete:hover, .icon-action.danger:hover) {
+  border-color: #713845 !important;
+  background: #351d27 !important;
+  color: #ff9cab !important;
+}
+[data-theme="dark"] .app-shell :is(
+  .attendance-subject-scope.missing, .assignment-availability-list article.unavailable,
+  .assignment-delete-confirm, .announcement-preview-card.priority-urgent,
+  .noti-item.priority-urgent, .report-error
+) { border-color: #713845 !important; background: #351d27 !important; color: #ffadb8 !important; }
+[data-theme="dark"] .app-shell :is(
+  .attendance-save-state.dirty, .assignment-edit-lock, .time-cell.conflict,
+  .gradebook-access-notice.readonly, .import-result.has-errors
+) { border-color: #72552c !important; background: #33291c !important; color: #f7c873 !important; }
+[data-theme="dark"] .app-shell :is(
+  .attendance-status-options button.active.present,
+  .attendance-status-options button.active.late,
+  .attendance-status-options button.active.excused,
+  .attendance-status-options button.active.unexcused,
+  .gradebook-score-input.excellent, .gradebook-score-input.good,
+  .gradebook-score-input.average, .gradebook-completion.complete,
+  .gradebook-completion.incomplete
+) { filter: saturate(.9) brightness(.76); }
+
+[data-theme="dark"] .login-screen { background-color: var(--app-bg) !important; }
+[data-theme="dark"] .login-panel,
+[data-theme="dark"] .password-change-card,
+[data-theme="dark"] .login-loading { background: color-mix(in srgb, var(--surface) 96%, transparent) !important; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }

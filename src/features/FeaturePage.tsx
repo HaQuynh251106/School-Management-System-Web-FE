@@ -6,7 +6,7 @@ import { AdminTimetableLive } from './live/AdminTimetableLive';
 import { ChatLive } from './live/ChatLive';
 // Live (nối backend thật)
 import {
-  AdminUsersLive, AdminExamCategoriesLive,
+  AdminUsersLive,
   AdminFinanceLive, AdminNotificationsLive,
 } from './live/AdminLive';
 import { AdminAcademicLive } from './live/AdminAcademicManager';
@@ -17,6 +17,8 @@ import { MyTimetableLive, AssignmentsLive, NotificationsLive } from './live/Shar
 import { LeaveRequestsLive } from './live/LeaveRequestsLive';
 import { PersonalReportsLive } from './live/PersonalReportsLive';
 import { ProfileSettingsLive } from './live/ProfileSettingsLive';
+import { AdminExamsLive } from './live/AdminExamsLive';
+import { MyExamsLive } from './live/MyExamsLive';
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -34,7 +36,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A1P': return <AdminUsersLive fixedRole="PARENT" />;
     case 'A2': return <AdminAcademicLive />;
     case 'A3': return <AdminTimetableLive />;
-    case 'A4': return <AdminExamCategoriesLive />;
+    case 'A4': return <AdminExamsLive />;
     case 'A6': return <AdminAuditLive />;
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
@@ -51,6 +53,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B9': return <LeaveRequestsLive actor="teacher" />;
     case 'B10': return <PersonalReportsLive actor="teacher" />;
     case 'B11': return <ProfileSettingsLive actor="teacher" />;
+    case 'B12': return <MyExamsLive actor="teacher" />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
@@ -61,6 +64,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'C6': return <LeaveRequestsLive actor="student" />;
     case 'C8': return <PersonalReportsLive actor="student" />;
     case 'C9': return <ProfileSettingsLive actor="student" />;
+    case 'C10': return <MyExamsLive actor="student" />;
     // ---- Parent ----
     case 'D1': return <ParentSwitchLive />;
     case 'D2': return <ParentMonitorLive />;
@@ -70,6 +74,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'D6': return <LeaveRequestsLive actor="parent" />;
     case 'D7': return <PersonalReportsLive actor="parent" />;
     case 'D8': return <ProfileSettingsLive actor="parent" />;
+    case 'D9': return <MyExamsLive actor="parent" />;
     default: return <GeneralDashboard roleId="admin" />;
   }
 }

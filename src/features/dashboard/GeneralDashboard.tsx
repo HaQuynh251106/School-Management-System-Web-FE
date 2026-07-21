@@ -9,7 +9,7 @@ import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
-  ApiUser, DashboardChart, DashboardMetric, DashboardResponse, Notification, SchoolClass,
+  ApiUser, DashboardChart, DashboardMetric, DashboardResponse, ExamAgendaItem, Notification, SchoolClass,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
 import { Section, StatusPill, viLabel } from '../../components/ui';
@@ -79,12 +79,14 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
     { code: 'B3', title: 'Điểm danh', description: 'Ghi nhận theo tiết học', Icon: ClipboardCheck },
     { code: 'B4', title: 'Bảng điểm', description: 'Cập nhật kết quả học tập', Icon: BarChart3 },
     { code: 'B5', title: 'Giao bài tập', description: 'Tạo và chấm bài', Icon: BookOpenCheck },
+    { code: 'B12', title: 'Lịch thi & nhiệm vụ', description: 'Coi thi và nhập điểm', Icon: CalendarCheck2 },
   ],
   student: [
     { code: 'C2', title: 'Kết quả học tập', description: 'Điểm và thời khóa biểu', Icon: BarChart3 },
     { code: 'C4', title: 'Bài tập', description: 'Xem và nộp bài', Icon: Upload },
     { code: 'C5', title: 'Thông báo', description: 'Cập nhật mới nhất', Icon: Bell },
     { code: 'C7', title: 'Trao đổi', description: 'Nhắn tin giáo viên', Icon: MessageSquareText },
+    { code: 'C10', title: 'Lịch thi', description: 'Phòng, SBD và chỗ ngồi', Icon: CalendarCheck2 },
   ],
   parent: [
     { code: 'D1', title: 'Chọn học sinh', description: 'Đổi hồ sơ đang theo dõi', Icon: Users },
@@ -92,6 +94,7 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
     { code: 'D3', title: 'Liên lạc giáo viên', description: 'Trao đổi với giáo viên', Icon: MessageSquareText },
     { code: 'D4', title: 'Khoản thu', description: 'Hóa đơn và thanh toán', Icon: WalletCards },
     { code: 'D5', title: 'Thông báo', description: 'Cập nhật từ nhà trường', Icon: Bell },
+    { code: 'D9', title: 'Lịch thi của con', description: 'Lịch, phòng và SBD', Icon: CalendarCheck2 },
   ],
 };
 
@@ -109,6 +112,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
   const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
   const notifications = useApi<Notification[]>('/notifications');
+  const examAgenda = useApi<ExamAgendaItem[]>(roleId === 'admin' ? null : '/me/exam-agenda');
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
@@ -118,7 +122,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const today = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   }).format(new Date());
-  const hasError = Boolean(dashboard.error || users.error || classes.error || notifications.error);
+  const hasError = Boolean(dashboard.error || users.error || classes.error || notifications.error || examAgenda.error);
   const loading = dashboard.loading;
   const links = quickLinks[roleId];
   const primaryLink = roleId === 'admin'
@@ -135,6 +139,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     users.reload();
     classes.reload();
     notifications.reload();
+    examAgenda.reload();
   };
   const markNotificationRead = async (id: string) => {
     setMarkingNotificationId(id);
@@ -205,6 +210,10 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         />
       )}
 
+      {roleId !== 'admin' && (
+        <ExamAgendaSpotlight roleId={roleId} items={examAgenda.data ?? []} loading={examAgenda.loading} onOpen={() => navigate(examPage(roleId))} />
+      )}
+
       {loading && <DashboardSkeleton />}
       {!loading && metrics.length > 0 && (
         <section className="metric-grid dashboard-metric-grid" aria-label="Chỉ số tổng quan">
@@ -263,6 +272,25 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
       )}
     </div>
   );
+}
+
+function ExamAgendaSpotlight({ roleId, items, loading, onOpen }: {
+  roleId: RoleId; items: ExamAgendaItem[]; loading: boolean; onOpen: () => void;
+}) {
+  const active = items.filter((item) => !['COMPLETED', 'LOCKED'].includes(item.status)).slice(0, 3);
+  if (!loading && active.length === 0) return null;
+  return <section className="dashboard-exam-spotlight">
+    <header><div><span><CalendarCheck2 size={19} /></span><div><small>Lịch khảo thí chính thức</small><h3>{roleId === 'teacher' ? 'Nhiệm vụ sắp tới' : roleId === 'parent' ? 'Lịch thi sắp tới của con' : 'Lịch thi sắp tới'}</h3></div></div><button type="button" onClick={onOpen}>Xem toàn bộ <ArrowRight size={15} /></button></header>
+    {loading ? <div className="dashboard-exam-loading"><i /><i /><i /></div> : <div className="dashboard-exam-items">{active.map((item) => <article key={item.id}>
+      <time><strong>{new Date(`${item.examDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit' })}</strong><span>thg {new Date(`${item.examDate}T00:00:00`).toLocaleDateString('vi-VN', { month: '2-digit' })}</span></time>
+      <div><small>{item.taskLabel} · {item.examPeriodName}</small><strong>{item.subjectName}</strong><span>{item.startTime} · {item.roomCode ? `Phòng ${item.roomCode}` : item.classCode ? `Lớp ${item.classCode}` : 'Xem chi tiết'}</span></div>
+      {item.status === 'TODAY' && <b>Hôm nay</b>}
+    </article>)}</div>}
+  </section>;
+}
+
+function examPage(roleId: RoleId): PageId {
+  return ({ teacher: 'B12', student: 'C10', parent: 'D9', admin: 'A4' } as Record<RoleId, PageId>)[roleId];
 }
 
 function TeacherAnnouncementSpotlight({ items, loading, markingId, onMarkRead, onOpenInbox }: {
