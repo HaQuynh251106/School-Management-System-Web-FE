@@ -248,9 +248,12 @@ export interface FinanceClassSummary {
   homeroomTeacherId?: string | null; homeroomTeacherName?: string | null;
   invoiceCount: number; paidCount: number; partialCount: number; overdueCount: number;
   totalAmount: number; paidAmount: number; outstanding: number; collectionRate: number;
-  completed: boolean; completionNotified: boolean;
+  completed: boolean; completionNotified: boolean; reminderSentToday: boolean;
 }
 export interface ClassReminderResult { invoiceCount: number; recipientCount: number; sentAt: string; }
+export interface HomeroomDebtReminderResult {
+  classCount: number; recipientCount: number; skippedCount: number; sentAt: string;
+}
 export interface PaymentCallback { txnRef: string; status: 'SUCCESS' | 'FAILED'; amount: number; signature: string; }
 export interface PaymentInitResponse {
   payment: Payment; invoice: Invoice; gatewayStatus: string;
@@ -269,8 +272,29 @@ export interface ImportResult {
 
 export interface StudentYearlySummary {
   id: string; academicYearId: string; studentId: string; studentName: string; classId: string;
+  semesterOneAverage?: number | null; semesterTwoAverage?: number | null;
   averageScore?: number | null; conductGrade?: string | null; promotionStatus: string;
   missingRequirements?: string | null; nextClassId?: string | null; finalizedAt?: string | null;
+}
+
+export interface YearRolloverClassPlan {
+  sourceClassId: string; sourceClassCode: string; targetClassCode: string;
+  targetGradeLevel: string; type: 'PROMOTION' | 'NEW_INTAKE'; capacity: number;
+}
+
+export interface YearRolloverPreview {
+  academicYearId: string; academicYearCode: string; status: string;
+  semesterCount: number; classCount: number; studentCount: number;
+  readyCount: number; incompleteCount: number; expectedPromoted: number;
+  expectedRetained: number; expectedGraduated: number;
+  classPlan: YearRolloverClassPlan[]; blockers: string[];
+}
+
+export interface YearRolloverResult {
+  closedYearId: string; nextYearId: string; nextYearCode: string;
+  createdSemesterCount: number; createdClassCount: number;
+  promotedCount: number; retainedCount: number; graduatedCount: number;
+  nextYearActivated: boolean; completedAt: string;
 }
 
 

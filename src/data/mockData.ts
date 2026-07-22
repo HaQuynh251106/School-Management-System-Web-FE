@@ -86,6 +86,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B10', title: 'Báo cáo giảng dạy', phase: 'GĐ2', priority: 2, summary: 'Thống kê học tập, chuyên cần và xuất dữ liệu lớp phụ trách.', Icon: FileSpreadsheet },
     { code: 'B11', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
     { code: 'B12', title: 'Khảo thí giáo viên', phase: 'GĐ1', priority: 1, summary: 'Lịch coi thi, nhập điểm lớp phụ trách và xử lý phúc khảo.', Icon: CalendarClock },
+    { code: 'B13', title: 'Hạnh kiểm & tổng kết', phase: 'GĐ1', priority: 1, summary: 'GVCN đánh giá hạnh kiểm và theo dõi điều kiện tổng kết của lớp.', Icon: GraduationCap },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },
@@ -98,6 +99,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'C8', title: 'Báo cáo cá nhân', phase: 'GĐ2', priority: 2, summary: 'Thống kê kết quả học tập, chuyên cần và xuất báo cáo.', Icon: FileSpreadsheet },
     { code: 'C9', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
     { code: 'C10', title: 'Thi & phúc khảo', phase: 'GĐ1', priority: 1, summary: 'Lịch thi, số báo danh, kết quả và yêu cầu phúc khảo.', Icon: CalendarClock },
+    { code: 'C11', title: 'Tổng kết năm học', phase: 'GĐ1', priority: 1, summary: 'Xem điểm hai học kỳ, hạnh kiểm và kết quả xét lên lớp.', Icon: GraduationCap },
   ],
   parent: [
     { code: 'D1', title: 'Chọn học sinh', phase: 'GĐ1', priority: 1, summary: 'Chọn con cần theo dõi.', Icon: RefreshCcw },
@@ -109,6 +111,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'D7', title: 'Báo cáo của con', phase: 'GĐ2', priority: 2, summary: 'Thống kê học tập, chuyên cần, học phí và xuất báo cáo.', Icon: FileSpreadsheet },
     { code: 'D8', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Cập nhật thông tin liên hệ và cấu hình kênh thông báo.', Icon: Settings },
     { code: 'D9', title: 'Lịch thi của con', phase: 'GĐ1', priority: 1, summary: 'Theo dõi lịch thi, phòng thi và số báo danh của từng học sinh.', Icon: CalendarClock },
+    { code: 'D10', title: 'Tổng kết năm học', phase: 'GĐ1', priority: 1, summary: 'Theo dõi điểm cả năm, hạnh kiểm và kết quả xét lên lớp của con.', Icon: GraduationCap },
   ],
 };
 

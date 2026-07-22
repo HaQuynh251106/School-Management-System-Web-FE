@@ -170,7 +170,7 @@ export function AdminAcademicLive() {
   return (
     <>
       {toast.node}
-      <div className="academic-lifecycle-note"><CalendarDays size={20} /><div><strong>Quy trình năm học</strong><span>Tạo năm học → tạo học kỳ → kích hoạt năm học → kích hoạt học kỳ. Hệ thống chỉ cho phép một năm học và một học kỳ hoạt động.</span></div></div>
+      <div className="academic-lifecycle-note"><CalendarDays size={20} /><div><strong>Quy trình năm học an toàn</strong><span>Năm học đầu tiên được tạo và kích hoạt thủ công. Từ các năm tiếp theo, dùng mục Tổng kết năm để hệ thống tự tổng kết, tạo cơ cấu mới, xếp lớp và khóa dữ liệu cũ trong một quy trình.</span></div></div>
       <FunctionTabs tabs={[
         { id: 'years', label: 'Năm học', Icon: CalendarDays, content: (
           <Section title="Năm học" subtitle="Quản lý thời gian và vòng đời năm học" wide>
@@ -185,7 +185,7 @@ export function AdminAcademicLive() {
             <Async paginate resetKey={`${query.years}-${yearStatus}`} state={{ ...years, data: years.data ? filteredYears : null }} itemLabel="năm học">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((year) => <tr key={year.id}>
                 <td><strong>{year.code}</strong></td><td>{year.name}</td><td>{fmtDate(year.startDate)} → {fmtDate(year.endDate)}</td><td><StatusPill value={year.status} /></td>
-                <td><div className="academic-row-actions">{year.status === 'PLANNED' && <><ActionButton label="Sửa" disabled={busy} onClick={() => openEditor('year', year)}><Pencil size={15} /></ActionButton><ActionButton label="Kích hoạt" tone="success" disabled={busy} onClick={() => changeStatus('year', year, 'ACTIVE')}><PlayCircle size={15} /></ActionButton><ActionButton label="Xóa" tone="danger" disabled={busy} onClick={() => remove('year', year.id, year.name)}><Trash2 size={15} /></ActionButton></>}{year.status === 'ACTIVE' && <ActionButton label="Đóng năm học" disabled={busy} onClick={() => changeStatus('year', year, 'CLOSED')}><Archive size={15} /></ActionButton>}{year.status === 'CLOSED' && <span className="academic-locked-note">Đã khóa dữ liệu</span>}</div></td>
+                <td><div className="academic-row-actions">{year.status === 'PLANNED' && <><ActionButton label="Sửa" disabled={busy} onClick={() => openEditor('year', year)}><Pencil size={15} /></ActionButton><ActionButton label="Kích hoạt" tone="success" disabled={busy} onClick={() => changeStatus('year', year, 'ACTIVE')}><PlayCircle size={15} /></ActionButton><ActionButton label="Xóa" tone="danger" disabled={busy} onClick={() => remove('year', year.id, year.name)}><Trash2 size={15} /></ActionButton></>}{year.status === 'ACTIVE' && <span className="academic-locked-note active">Chuyển năm tại mục Tổng kết</span>}{year.status === 'CLOSED' && <span className="academic-locked-note">Đã khóa dữ liệu</span>}</div></td>
               </tr>)}</tbody></table>
             )}</Async>
           </Section>
@@ -244,7 +244,7 @@ export function AdminAcademicLive() {
             <Async paginate resetKey={query.rooms} state={{ ...rooms, data: rooms.data ? filteredRooms : null }} itemLabel="phòng học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên phòng</th><th>Sức chứa</th><th>Thao tác</th></tr></thead><tbody>{list.map((room) => <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td>{room.capacity ?? '—'} người</td><td>{tableActions('room', room)}</td></tr>)}</tbody></table>}</Async>
           </Section>
         ) },
-        { id: 'year-end', label: 'Tổng kết năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} /> },
+        { id: 'year-end', label: 'Tổng kết & chuyển năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={() => { years.reload(); semesters.reload(); classes.reload(); }} /> },
       ]} />
 
       {editor && <Modal title="Chỉnh sửa cơ cấu đào tạo" onClose={() => setEditor(null)} footer={<><button className="live-btn ghost" disabled={busy} onClick={() => setEditor(null)}>Hủy</button><button className="live-btn" disabled={busy} onClick={saveEditor}><Save size={16} /> Lưu thay đổi</button></>}>

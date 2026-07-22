@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, InvoiceDetail,
-  ImportResult, LoginHistory, StudentYearlySummary, Announcement, NotificationDeliveryLog,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult,
+  ImportResult, LoginHistory, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, PaginatedData, useToast, money, fmtDateTime, fmtDate } from './common';
@@ -623,66 +623,121 @@ export function AdminAcademicLegacyLive() {
     </>
   );
 }
-export function YearEndManager({ years }: { years: AcademicYear[] }) {
+export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; onChanged?: () => void }) {
   const [yearId, setYearId] = useState('');
   const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
+  const rolloverPreview = useApi<YearRolloverPreview>(yearId ? `/academic-years/${yearId}/rollover-preview` : null);
   const toast = useToast();
-  const [savingId, setSavingId] = useState('');
   const [finalizing, setFinalizing] = useState(false);
+  const [rolloverResult, setRolloverResult] = useState<YearRolloverResult | null>(null);
+  const selectedYear = useMemo(() => years.find((year) => year.id === yearId), [years, yearId]);
+  const [rolloverForm, setRolloverForm] = useState({ nextYearCode: '', nextYearName: '', startDate: '', endDate: '', createIntakeClasses: true, activateNextYear: true });
 
-  const setConduct = async (studentId: string, conductGrade: string) => {
-    setSavingId(studentId);
-    try {
-      await api.put(`/academic-years/${yearId}/students/${studentId}/conduct`, { conductGrade });
-      toast.show('ok', 'Đã lưu hạnh kiểm'); preview.reload();
-    } catch (e: any) { toast.show('err', e.message); }
-    finally { setSavingId(''); }
-  };
+  useEffect(() => {
+    if (!selectedYear) return;
+    const nextCode = suggestNextAcademicYearCode(selectedYear.code);
+    setRolloverForm({ nextYearCode: nextCode, nextYearName: `Năm học ${nextCode}`,
+      startDate: shiftIsoYear(selectedYear.startDate), endDate: shiftIsoYear(selectedYear.endDate),
+      createIntakeClasses: true, activateNextYear: true });
+    setRolloverResult(null);
+  }, [selectedYear]);
 
-  const finalize = async () => {
-    if (!yearId || !window.confirm('Chốt năm học sẽ khóa kết quả và tự động xét lên lớp. Bạn muốn tiếp tục?')) return;
+  const rolloverYear = async () => {
+    if (!yearId || !selectedYear || !rolloverPreview.data) return;
+    if (rolloverPreview.data.blockers.length) return toast.show('err', rolloverPreview.data.blockers[0]);
+    if (!rolloverForm.nextYearCode || !rolloverForm.startDate || !rolloverForm.endDate) return toast.show('err', 'Nhập đầy đủ thông tin năm học mới');
+    if (!window.confirm(`Hệ thống sẽ tổng kết ${selectedYear.code}, tạo cơ cấu ${rolloverForm.nextYearCode}, xếp lớp và khóa dữ liệu cũ. Bạn muốn tiếp tục?`)) return;
     setFinalizing(true);
     try {
-      await api.post(`/academic-years/${yearId}/finalize`);
-      toast.show('ok', 'Đã chốt năm học và hoàn tất xét lên lớp'); preview.reload();
+      const result = await api.post<YearRolloverResult>(`/academic-years/${yearId}/rollover`, rolloverForm);
+      setRolloverResult(result);
+      toast.show('ok', `Đã chuyển sang năm học ${result.nextYearCode}`);
+      onChanged?.(); preview.reload(); rolloverPreview.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setFinalizing(false); }
   };
 
   return (
-    <Section title="Tổng kết và xét lên lớp" subtitle="Kiểm tra đủ đầu điểm, nhập hạnh kiểm rồi chốt năm học" wide
-      action={<button className="live-btn" disabled={!yearId || finalizing} onClick={finalize}><GraduationCap size={15} /> {finalizing ? 'Đang chốt…' : 'Chốt năm học'}</button>}>
+    <Section title="Tổng kết và chuyển năm học" subtitle="Một quy trình an toàn để tổng kết, xếp lớp, khóa dữ liệu cũ và kích hoạt năm mới" wide
+      action={yearId ? <button className="live-btn ghost" onClick={() => { preview.reload(); rolloverPreview.reload(); }}><RefreshCw size={14} /> Kiểm tra lại</button> : undefined}>
       {toast.node}
       <div className="live-toolbar">
         <select className="live-select grow" value={yearId} onChange={(e) => setYearId(e.target.value)}>
           <option value="">— Chọn năm học cần tổng kết —</option>
           {years.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}
         </select>
-        {yearId && <button className="live-btn ghost" onClick={preview.reload}><RefreshCw size={14} /> Tính lại</button>}
       </div>
       {!yearId ? <div className="live-loading">Chọn năm học để kiểm tra điều kiện tổng kết.</div> : (
+        <>
+        <Async state={rolloverPreview}>{(readiness) => <div className="rollover-workflow">
+          <div className="rollover-readiness-grid">
+            <article><span>Học sinh</span><strong>{readiness.studentCount}</strong><small>{readiness.classCount} lớp trong năm học</small></article>
+            <article className={readiness.semesterCount < 2 ? 'warning' : 'success'}><span>Học kỳ bắt buộc</span><strong>{Math.min(readiness.semesterCount, 2)}/2</strong><small>Phải có đủ học kỳ I và II</small></article>
+            <article className={readiness.incompleteCount ? 'warning' : 'success'}><span>Sẵn sàng</span><strong>{readiness.readyCount}/{readiness.studentCount}</strong><small>{readiness.incompleteCount ? `${readiness.incompleteCount} hồ sơ cần hoàn thiện` : 'Đã đủ điểm hai kỳ và hạnh kiểm'}</small></article>
+            <article><span>Dự kiến lên lớp</span><strong>{readiness.expectedPromoted}</strong><small>Được tự động xếp lớp mới</small></article>
+            <article><span>Lưu ban / Tốt nghiệp</span><strong>{readiness.expectedRetained} / {readiness.expectedGraduated}</strong><small>Được xử lý riêng theo kết quả</small></article>
+          </div>
+          {readiness.blockers.length ? <div className="rollover-blockers"><AlertTriangle size={19} /><div><strong>Chưa thể chuyển năm học</strong>{readiness.blockers.map((item) => <span key={item}>{item}</span>)}</div></div>
+            : <div className="rollover-ready"><ShieldCheck size={19} /><div><strong>Dữ liệu đã sẵn sàng</strong><span>Thao tác được thực hiện trong một giao dịch; có lỗi sẽ không thay đổi dữ liệu.</span></div></div>}
+
+          {selectedYear?.status === 'ACTIVE' && <div className="rollover-builder">
+            <header><div><Sparkles size={19} /><span><strong>Tạo năm học mới tự động</strong><small>Sao chép mốc học kỳ, tạo lớp lên khối và lớp tuyển sinh đầu cấp</small></span></div><Badge tone="blue">5 bước trong 1</Badge></header>
+            <div className="rollover-form-grid">
+              <label><span>Mã năm học mới</span><input className="live-input" value={rolloverForm.nextYearCode} onChange={(event) => setRolloverForm({ ...rolloverForm, nextYearCode: event.target.value })} /></label>
+              <label><span>Tên năm học</span><input className="live-input" value={rolloverForm.nextYearName} onChange={(event) => setRolloverForm({ ...rolloverForm, nextYearName: event.target.value })} /></label>
+              <label><span>Ngày bắt đầu</span><input className="live-input" type="date" value={rolloverForm.startDate} onChange={(event) => setRolloverForm({ ...rolloverForm, startDate: event.target.value })} /></label>
+              <label><span>Ngày kết thúc</span><input className="live-input" type="date" value={rolloverForm.endDate} onChange={(event) => setRolloverForm({ ...rolloverForm, endDate: event.target.value })} /></label>
+            </div>
+            <div className="rollover-options">
+              <label><input type="checkbox" checked={rolloverForm.createIntakeClasses} disabled={readiness.expectedRetained > 0} onChange={(event) => setRolloverForm({ ...rolloverForm, createIntakeClasses: event.target.checked })} /><span><strong>Tạo lớp tuyển sinh đầu cấp</strong><small>{readiness.expectedRetained > 0 ? 'Bắt buộc vì có học sinh dự kiến lưu ban' : 'Giữ lại các mã lớp đầu khối cho học sinh mới'}</small></span></label>
+              <label><input type="checkbox" checked={rolloverForm.activateNextYear} onChange={(event) => setRolloverForm({ ...rolloverForm, activateNextYear: event.target.checked })} /><span><strong>Kích hoạt ngay năm học mới</strong><small>Đồng thời kích hoạt học kỳ đầu tiên</small></span></label>
+            </div>
+            <div className="rollover-class-plan"><span>Lớp sẽ tạo</span><div>{readiness.classPlan.filter((item) => rolloverForm.createIntakeClasses || item.type !== 'NEW_INTAKE').map((item) => <i key={`${item.type}-${item.targetClassCode}`}><b>{item.targetClassCode}</b><small>{item.type === 'NEW_INTAKE' ? 'Tuyển sinh mới' : `${item.sourceClassCode} → ${item.targetClassCode}`}</small></i>)}</div></div>
+            <button className="live-btn rollover-submit" disabled={finalizing || readiness.blockers.length > 0} onClick={rolloverYear}><GraduationCap size={17} /> {finalizing ? 'Đang chuyển năm học…' : <>Chuyển sang {rolloverForm.nextYearCode || 'năm học mới'} <ArrowRight size={16} /></>}</button>
+          </div>}
+          {rolloverResult && <div className="rollover-result"><CheckCircle2 size={20} /><div><strong>Đã chuyển sang {rolloverResult.nextYearCode}</strong><span>{rolloverResult.createdClassCount} lớp · {rolloverResult.createdSemesterCount} học kỳ · {rolloverResult.promotedCount} lên lớp · {rolloverResult.retainedCount} lưu ban · {rolloverResult.graduatedCount} tốt nghiệp</span></div></div>}
+        </div>}</Async>
+        <div className="rollover-formula-note"><strong>Quy tắc xét lên lớp</strong><span>Điểm cả năm = (Điểm HKI + Điểm HKII × 2) ÷ 3. Chỉ xét khi cả hai học kỳ đủ toàn bộ đầu điểm và đã có hạnh kiểm.</span></div>
         <Async paginate state={preview} empty="Năm học chưa có học sinh" itemLabel="học sinh">
-          {(rows) => <div className="admin-table-scroll"><table className="live-table year-end-table">
-            <thead><tr><th>Học sinh</th><th>Điểm TB</th><th>Hạnh kiểm</th><th>Điều kiện</th><th>Kết quả</th></tr></thead>
+          {(rows) => <div className="admin-table-scroll rollover-student-table"><table className="live-table year-end-table">
+            <thead><tr><th>Học sinh</th><th>TB HKI</th><th>TB HKII</th><th>TB cả năm</th><th>Hạnh kiểm</th><th>Điều kiện</th><th>Kết quả</th></tr></thead>
             <tbody>{rows.map((row) => <tr key={row.id}>
               <td><strong>{row.studentName}</strong></td>
-              <td>{row.averageScore == null ? '—' : row.averageScore.toFixed(2)}</td>
-              <td><select className="live-select" value={row.conductGrade || ''} disabled={Boolean(row.finalizedAt) || savingId === row.studentId} onChange={(e) => setConduct(row.studentId, e.target.value)}>
-                <option value="">— Chọn —</option><option value="GOOD">Tốt</option><option value="FAIR">Khá</option><option value="AVERAGE">Trung bình</option><option value="WEAK">Yếu</option>
-              </select></td>
-              <td>{row.missingRequirements ? <span className="year-end-missing" title={row.missingRequirements}>{row.missingRequirements}</span> : <Badge tone="green">Đủ dữ liệu</Badge>}</td>
+              <td className="year-end-score">{formatYearAverage(row.semesterOneAverage)}</td>
+              <td className="year-end-score">{formatYearAverage(row.semesterTwoAverage)}</td>
+              <td className="year-end-score annual">{formatYearAverage(row.averageScore)}</td>
+              <td>{row.conductGrade ? <Badge tone="blue">{({ GOOD: 'Tốt', FAIR: 'Khá', AVERAGE: 'Trung bình', WEAK: 'Yếu' } as Record<string, string>)[row.conductGrade] || row.conductGrade}</Badge> : <Badge tone="orange">Chờ GVCN</Badge>}</td>
+              <td>{row.missingRequirements ? <span className="year-end-missing" title={row.missingRequirements}>{row.missingRequirements}</span>
+                : !row.conductGrade ? <Badge tone="orange">Thiếu hạnh kiểm</Badge> : <Badge tone="green">Đủ dữ liệu</Badge>}</td>
               <td><StatusPill value={yearEndLabel(row.promotionStatus)} /></td>
             </tr>)}</tbody>
           </table></div>}
         </Async>
-      )}
+        </>)}
     </Section>
   );
 }
 
 function yearEndLabel(status: string) {
   return ({ READY: 'Sẵn sàng', INCOMPLETE: 'Thiếu dữ liệu', PROMOTED: 'Lên lớp',
-    PROMOTED_PENDING_CLASS: 'Chờ xếp lớp', GRADUATED: 'Tốt nghiệp', RETAINED: 'Lưu ban' } as Record<string, string>)[status] || status;
+    PROMOTED_PENDING_CLASS: 'Chờ xếp lớp', RETAINED_PENDING_CLASS: 'Lưu ban, chờ lớp', GRADUATED: 'Tốt nghiệp', RETAINED: 'Lưu ban' } as Record<string, string>)[status] || status;
+}
+
+function formatYearAverage(value?: number | null) {
+  return value == null ? '—' : value.toFixed(2);
+}
+
+function suggestNextAcademicYearCode(code: string) {
+  const match = code.match(/(\d{4})\D+(\d{4})/);
+  return match ? `${Number(match[1]) + 1}-${Number(match[2]) + 1}` : `${code}-MỚI`;
+}
+
+function shiftIsoYear(value?: string) {
+  if (!value) return '';
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return '';
+  const date = new Date(Date.UTC(parts[0] + 1, parts[1] - 1, parts[2]));
+  return date.toISOString().slice(0, 10);
 }
 
 /* ============ A4 — Loại điểm ============ */
@@ -733,38 +788,34 @@ export function AdminExamCategoriesLive() {
 /* ============ A7 — Tài chính nội bộ ============ */
 const EMPTY_PERIOD_FORM = { code: '', name: '', applyToGrades: '', dueDate: '' };
 
-function effectiveInvoiceStatus(invoice: Invoice) {
-  if (invoice.status !== 'PAID' && invoice.dueDate && new Date(`${invoice.dueDate}T23:59:59`) < new Date()) return 'OVERDUE';
-  return invoice.status;
-}
-
-function downloadInvoiceCsv(rows: Invoice[]) {
+function downloadClassFinanceCsv(rows: FinanceClassSummary[]) {
   const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const data = [
-    ['Mã hóa đơn', 'Học sinh', 'Khối', 'Lớp', 'Tổng tiền', 'Đã thu', 'Còn lại', 'Hạn thanh toán', 'Trạng thái'],
-    ...rows.map((invoice) => [invoice.code, invoice.studentName, invoice.gradeLevel || '', invoice.classCode || '', invoice.totalAmount, invoice.paidAmount,
-      invoice.totalAmount - invoice.paidAmount, invoice.dueDate || '', viLabel(effectiveInvoiceStatus(invoice))]),
+    ['Khối', 'Lớp', 'Giáo viên chủ nhiệm', 'Số hóa đơn', 'Đã hoàn thành', 'Tổng phải thu', 'Đã thu', 'Công nợ', 'Tỷ lệ thu', 'Quá hạn', 'Trạng thái'],
+    ...rows.map((summary) => [summary.gradeLevel || '', summary.classCode, summary.homeroomTeacherName || 'Chưa phân công',
+      summary.invoiceCount, summary.paidCount, summary.totalAmount, summary.paidAmount, summary.outstanding,
+      `${summary.collectionRate.toFixed(1)}%`, summary.overdueCount,
+      summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu']),
   ];
   const blob = new Blob([`\uFEFF${data.map((row) => row.map(quote).join(',')).join('\n')}`], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `cong-no-${new Date().toISOString().slice(0, 10)}.csv`;
+  anchor.download = `cong-no-theo-lop-${new Date().toISOString().slice(0, 10)}.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
 
 export function AdminFinanceLive() {
   const periods = useApi<FeePeriod[]>('/fee-periods');
-  const invoices = useApi<Invoice[]>('/invoices');
   const overview = useApi<FinanceOverview>('/finance/overview');
   const toast = useToast();
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const selectedPeriod = periods.data?.find((period) => period.id === selectedPeriodId) || null;
   const items = useApi<FeePeriodItem[]>(selectedPeriodId ? `/fee-periods/${selectedPeriodId}/items` : null);
   const [periodQuery, setPeriodQuery] = useState('');
-  const [invoiceQuery, setInvoiceQuery] = useState('');
-  const [invoiceStatus, setInvoiceStatus] = useState('ALL');
+  const [classQuery, setClassQuery] = useState('');
+  const [classStatus, setClassStatus] = useState('ALL');
   const [invoicePeriod, setInvoicePeriod] = useState('ALL');
   const [invoiceGrade, setInvoiceGrade] = useState('ALL');
   const [invoiceClass, setInvoiceClass] = useState('ALL');
@@ -776,18 +827,14 @@ export function AdminFinanceLive() {
   const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
   const [itemForm, setItemForm] = useState({ name: '', amount: 1000000, gradeLevel: '' });
   const [busy, setBusy] = useState(false);
-  const [viewInvoice, setViewInvoice] = useState<Invoice | null>(null);
-  const invoiceDetail = useApi<InvoiceDetail>(viewInvoice ? `/invoices/${viewInvoice.id}` : null);
-  const [cashTarget, setCashTarget] = useState<Invoice | null>(null);
-  const [cashAmount, setCashAmount] = useState('');
+  const [sendingClassId, setSendingClassId] = useState<string | null>(null);
+  const [sendingVisible, setSendingVisible] = useState(false);
 
   const refreshFinance = () => {
     periods.reload();
-    invoices.reload();
     overview.reload();
     classSummaries.reload();
     if (selectedPeriodId) items.reload();
-    if (viewInvoice) invoiceDetail.reload();
   };
 
   const filteredPeriods = useMemo(() => {
@@ -797,23 +844,35 @@ export function AdminFinanceLive() {
       || (period.name || '').toLocaleLowerCase('vi').includes(query));
   }, [periodQuery, periods.data]);
 
-  const filteredInvoices = useMemo(() => {
-    const query = invoiceQuery.trim().toLocaleLowerCase('vi');
-    return (invoices.data || []).filter((invoice) => {
-      const matchesQuery = !query || invoice.code.toLocaleLowerCase('vi').includes(query)
-        || invoice.studentName.toLocaleLowerCase('vi').includes(query);
-      const matchesStatus = invoiceStatus === 'ALL' || effectiveInvoiceStatus(invoice) === invoiceStatus;
-      const matchesPeriod = invoicePeriod === 'ALL' || invoice.feePeriodId === invoicePeriod;
-      const matchesGrade = invoiceGrade === 'ALL' || invoice.gradeLevel === invoiceGrade;
-      const matchesClass = invoiceClass === 'ALL' || invoice.classId === invoiceClass;
-      return matchesQuery && matchesStatus && matchesPeriod && matchesGrade && matchesClass;
+  const filteredClassSummaries = useMemo(() => {
+    const query = classQuery.trim().toLocaleLowerCase('vi');
+    return (classSummaries.data || []).filter((summary) => {
+      const matchesQuery = !query || summary.classCode.toLocaleLowerCase('vi').includes(query)
+        || (summary.homeroomTeacherName || '').toLocaleLowerCase('vi').includes(query);
+      const matchesGrade = invoiceGrade === 'ALL' || summary.gradeLevel === invoiceGrade;
+      const matchesClass = invoiceClass === 'ALL' || summary.classId === invoiceClass;
+      const matchesStatus = classStatus === 'ALL'
+        || (classStatus === 'COMPLETED' && summary.completed)
+        || (classStatus === 'INCOMPLETE' && !summary.completed)
+        || (classStatus === 'OVERDUE' && !summary.completed && summary.overdueCount > 0)
+        || (classStatus === 'IN_PROGRESS' && !summary.completed && summary.overdueCount === 0)
+        || (classStatus === 'NO_HOMEROOM' && !summary.homeroomTeacherId);
+      return matchesQuery && matchesGrade && matchesClass && matchesStatus;
     });
-  }, [invoiceClass, invoiceGrade, invoicePeriod, invoiceQuery, invoiceStatus, invoices.data]);
+  }, [classQuery, classStatus, classSummaries.data, invoiceClass, invoiceGrade]);
 
   const availableGrades = useMemo(() => [...new Set((classSummaries.data || [])
     .map((item) => item.gradeLevel).filter(Boolean) as string[])].sort(), [classSummaries.data]);
   const availableClasses = useMemo(() => (classSummaries.data || []).filter((item) =>
     invoiceGrade === 'ALL' || item.gradeLevel === invoiceGrade), [classSummaries.data, invoiceGrade]);
+  const visibleTotals = useMemo(() => filteredClassSummaries.reduce((totals, item) => ({
+    total: totals.total + item.totalAmount,
+    paid: totals.paid + item.paidAmount,
+    outstanding: totals.outstanding + item.outstanding,
+    incomplete: totals.incomplete + (item.completed ? 0 : 1),
+  }), { total: 0, paid: 0, outstanding: 0, incomplete: 0 }), [filteredClassSummaries]);
+  const remindableClasses = filteredClassSummaries.filter((item) => !item.completed
+    && Boolean(item.homeroomTeacherId) && !item.reminderSentToday);
 
   const openCreatePeriod = () => {
     setEditingPeriod(null);
@@ -891,34 +950,32 @@ export function AdminFinanceLive() {
     finally { setBusy(false); }
   };
 
-  const openCashPayment = (invoice: Invoice) => {
-    setCashTarget(invoice);
-    setCashAmount(String(invoice.totalAmount - invoice.paidAmount));
-  };
-
-  const confirmCashPayment = async () => {
-    if (!cashTarget) return;
-    const amount = Number(cashAmount);
-    const remaining = cashTarget.totalAmount - cashTarget.paidAmount;
-    if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) return toast.show('err', 'Số tiền thu không hợp lệ');
-    setBusy(true);
-    try {
-      await api.post('/payments/cash', { invoiceId: cashTarget.id, amount });
-      toast.show('ok', `Đã ghi nhận ${money(amount)} cho hóa đơn ${cashTarget.code}`);
-      setCashTarget(null);
-      refreshFinance();
-    } catch (error: any) { toast.show('err', error.message); }
-    finally { setBusy(false); }
-  };
-
-  const notifyHomeroomCompletion = async (summary: FinanceClassSummary) => {
+  const remindHomeroom = async (summary: FinanceClassSummary) => {
     if (!summary.homeroomTeacherId) return toast.show('err', `Lớp ${summary.classCode} chưa có giáo viên chủ nhiệm`);
+    if (!confirm(`Gửi thông báo nhiệm vụ tài chính của lớp ${summary.classCode} tới giáo viên chủ nhiệm?`)) return;
+    setSendingClassId(summary.classId);
     try {
       const suffix = invoicePeriod === 'ALL' ? '' : `?periodId=${encodeURIComponent(invoicePeriod)}`;
-      await api.post(`/finance/classes/${summary.classId}/notify-completion${suffix}`);
-      toast.show('ok', `Đã thông báo lớp ${summary.classCode} hoàn thành tới giáo viên chủ nhiệm`);
+      await api.post<HomeroomDebtReminderResult>(`/finance/classes/${summary.classId}/remind-homeroom${suffix}`);
+      toast.show('ok', `Đã nhắc GVCN lớp ${summary.classCode} theo dõi và liên hệ phụ huynh`);
       classSummaries.reload();
     } catch (error: any) { toast.show('err', error.message); }
+    finally { setSendingClassId(null); }
+  };
+
+  const remindVisibleHomerooms = async () => {
+    if (!remindableClasses.length) return toast.show('err', 'Không có lớp phù hợp cần gửi nhắc mới hôm nay');
+    if (!confirm(`Gửi nhắc nhiệm vụ tài chính tới GVCN của ${remindableClasses.length} lớp đang hiển thị?`)) return;
+    setSendingVisible(true);
+    try {
+      const result = await api.post<HomeroomDebtReminderResult>('/finance/classes/remind-homerooms', {
+        periodId: invoicePeriod === 'ALL' ? null : invoicePeriod,
+        classIds: remindableClasses.map((item) => item.classId),
+      });
+      toast.show('ok', `Đã nhắc ${result.recipientCount} GVCN phụ trách ${result.classCount} lớp`);
+      classSummaries.reload();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setSendingVisible(false); }
   };
 
   const collectionRate = Math.min(100, Math.max(0, overview.data?.collectionRate || 0));
@@ -1012,29 +1069,14 @@ export function AdminFinanceLive() {
             </div>}
           </Section>
         ) },
-        { id: 'invoices', label: 'Hóa đơn & công nợ', Icon: FileText, content: (
-          <Section title="Hóa đơn và công nợ" subtitle="Tra cứu, đối soát, ghi nhận thu tiền và nhắc thanh toán" wide
-            action={<button className="live-btn ghost" type="button" onClick={() => downloadInvoiceCsv(filteredInvoices)}><Download size={15} /> Xuất CSV</button>}>
-            <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Điều hành theo lớp, phối hợp cùng giáo viên chủ nhiệm</strong><small>Admin theo dõi tiến độ toàn trường. Khi một lớp hoàn thành, hệ thống cho phép gửi xác nhận tới giáo viên chủ nhiệm; việc nhắc hạn hằng ngày được giao cho GVCN.</small></div></div>
-            <Async state={classSummaries} empty="Chưa có dữ liệu công nợ theo lớp">
-              {(summaries) => <div className="finance-class-grid">{summaries.map((summary) => (
-                <article key={summary.classId} className={`${summary.completed ? 'complete' : ''} ${invoiceClass === summary.classId ? 'selected' : ''}`}>
-                  <button type="button" className="finance-class-main" onClick={() => setInvoiceClass(invoiceClass === summary.classId ? 'ALL' : summary.classId)}>
-                    <header><span>{summary.gradeLevel || '—'}</span><strong>Lớp {summary.classCode}</strong><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} /></header>
-                    <div className="finance-mini-progress"><span style={{ width: `${Math.min(100, summary.collectionRate)}%` }} /></div>
-                    <footer><span><b>{summary.collectionRate.toFixed(1)}%</b> · {summary.paidCount}/{summary.invoiceCount} học sinh</span><strong>Còn {money(summary.outstanding)}</strong></footer>
-                  </button>
-                  <div className="finance-class-owner"><span>GVCN: <b>{summary.homeroomTeacherName || 'Chưa phân công'}</b></span>{summary.completed && <button type="button" disabled={summary.completionNotified || !summary.homeroomTeacherId} onClick={() => notifyHomeroomCompletion(summary)}><BellRing size={14} /> {summary.completionNotified ? 'Đã báo GVCN' : 'Báo hoàn thành'}</button>}</div>
-                </article>
-              ))}</div>}
-            </Async>
-            <div className="finance-filterbar invoice-filters">
-              <label className="finance-search"><Search size={16} /><input placeholder="Tìm mã hóa đơn hoặc học sinh" value={invoiceQuery} onChange={(event) => setInvoiceQuery(event.target.value)} /></label>
-              <select className="live-input" value={invoiceStatus} onChange={(event) => setInvoiceStatus(event.target.value)} aria-label="Lọc trạng thái">
-                <option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option>
-              </select>
-              <select className="live-input" value={invoicePeriod} onChange={(event) => setInvoicePeriod(event.target.value)} aria-label="Lọc đợt thu">
-                <option value="ALL">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}
+        { id: 'invoices', label: 'Công nợ theo lớp', Icon: FileText, content: (
+          <Section title="Tổng thu và công nợ toàn trường" subtitle="Theo dõi tiến độ từng lớp và giao nhiệm vụ nhắc hạn cho giáo viên chủ nhiệm" wide
+            action={<div className="finance-section-actions"><button className="live-btn ghost" type="button" onClick={() => downloadClassFinanceCsv(filteredClassSummaries)}><Download size={15} /> Xuất báo cáo lớp</button><button className="live-btn" type="button" disabled={sendingVisible || remindableClasses.length === 0} onClick={remindVisibleHomerooms}><BellRing size={15} /> {sendingVisible ? 'Đang gửi…' : `Nhắc GVCN (${remindableClasses.length})`}</button></div>}>
+            <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Admin điều hành tổng thể, GVCN chịu trách nhiệm theo sát phụ huynh</strong><small>Admin chỉ theo dõi tổng thu và công nợ theo lớp. Các lớp chưa hoàn thành sẽ được giao lại cho giáo viên chủ nhiệm kiểm tra và nhắc phụ huynh.</small></div></div>
+            <div className="finance-filterbar class-debt-filters">
+              <label className="finance-search"><Search size={16} /><input placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" value={classQuery} onChange={(event) => setClassQuery(event.target.value)} /></label>
+              <select className="live-input" value={invoicePeriod} onChange={(event) => { setInvoicePeriod(event.target.value); setInvoiceClass('ALL'); }} aria-label="Lọc khoản thu">
+                <option value="ALL">Tất cả khoản thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}
               </select>
               <select className="live-input" value={invoiceGrade} onChange={(event) => { setInvoiceGrade(event.target.value); setInvoiceClass('ALL'); }} aria-label="Lọc khối">
                 <option value="ALL">Tất cả khối</option>{availableGrades.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
@@ -1042,16 +1084,29 @@ export function AdminFinanceLive() {
               <select className="live-input" value={invoiceClass} onChange={(event) => setInvoiceClass(event.target.value)} aria-label="Lọc lớp">
                 <option value="ALL">Tất cả lớp</option>{availableClasses.map((item) => <option key={item.classId} value={item.classId}>{item.classCode}</option>)}
               </select>
-              <span>{filteredInvoices.length} hóa đơn</span>
+              <select className="live-input" value={classStatus} onChange={(event) => setClassStatus(event.target.value)} aria-label="Lọc trạng thái lớp">
+                <option value="ALL">Tất cả trạng thái</option><option value="INCOMPLETE">Chưa hoàn thành</option><option value="OVERDUE">Có khoản quá hạn</option><option value="IN_PROGRESS">Đang trong hạn</option><option value="COMPLETED">Đã hoàn thành</option><option value="NO_HOMEROOM">Chưa có GVCN</option>
+              </select>
+              <span>{filteredClassSummaries.length} lớp</span>
             </div>
-            <Async state={{ ...invoices, data: filteredInvoices }} empty="Không có hóa đơn phù hợp">
-              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${invoiceQuery}-${invoiceStatus}-${invoicePeriod}-${invoiceGrade}-${invoiceClass}`}>
-                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table invoice-table"><thead><tr><th>Hóa đơn</th><th>Học sinh</th><th>Khối / Lớp</th><th>Phải thu</th><th>Đã thu / Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-                  <tbody>{pageRows.map((invoice) => { const remaining = invoice.totalAmount - invoice.paidAmount; const status = effectiveInvoiceStatus(invoice); return <tr key={invoice.id}>
-                    <td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.classCode || '—'}</strong><small>{invoice.gradeLevel || 'Chưa xác định khối'}</small></td><td>{money(invoice.totalAmount)}</td>
-                    <td><strong className="finance-paid-value">{money(invoice.paidAmount)}</strong><small>Còn {money(remaining)}</small></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={status} /></td>
-                    <td><div className="finance-row-actions"><button className="icon-action" type="button" title="Xem chi tiết" onClick={() => setViewInvoice(invoice)}><Eye size={16} /></button>{status !== 'PAID' && <button className="live-btn" type="button" onClick={() => openCashPayment(invoice)}><CheckCircle2 size={14} /> Ghi nhận thu</button>}</div></td>
-                  </tr>; })}</tbody></table></div>}
+            <div className="finance-filter-summary">
+              <article><small>Phải thu</small><strong>{money(visibleTotals.total)}</strong></article>
+              <article><small>Đã thu</small><strong>{money(visibleTotals.paid)}</strong></article>
+              <article className={visibleTotals.outstanding ? 'attention' : ''}><small>Còn công nợ</small><strong>{money(visibleTotals.outstanding)}</strong></article>
+              <article><small>Lớp chưa hoàn thành</small><strong>{visibleTotals.incomplete}</strong></article>
+            </div>
+            <Async state={{ ...classSummaries, data: filteredClassSummaries }} empty="Không có lớp phù hợp với bộ lọc">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="lớp" resetKey={`${classQuery}-${classStatus}-${invoicePeriod}-${invoiceGrade}-${invoiceClass}`}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table class-debt-table"><thead><tr><th>Khối / Lớp</th><th>Giáo viên chủ nhiệm</th><th>Hoàn thành</th><th>Thu &amp; công nợ</th><th>Tiến độ &amp; trạng thái</th><th>Điều phối</th></tr></thead><tbody>
+                  {pageRows.map((summary) => <tr key={summary.classId}>
+                    <td><strong>{summary.classCode}</strong><small>{summary.gradeLevel || 'Chưa xác định khối'}</small></td>
+                    <td><strong>{summary.homeroomTeacherName || 'Chưa phân công'}</strong></td>
+                    <td><strong>{summary.paidCount}/{summary.invoiceCount}</strong><small>hóa đơn</small></td>
+                    <td><div className="finance-money-stack"><span><small>Phải thu</small><b>{money(summary.totalAmount)}</b></span><span><small>Đã thu</small><b className="finance-paid-value">{money(summary.paidAmount)}</b></span><span className={summary.outstanding ? 'debt' : ''}><small>Còn nợ</small><b>{money(summary.outstanding)}</b></span></div></td>
+                    <td><div className="finance-status-stack"><div className="finance-table-progress"><div className="finance-mini-progress"><span style={{ width: `${Math.min(100, summary.collectionRate)}%` }} /></div><b>{summary.collectionRate.toFixed(1)}%</b></div><div><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} />{summary.overdueCount > 0 && <small>{summary.overdueCount} hóa đơn quá hạn</small>}</div></div></td>
+                    <td>{summary.completed ? <span className="finance-complete-label"><CheckCircle2 size={14} /> Hoàn thành</span> : !summary.homeroomTeacherId ? <span className="finance-missing-owner">Cần phân công GVCN</span> : <button className="live-btn subtle" type="button" disabled={summary.reminderSentToday || sendingClassId === summary.classId} onClick={() => remindHomeroom(summary)}><BellRing size={14} /> {summary.reminderSentToday ? 'Đã nhắc hôm nay' : sendingClassId === summary.classId ? 'Đang gửi…' : 'Nhắc GVCN'}</button>}</td>
+                  </tr>)}
+                </tbody></table></div>}
               </PaginatedData>}
             </Async>
           </Section>
@@ -1068,18 +1123,6 @@ export function AdminFinanceLive() {
         <div className="finance-guidance"><ReceiptText size={18} /><p>Đợt thu được tạo ở trạng thái nháp. Hãy thêm đầy đủ các khoản trước khi mở và phát hành hóa đơn.</p></div>
       </Modal>}
 
-      {cashTarget && <Modal title="Ghi nhận thu tiền tại trường" onClose={() => setCashTarget(null)} footer={<><button className="live-btn ghost" type="button" onClick={() => setCashTarget(null)}>Hủy</button><button className="live-btn" type="button" disabled={busy} onClick={confirmCashPayment}><CheckCircle2 size={15} /> Xác nhận giao dịch</button></>}>
-        <div className="finance-payment-summary"><span><ReceiptText size={22} /></span><div><small>{cashTarget.code}</small><strong>{cashTarget.studentName}</strong><p>Công nợ còn lại: {money(cashTarget.totalAmount - cashTarget.paidAmount)}</p></div></div>
-        <Field label="Số tiền thực thu"><input className="live-input finance-money-input" type="number" min="1" max={cashTarget.totalAmount - cashTarget.paidAmount} step="50000" value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} /></Field>
-        <div className="finance-guidance"><CheckCircle2 size={18} /><p>Hệ thống hỗ trợ thu một phần. Giao dịch được lưu vào lịch sử và phụ huynh nhận biên nhận tự động.</p></div>
-      </Modal>}
-
-      {viewInvoice && <Modal title={`Chi tiết hóa đơn ${viewInvoice.code}`} size="wide" onClose={() => setViewInvoice(null)} footer={<><button className="live-btn ghost" type="button" onClick={() => setViewInvoice(null)}>Đóng</button>{effectiveInvoiceStatus(viewInvoice) !== 'PAID' && <button className="live-btn" type="button" onClick={() => { setViewInvoice(null); openCashPayment(viewInvoice); }}><CheckCircle2 size={15} /> Ghi nhận thu</button>}</>}>
-        <Async state={invoiceDetail} allowEmpty>{(detail) => <div className="finance-invoice-detail">
-          <div className="finance-detail-summary"><article><small>Học sinh</small><strong>{detail.invoice.studentName}</strong></article><article><small>Khối / Lớp</small><strong>{detail.invoice.gradeLevel || '—'} · {detail.invoice.classCode || '—'}</strong></article><article><small>Phải thu</small><strong>{money(detail.invoice.totalAmount)}</strong></article><article><small>Đã thu</small><strong>{money(detail.invoice.paidAmount)}</strong></article><article><small>Còn lại</small><strong>{money(detail.invoice.totalAmount - detail.invoice.paidAmount)}</strong></article></div>
-          <div className="finance-detail-columns"><section><h4>Các khoản trong hóa đơn</h4>{detail.items.map((item) => <div className="finance-detail-line" key={item.id}><span>{item.name}</span><strong>{money(item.amount)}</strong></div>)}</section><section><h4>Lịch sử giao dịch</h4>{detail.payments.length ? detail.payments.map((payment) => <div className="finance-detail-line" key={payment.id}><span><b>{viLabel(payment.method)}</b><small>{fmtDateTime(payment.paidAt)}</small></span><strong>{money(payment.amount)}</strong></div>) : <p className="finance-empty-note">Chưa phát sinh giao dịch</p>}</section></div>
-        </div>}</Async>
-      </Modal>}
     </div>
   );
 }

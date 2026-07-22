@@ -952,6 +952,7 @@ export function TeacherFinanceLive() {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('ALL');
   const [sending, setSending] = useState(false);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const toast = useToast();
   const invoiceUrl = classId
     ? `/invoices?classId=${encodeURIComponent(classId)}${periodId ? `&periodId=${encodeURIComponent(periodId)}` : ''}`
@@ -1000,6 +1001,16 @@ export function TeacherFinanceLive() {
     finally { setSending(false); }
   };
 
+  const remindInvoice = async (invoice: Invoice) => {
+    if (!confirm(`Gửi nhắc thanh toán tới phụ huynh của học sinh ${invoice.studentName}?`)) return;
+    setSendingInvoiceId(invoice.id);
+    try {
+      const result = await api.post<ClassReminderResult>(`/finance/homeroom/invoices/${invoice.id}/remind`);
+      toast.show('ok', `Đã gửi nhắc tới ${result.recipientCount} phụ huynh`);
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setSendingInvoiceId(null); }
+  };
+
   const refresh = () => {
     periods.reload();
     summaries.reload();
@@ -1037,7 +1048,7 @@ export function TeacherFinanceLive() {
         action={!selected.completed ? <button className="live-btn" type="button" disabled={sending} onClick={remindClass}><BellRing size={15} /> {sending ? 'Đang gửi…' : 'Nhắc phụ huynh còn nợ'}</button> : <Badge tone="green">Lớp đã hoàn thành</Badge>}>
         <div className="finance-filterbar"><label className="finance-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm học sinh hoặc mã hóa đơn" /></label><select className="live-input" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option></select><span>{filtered.length} hóa đơn</span></div>
         <Async state={{ ...invoices, data: filtered }} empty="Không có hóa đơn phù hợp">
-          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th></tr></thead><tbody>{pageRows.map((invoice) => <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={teacherInvoiceStatus(invoice)} /></td></tr>)}</tbody></table></div>}</PaginatedData>}
+          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Nhắc phụ huynh</th></tr></thead><tbody>{pageRows.map((invoice) => { const invoiceStatus = teacherInvoiceStatus(invoice); return <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={invoiceStatus} /></td><td>{invoiceStatus === 'PAID' ? <span className="finance-complete-label"><CheckCircle2 size={14} /> Đã xong</span> : <button className="live-btn subtle" type="button" disabled={sendingInvoiceId === invoice.id} onClick={() => remindInvoice(invoice)}><BellRing size={14} /> {sendingInvoiceId === invoice.id ? 'Đang gửi…' : 'Nhắc riêng'}</button>}</td></tr>; })}</tbody></table></div>}</PaginatedData>}
         </Async>
         <div className="finance-guidance"><ReceiptText size={18} /><p>Giáo viên chủ nhiệm chỉ theo dõi và gửi nhắc hạn. Mọi thao tác tạo khoản thu, phát hành hóa đơn và ghi nhận thanh toán vẫn do Admin thực hiện để bảo đảm đối soát.</p></div>
       </Section>}

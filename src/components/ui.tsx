@@ -143,6 +143,7 @@ const VI_LABELS: Record<string, string> = {
   ATTENDANCE_REMINDER: 'Nhắc điểm danh', ATTENDANCE_UNLOCK: 'Mở khóa điểm danh', ATTENDANCE_SESSION: 'Phiên điểm danh',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
   FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
+  FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
   CASH: 'Tiền mặt', VNPAY: 'VNPay', MOMO: 'MoMo',
   PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
 };

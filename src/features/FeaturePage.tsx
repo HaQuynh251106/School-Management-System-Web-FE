@@ -19,6 +19,7 @@ import { PersonalReportsLive } from './live/PersonalReportsLive';
 import { ProfileSettingsLive } from './live/ProfileSettingsLive';
 import { AdminExamsLive } from './live/AdminExamsLive';
 import { MyExamsLive } from './live/MyExamsLive';
+import { ParentYearEndLive, StudentYearEndLive, TeacherConductLive } from './live/YearEndLive';
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -54,6 +55,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B10': return <PersonalReportsLive actor="teacher" />;
     case 'B11': return <ProfileSettingsLive actor="teacher" />;
     case 'B12': return <MyExamsLive actor="teacher" />;
+    case 'B13': return <TeacherConductLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
@@ -65,6 +67,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'C8': return <PersonalReportsLive actor="student" />;
     case 'C9': return <ProfileSettingsLive actor="student" />;
     case 'C10': return <MyExamsLive actor="student" />;
+    case 'C11': return <StudentYearEndLive />;
     // ---- Parent ----
     case 'D1': return <ParentSwitchLive />;
     case 'D2': return <ParentMonitorLive />;
@@ -75,6 +78,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'D7': return <PersonalReportsLive actor="parent" />;
     case 'D8': return <ProfileSettingsLive actor="parent" />;
     case 'D9': return <MyExamsLive actor="parent" />;
+    case 'D10': return <ParentYearEndLive />;
     default: return <GeneralDashboard roleId="admin" />;
   }
 }

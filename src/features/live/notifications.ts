@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   ATTENDANCE_UNLOCK: 'Mở khóa điểm danh', PARENT_MEETING: 'Họp phụ huynh', ASSIGNMENT: 'Bài tập',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán',
   FINANCE_REMINDER: 'Nhắc hạn khoản thu', FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
+  FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
   ANNOUNCEMENT: 'Thông báo chung',
 };
 
