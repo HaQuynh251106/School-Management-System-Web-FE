@@ -3,17 +3,10 @@ import { CheckCheck, Download, MessageCircleMore, Paperclip, RefreshCw, Search, 
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
+import { emitChatUnreadChanged } from '../../api/liveEvents';
 import { Section } from '../../components/ui';
 import { Async, fmtDateTime, useToast } from './common';
-import type { ApiUser, SchoolClass, StoredFile } from '../../api/types';
-
-interface Thread {
-  userId: string;
-  name: string;
-  lastMessage: string;
-  lastTime: string;
-  unread: number;
-}
+import type { ApiUser, ChatThread, SchoolClass, StoredFile } from '../../api/types';
 
 interface ChatMsg {
   id: string;
@@ -28,7 +21,7 @@ interface ChatMsg {
   createdAt: string;
 }
 
-interface ContactThread extends Thread {
+interface ContactThread extends ChatThread {
   contact: ApiUser;
 }
 
@@ -44,7 +37,7 @@ const initials = (name: string) => name.trim().split(/\s+/).slice(-2).map((part)
 /** Hộp thư 1-1 giữa học sinh, giáo viên và phụ huynh trong đúng phạm vi lớp học. */
 export function ChatLive() {
   const { user } = useAuth();
-  const threads = useApi<Thread[]>('/chat/threads');
+  const threads = useApi<ChatThread[]>('/chat/threads');
   const contacts = useApi<ApiUser[]>('/chat/contacts');
   const teachingClasses = useApi<SchoolClass[]>(user?.role === 'TEACHER' ? '/me/teaching-classes' : null);
   const studentClass = useApi<SchoolClass>(user?.role === 'STUDENT' && user.classId ? `/classes/${user.classId}` : null);
@@ -61,6 +54,7 @@ export function ChatLive() {
   const [broadcastClassId, setBroadcastClassId] = useState('');
   const [broadcastText, setBroadcastText] = useState('');
   const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const previousUnreadTotal = useRef<number | null>(null);
   const toast = useToast();
 
   const available = useMemo<ContactThread[]>(() => {
@@ -129,6 +123,13 @@ export function ChatLive() {
     if (!withId || messagesLoading || messagesData == null) return;
     reloadThreads();
   }, [withId, messagesLoading, messagesData, reloadThreads]); // Cập nhật số chưa đọc sau khi mở hội thoại.
+
+  useEffect(() => {
+    if (previousUnreadTotal.current !== null && previousUnreadTotal.current !== unreadTotal) {
+      emitChatUnreadChanged();
+    }
+    previousUnreadTotal.current = unreadTotal;
+  }, [unreadTotal]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });

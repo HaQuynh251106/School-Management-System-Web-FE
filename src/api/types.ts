@@ -43,7 +43,7 @@ export interface Semester {
 export interface Room { id: string; code: string; name?: string; capacity?: number; }
 
 export interface TimetableSlot {
-  id: string; classId: string; subjectId: string; subjectName: string;
+  id: string; classId: string; classCode?: string; subjectId: string; subjectName: string;
   teacherId: string; teacherName: string; roomCode?: string;
   dayOfWeek: string; periodNo: number; startTime?: string; endTime?: string; semesterId?: string;
 }
@@ -171,6 +171,10 @@ export interface Notification {
   priority?: 'NORMAL' | 'IMPORTANT' | 'URGENT';
   read: boolean; refType?: string; refId?: string; createdAt: string;
 }
+export interface UnreadCount { count: number; }
+export interface ChatThread {
+  userId: string; name: string; lastMessage: string; lastTime: string; unread: number;
+}
 export interface Announcement {
   id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string;
   category?: string; priority?: string; status?: string; recipientCount?: number;
@@ -197,11 +201,18 @@ export interface Assignment {
   attachmentFileId?: string | null; attachmentName?: string | null; submissionCount?: number; studentCount?: number; updatedAt?: string | null;
 }
 export interface NotificationPreference { id: string; userId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; enabled: boolean; updatedAt: string; }
+export interface NotificationDeliveryLog { id: string; notificationId?: string | null; recipientId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; status: string; attempts: number; detail?: string | null; createdAt: string; }
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
   attachmentFileId?: string | null; attachmentName?: string | null; gradedAt?: string | null;
   resubmissionAllowed?: boolean; attemptNumber?: number;
+}
+export interface SubmissionAttempt {
+  id: string; submissionId: string; assignmentId: string; studentId: string; attemptNumber: number;
+  status: string; content?: string | null; attachmentFileId?: string | null; attachmentName?: string | null;
+  submittedAt: string; score?: number | null; feedback?: string | null; gradedBy?: string | null; gradedAt?: string | null;
+  updatedAt: string;
 }
 export interface LeaveRequest {
   id: string; studentId: string; studentName: string; classId: string; classCode?: string;

@@ -169,6 +169,23 @@ body {
 .menu-button > svg:last-child { color: #8092aa; }
 .menu-button.active > svg:last-child { color: #7dd3fc; }
 
+.menu-unread-badge {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 5px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: .55rem;
+  font-weight: 850;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, .3);
+}
+
 .sidebar-footer {
   display: grid;
   gap: 3px;
@@ -241,6 +258,82 @@ body {
 
 .theme-toggle:hover,
 .login-theme-toggle:hover { border-color: var(--portal-accent, #2563eb); color: var(--portal-accent, #2563eb); }
+
+.topbar-notification,
+.topbar-chat {
+  position: relative;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-soft);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.topbar-notification:hover,
+.topbar-notification.active,
+.topbar-chat:hover,
+.topbar-chat.active {
+  border-color: var(--portal-accent, #2563eb);
+  color: var(--portal-accent, #2563eb);
+  transform: translateY(-1px);
+}
+
+.topbar-notification.has-unread,
+.topbar-chat.has-unread {
+  border-color: color-mix(in srgb, var(--portal-accent, #2563eb) 48%, var(--border));
+  background: color-mix(in srgb, var(--portal-accent, #2563eb) 9%, var(--surface));
+  color: var(--portal-accent, #2563eb);
+}
+
+.topbar-notification > strong,
+.topbar-chat > strong {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  z-index: 2;
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  place-items: center;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 850;
+  line-height: 1;
+  box-shadow: 0 4px 10px rgba(220, 38, 38, .3);
+}
+
+.topbar-chat.has-unread {
+  border-color: color-mix(in srgb, #0d9488 48%, var(--border));
+  background: color-mix(in srgb, #0d9488 9%, var(--surface));
+  color: #0d9488;
+}
+
+.notification-pulse {
+  position: absolute;
+  inset: 4px;
+  border: 2px solid color-mix(in srgb, var(--portal-accent, #2563eb) 42%, transparent);
+  border-radius: 10px;
+  pointer-events: none;
+  animation: notification-attention 2.2s ease-out infinite;
+}
+
+@keyframes notification-attention {
+  0%, 45% { opacity: 0; transform: scale(.76); }
+  55% { opacity: .8; }
+  82%, 100% { opacity: 0; transform: scale(1.22); }
+}
 
 .topbar-profile {
   gap: 9px;

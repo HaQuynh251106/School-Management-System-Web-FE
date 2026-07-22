@@ -7,21 +7,21 @@ export function useApi<T = any>(path: string | null) {
   const [loading, setLoading] = useState<boolean>(!!path);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(() => {
+  const reload = useCallback(async () => {
     if (!path) {
       setData(null);
       setLoading(false);
       return;
     }
     setLoading(true);
-    api
-      .get<T>(path)
-      .then((d) => {
-        setData(d);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof ApiError ? e.message : String(e)))
-      .finally(() => setLoading(false));
+    try {
+      setData(await api.get<T>(path));
+      setError(null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, [path]);
 
   useEffect(() => {

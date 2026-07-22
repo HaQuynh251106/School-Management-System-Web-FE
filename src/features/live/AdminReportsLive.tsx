@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { AcademicYear, Semester } from '../../api/types';
+import type { AcademicYear, FeePeriod, SchoolClass, Semester, Subject } from '../../api/types';
 import { Badge, Section } from '../../components/ui';
 import { Async, money, useToast } from './common';
 
@@ -55,14 +55,33 @@ const GRADE_TONES = ['danger', 'muted', 'primary', 'success'];
 export function AdminReportsLive() {
   const [semesterId, setSemesterId] = useState('');
   const [yearId, setYearId] = useState('');
+  const [classId, setClassId] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [feePeriodId, setFeePeriodId] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const overview = useApi<OverviewReport>('/reports/overview');
-  const dist = useApi<GradeBand[]>(`/reports/grade-distribution${semesterId ? `?semesterId=${encodeURIComponent(semesterId)}` : ''}`);
-  const attendance = useApi<AttendanceReport>('/reports/attendance-summary');
-  const revenue = useApi<RevenueReport>('/reports/revenue');
+  const gradeQuery = new URLSearchParams();
+  if (semesterId) gradeQuery.set('semesterId', semesterId);
+  if (classId) gradeQuery.set('classId', classId);
+  if (subjectId) gradeQuery.set('subjectId', subjectId);
+  const attendanceQuery = new URLSearchParams();
+  if (classId) attendanceQuery.set('classId', classId);
+  if (startDate) attendanceQuery.set('startDate', startDate);
+  if (endDate) attendanceQuery.set('endDate', endDate);
+  const revenueQuery = new URLSearchParams();
+  if (classId) revenueQuery.set('classId', classId);
+  if (feePeriodId) revenueQuery.set('periodId', feePeriodId);
+  const dist = useApi<GradeBand[]>(`/reports/grade-distribution${gradeQuery.size ? `?${gradeQuery}` : ''}`);
+  const attendance = useApi<AttendanceReport>(`/reports/attendance-summary${attendanceQuery.size ? `?${attendanceQuery}` : ''}`);
+  const revenue = useApi<RevenueReport>(`/reports/revenue${revenueQuery.size ? `?${revenueQuery}` : ''}`);
   const years = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
+  const classes = useApi<SchoolClass[]>('/classes');
+  const subjects = useApi<Subject[]>('/subjects');
+  const feePeriods = useApi<FeePeriod[]>('/fee-periods');
   const promotion = useApi<Record<string, number>>(yearId ? `/reports/promotion?academicYearId=${encodeURIComponent(yearId)}` : null);
   const toast = useToast();
 
@@ -93,23 +112,25 @@ export function AdminReportsLive() {
 
   const reloadAll = async () => {
     setRefreshing(true);
-    overview.reload();
-    dist.reload();
-    attendance.reload();
-    revenue.reload();
-    years.reload();
-    semesters.reload();
-    if (yearId) promotion.reload();
-    window.setTimeout(() => {
+    try {
+      await Promise.all([overview.reload(), dist.reload(), attendance.reload(), revenue.reload(), years.reload(),
+        semesters.reload(), classes.reload(), subjects.reload(), feePeriods.reload(), yearId ? promotion.reload() : Promise.resolve()]);
       setUpdatedAt(new Date());
+    } finally {
       setRefreshing(false);
-    }, 450);
+    }
   };
 
   const exportReport = async (type: string) => {
     try {
-      const query = type === 'grades' && semesterId ? `&semesterId=${encodeURIComponent(semesterId)}` : '';
-      const result = await api.download(`/reports/export?type=${type}${query}`);
+      const query = new URLSearchParams({ type });
+      if (classId) query.set('classId', classId);
+      if (type === 'grades' && semesterId) query.set('semesterId', semesterId);
+      if (type === 'grades' && subjectId) query.set('subjectId', subjectId);
+      if (type === 'attendance' && startDate) query.set('startDate', startDate);
+      if (type === 'attendance' && endDate) query.set('endDate', endDate);
+      if (type === 'revenue' && feePeriodId) query.set('periodId', feePeriodId);
+      const result = await api.download(`/reports/export?${query}`);
       const href = URL.createObjectURL(result.blob);
       const anchor = document.createElement('a');
       anchor.href = href;
@@ -153,9 +174,14 @@ export function AdminReportsLive() {
       </section>
 
       <section className="report-filter-bar">
-        <div><CalendarRange size={18} /><p><strong>Phạm vi phân tích</strong><small>Chọn học kỳ để lọc kết quả học tập</small></p></div>
+        <div><CalendarRange size={18} /><p><strong>Phạm vi phân tích</strong><small>Các biểu đồ và tệp xuất dùng đúng bộ lọc đang chọn</small></p></div>
+        <label><span>Lớp</span><select value={classId} onChange={(event) => setClassId(event.target.value)}><option value="">Toàn trường</option>{(classes.data || []).map((item) => <option key={item.id} value={item.id}>{item.code}</option>)}</select></label>
         <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}><option value="">Tất cả học kỳ</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name || semester.code}</option>)}</select></label>
-        <span className="report-filter-context">{selectedSemester ? `Đang xem: ${selectedSemester.name || selectedSemester.code}` : 'Dữ liệu toàn hệ thống'}</span>
+        <label><span>Môn học</span><select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">Tất cả môn</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label><span>Chuyên cần từ ngày</span><input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></label>
+        <label><span>Đến ngày</span><input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} /></label>
+        <label><span>Khoản thu</span><select value={feePeriodId} onChange={(event) => setFeePeriodId(event.target.value)}><option value="">Tất cả khoản thu</option>{(feePeriods.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <span className="report-filter-context">{classId ? `Đang xem lớp ${(classes.data || []).find((item) => item.id === classId)?.code}` : selectedSemester ? `Đang xem: ${selectedSemester.name || selectedSemester.code}` : 'Dữ liệu toàn hệ thống'}</span>
       </section>
 
       {firstError && <div className="report-error"><AlertCircle size={18} /><span>Không thể tải đầy đủ dữ liệu: {firstError}</span><button type="button" onClick={reloadAll}>Thử lại</button></div>}

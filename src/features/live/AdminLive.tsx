@@ -5,7 +5,7 @@ import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, InvoiceDetail,
-  ImportResult, LoginHistory, StudentYearlySummary, Announcement,
+  ImportResult, LoginHistory, StudentYearlySummary, Announcement, NotificationDeliveryLog,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, PaginatedData, useToast, money, fmtDateTime, fmtDate } from './common';
@@ -689,24 +689,42 @@ function yearEndLabel(status: string) {
 export function AdminExamCategoriesLive() {
   const cats = useApi<ExamCategory[]>('/exam-categories');
   const toast = useToast();
-  const [f, setF] = useState({ code: '', name: '', weight: 1 });
-  const add = async () => {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [f, setF] = useState({ code: '', name: '', weight: 1, requiredCount: 1 });
+  const reset = () => { setEditingId(null); setF({ code: '', name: '', weight: 1, requiredCount: 1 }); };
+  const save = async () => {
     if (!f.code || !f.name) return toast.show('err', 'Nhập mã + tên');
-    try { await api.post('/exam-categories', f); toast.show('ok', 'Đã thêm loại điểm'); setF({ code: '', name: '', weight: 1 }); cats.reload(); }
+    try {
+      if (editingId) await api.put(`/exam-categories/${editingId}`, f);
+      else await api.post('/exam-categories', f);
+      toast.show('ok', editingId ? 'Đã cập nhật đầu điểm' : 'Đã thêm đầu điểm');
+      reset(); cats.reload();
+    }
     catch (e: any) { toast.show('err', e.message); }
   };
+  const edit = (category: ExamCategory) => {
+    setEditingId(category.id);
+    setF({ code: category.code, name: category.name, weight: category.weight, requiredCount: category.requiredCount || 1 });
+  };
+  const remove = async (category: ExamCategory) => {
+    if (!window.confirm(`Xóa đầu điểm “${category.name}”?`)) return;
+    try { await api.del(`/exam-categories/${category.id}`); toast.show('ok', 'Đã xóa đầu điểm'); if (editingId === category.id) reset(); cats.reload(); }
+    catch (error: any) { toast.show('err', error.message); }
+  };
   return (
-    <Section title="Cấu hình khảo thí" subtitle="Quản lý loại điểm và hệ số" wide>
+    <Section title="Cấu hình đầu điểm" subtitle="Quản lý tên, hệ số và số đầu điểm bắt buộc để tính tổng kết" wide>
       {toast.node}
       <div className="live-toolbar">
         <input className="live-input" placeholder="Mã (ORAL…)" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} />
         <input className="live-input grow" placeholder="Tên" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-        <input className="live-input" type="number" step="0.5" style={{ width: 90 }} value={f.weight} onChange={(e) => setF({ ...f, weight: Number(e.target.value) })} />
-        <button className="live-btn" onClick={add}><Plus size={15} /> Thêm</button>
+        <label><small>Hệ số</small><input className="live-input" aria-label="Hệ số" type="number" min="0.5" max="10" step="0.5" style={{ width: 90 }} value={f.weight} onChange={(e) => setF({ ...f, weight: Number(e.target.value) })} /></label>
+        <label><small>Số đầu điểm</small><input className="live-input" aria-label="Số đầu điểm bắt buộc" type="number" min="1" max="10" style={{ width: 110 }} value={f.requiredCount} onChange={(e) => setF({ ...f, requiredCount: Number(e.target.value) })} /></label>
+        {editingId && <button className="live-btn subtle" onClick={reset}>Hủy sửa</button>}
+        <button className="live-btn" onClick={save}>{editingId ? <Save size={15} /> : <Plus size={15} />} {editingId ? 'Lưu' : 'Thêm'}</button>
       </div>
       <Async paginate state={cats} itemLabel="đầu điểm">{(l) => (
-        <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Hệ số</th></tr></thead>
-          <tbody>{l.map((c) => <tr key={c.id}><td><strong>{c.code}</strong></td><td>{c.name}</td><td>×{c.weight}</td></tr>)}</tbody></table>
+        <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Hệ số</th><th>Số đầu điểm bắt buộc</th><th>Thao tác</th></tr></thead>
+          <tbody>{l.map((c) => <tr key={c.id}><td><strong>{c.code}</strong></td><td>{c.name}</td><td>×{c.weight}</td><td>{c.requiredCount || 1}</td><td><div className="row-actions"><button className="icon-action" title="Sửa đầu điểm" onClick={() => edit(c)}><Pencil size={15} /></button><button className="icon-action danger" title="Xóa đầu điểm" onClick={() => remove(c)}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table>
       )}</Async>
     </Section>
   );
@@ -1088,6 +1106,7 @@ const ANNOUNCEMENT_PRIORITY_LABEL: Record<string, string> = { NORMAL: 'Thông th
 export function AdminNotificationsLive() {
   const announcements = useApi<Announcement[]>('/admin/announcements');
   const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
+  const deliveryLogs = useApi<NotificationDeliveryLog[]>('/notification-delivery-logs');
   const toast = useToast();
   const [sending, setSending] = useState(false);
   const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '', holidayStartDate: '', holidayEndDate: '' });
@@ -1127,6 +1146,7 @@ export function AdminNotificationsLive() {
         : `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
       setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL', holidayStartDate: '', holidayEndDate: '' }));
       announcements.reload();
+      deliveryLogs.reload();
     } catch (error: any) {
       toast.show('err', error.message);
     } finally {
@@ -1138,7 +1158,7 @@ export function AdminNotificationsLive() {
     <div className="admin-notification-center">
       {toast.node}
       <Section title="Trung tâm thông báo" subtitle="Soạn và gửi thông tin đúng đối tượng trong toàn trường" wide
-        action={<button className="live-btn ghost" onClick={() => { announcements.reload(); audienceCounts.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
+        action={<button className="live-btn ghost" onClick={() => { announcements.reload(); audienceCounts.reload(); deliveryLogs.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
         <div className="announcement-audience-summary">
           {ANNOUNCEMENT_AUDIENCES.map(({ value, label, Icon }) => (
             <article key={value} className={form.audience === value ? 'active' : ''}>
@@ -1212,6 +1232,14 @@ export function AdminNotificationsLive() {
           {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Đối tượng</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead>
             <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small>{item.category === 'HOLIDAY' && item.holidayStartDate && <small>Thời gian nghỉ: {item.holidayStartDate} → {item.holidayEndDate}</small>}</td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
           </table></div>}
+        </Async>
+      </Section>
+
+      <Section title="Nhật ký chuyển phát" subtitle="Kiểm tra kênh nào đã nhận, bị bỏ qua hoặc gửi thất bại" wide>
+        <Async paginate state={deliveryLogs} empty="Chưa có lượt chuyển phát" itemLabel="lượt chuyển phát">
+          {(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Thời gian</th><th>Kênh</th><th>Người nhận</th><th>Trạng thái</th><th>Số lần</th><th>Chi tiết</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
+            <td>{fmtDateTime(item.createdAt)}</td><td><strong>{{ IN_APP: 'Trong ứng dụng', EMAIL: 'Email', PUSH: 'Thông báo đẩy' }[item.channel]}</strong></td><td>{item.recipientId}</td><td><StatusPill value={item.status} /></td><td>{item.attempts}</td><td>{item.detail || 'Đã chuyển phát thành công'}</td>
+          </tr>)}</tbody></table></div>}
         </Async>
       </Section>
 

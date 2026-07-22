@@ -5,8 +5,9 @@ const BASE: string =
   ((import.meta as any).env?.VITE_API_BASE as string) || 'http://localhost:4000';
 
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
+
+export const AUTH_SESSION_EXPIRED = 'sse:auth-session-expired';
 
 export class ApiError extends Error {
   status: number;
@@ -16,37 +17,33 @@ export class ApiError extends Error {
   }
 }
 
-export function setTokens(access: string | null, refresh?: string | null) {
+export function setTokens(access: string | null) {
   accessToken = access;
-
-  if (refresh !== undefined) {
-    refreshToken = refresh;
-  }
 }
 
 export function hasToken() {
   return !!accessToken;
 }
 
-export function getRefreshToken() {
-  return refreshToken;
-}
-
 async function performRefresh(): Promise<boolean> {
-  if (!refreshToken) return false;
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
+      credentials: 'include',
+      body: JSON.stringify({}),
     });
     if (!res.ok) return false;
     const data = await res.json();
-    setTokens(data.accessToken, data.refreshToken);
+    setTokens(data.accessToken);
     return true;
   } catch {
     return false;
   }
+}
+
+export function refreshSession() {
+  return tryRefresh();
 }
 
 function tryRefresh(): Promise<boolean> {
@@ -76,11 +73,12 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
   if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  const res = await fetch(`${BASE}${path}`, { ...opts, headers, credentials: 'include' });
 
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
     if (await tryRefresh()) return request<T>(path, opts, false);
-    setTokens(null, null);
+    setTokens(null);
+    window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED));
   }
 
   const data = await parseResponse(res);
@@ -96,7 +94,7 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
 async function download(path: string, retry = true): Promise<{ blob: Blob; filename?: string }> {
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const response = await fetch(`${BASE}${path}`, { headers });
+  const response = await fetch(`${BASE}${path}`, { headers, credentials: 'include' });
   if (response.status === 401 && retry && await tryRefresh()) return download(path, false);
   if (!response.ok) {
     const data = await parseResponse(response);
@@ -116,6 +114,8 @@ export const api = {
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   put: <T = any>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
+  patch: <T = any>(path: string, body?: unknown) =>
+    request<T>(path, { method: 'PATCH', body: JSON.stringify(body ?? {}) }),
   del: <T = any>(path: string) => request<T>(path, { method: 'DELETE' }),
   upload: <T = any>(path: string, file: File) => {
     const data = new FormData();

@@ -8,6 +8,8 @@ import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
+import { useActiveChild } from '../../api/activeChild';
+import { emitNotificationInboxChanged } from '../../api/liveEvents';
 import type {
   ApiUser, DashboardChart, DashboardMetric, DashboardResponse, ExamAgendaItem, Notification, SchoolClass,
 } from '../../api/types';
@@ -108,7 +110,9 @@ const validTones = new Set<Metric['tone']>(['blue', 'green', 'orange', 'red', 'v
 
 export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNavigate?: (page: PageId) => void }) {
   const { user } = useAuth();
-  const dashboard = useApi<DashboardResponse>('/dashboard');
+  const { childId } = useActiveChild();
+  const dashboard = useApi<DashboardResponse>(roleId === 'parent' && childId
+    ? `/dashboard?childId=${encodeURIComponent(childId)}` : '/dashboard');
   const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
   const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
   const notifications = useApi<Notification[]>('/notifications');
@@ -145,6 +149,8 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     setMarkingNotificationId(id);
     try {
       await api.post(`/notifications/${id}/read`);
+      notifications.setData((current) => current?.map((item) => item.id === id ? { ...item, read: true } : item) ?? current);
+      emitNotificationInboxChanged();
       notifications.reload();
       dashboard.reload();
     } finally {

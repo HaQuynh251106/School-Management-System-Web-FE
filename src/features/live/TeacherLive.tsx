@@ -3,7 +3,7 @@ import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, Check
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult } from '../../api/types';
+import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData } from './common';
 import { Modal } from './Modal';
@@ -253,6 +253,9 @@ export function TeacherAttendanceLive() {
   const attendance = useApi<AttendanceRecord[]>(slot
     ? `/attendance?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
     : null);
+  const approvedLeaves = useApi<LeaveRequest[]>(slot
+    ? `/attendance/approved-leaves?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
+    : null);
   const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
   const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
   const [search, setSearch] = useState('');
@@ -268,15 +271,20 @@ export function TeacherAttendanceLive() {
     const existing = new Map((attendance.data || [])
       .filter((record) => record.slotId === slot.id && record.date === date)
       .map((record) => [record.studentId, record]));
+    const approvedStudentIds = new Set((approvedLeaves.data || []).map((request) => request.studentId));
     const next = Object.fromEntries(students.data.map((student) => {
       const record = existing.get(student.id);
-      return [student.id, { status: record?.status || 'PRESENT', note: record?.note || '' }];
+      const approved = approvedStudentIds.has(student.id);
+      return [student.id, {
+        status: record?.status || (approved ? 'ABSENT_EXCUSED' : 'PRESENT'),
+        note: record?.note || (approved ? 'Đơn xin nghỉ đã được GVCN duyệt' : ''),
+      }];
     }));
     setMarks(next);
     setBaseline(next);
     setHasSavedRegister(existing.size > 0);
     setLastSavedAt(existing.size ? 'Đã tải dữ liệu đã lưu' : 'Chưa có dữ liệu cho tiết này');
-  }, [attendance.data, attendance.loading, date, slot, students.data]);
+  }, [approvedLeaves.data, attendance.data, attendance.loading, date, slot, students.data]);
 
   const dirty = useMemo(() => JSON.stringify(marks) !== JSON.stringify(baseline), [baseline, marks]);
   const saveRequired = !hasSavedRegister || dirty;
@@ -443,6 +451,10 @@ export function TeacherAttendanceLive() {
             <div><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><small>{sessionStatus.data.message}</small></div>
             <span>{sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</span>
           </div>}
+          {slot && (approvedLeaves.data?.length || 0) > 0 && <div className="attendance-save-state saved">
+            <ShieldCheck size={15} />
+            <span>{approvedLeaves.data!.length} học sinh có đơn nghỉ đã duyệt; hệ thống đã tự điền “Vắng có phép”.</span>
+          </div>}
         </div>
 
         {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : dayStatus.data?.attendanceRequired === false ? (
@@ -464,7 +476,7 @@ export function TeacherAttendanceLive() {
             <span><Clock3 size={34} /></span><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><p>{sessionStatus.data.message}</p><small>Thời gian tiết học: {sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</small>
           </div>
         ) : (
-          <Async state={{ data: students.data, loading: students.loading || attendance.loading || dayStatus.loading || sessionStatus.loading, error: students.error || attendance.error || dayStatus.error || sessionStatus.error }} empty="Lớp chưa có học sinh">
+          <Async state={{ data: students.data, loading: students.loading || attendance.loading || approvedLeaves.loading || dayStatus.loading || sessionStatus.loading, error: students.error || attendance.error || approvedLeaves.error || dayStatus.error || sessionStatus.error }} empty="Lớp chưa có học sinh">
             {() => <>
               <div className="attendance-summary-grid">
                 <article className="total"><span><Users size={19} /></span><div><small>Sĩ số lớp</small><strong>{summary.total}</strong></div></article>

@@ -49,6 +49,7 @@ export function AdminExamsLive() {
   const selectedPeriod = selectedSummary?.period;
   const selectedSchedule = schedules.data?.find((item) => item.id === scheduleId);
   const [periodForm, setPeriodForm] = useState({ code: '', name: '', academicYearId: '', semesterId: '', gradeLevel: '', startDate: today, endDate: today });
+  const [editingPeriodId, setEditingPeriodId] = useState('');
   const [scheduleForm, setScheduleForm] = useState(blankSchedule());
   const [editingScheduleId, setEditingScheduleId] = useState('');
   const [roomForm, setRoomForm] = useState({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
@@ -103,11 +104,34 @@ export function AdminExamsLive() {
     finally { setBusy(false); }
   };
 
-  const createPeriod = () => run(async () => {
-    const created = await api.post<ExamPeriod>('/exam-periods', periodForm);
-    setPeriodId(created.id);
+  const resetPeriodForm = () => {
+    setEditingPeriodId('');
     setPeriodForm({ code: '', name: '', academicYearId: '', semesterId: '', gradeLevel: '', startDate: today, endDate: today });
-  }, 'Đã tạo kỳ thi');
+  };
+
+  const savePeriod = () => run(async () => {
+    const created = editingPeriodId
+      ? await api.put<ExamPeriod>(`/exam-periods/${editingPeriodId}`, periodForm)
+      : await api.post<ExamPeriod>('/exam-periods', periodForm);
+    setPeriodId(created.id);
+    resetPeriodForm();
+  }, editingPeriodId ? 'Đã cập nhật kỳ thi' : 'Đã tạo kỳ thi');
+
+  const editPeriod = (period: ExamPeriod) => {
+    setEditingPeriodId(period.id);
+    setPeriodId(period.id);
+    setPeriodForm({ code: period.code, name: period.name, academicYearId: period.academicYearId,
+      semesterId: period.semesterId, gradeLevel: period.gradeLevel || '', startDate: period.startDate, endDate: period.endDate });
+  };
+
+  const deletePeriod = (period: ExamPeriod) => {
+    if (!window.confirm(`Xóa kỳ thi “${period.name}” cùng toàn bộ lịch, phòng và danh sách dự thi?`)) return;
+    run(async () => {
+      await api.del(`/exam-periods/${period.id}`);
+      if (periodId === period.id) { setPeriodId(''); setScheduleId(''); }
+      if (editingPeriodId === period.id) resetPeriodForm();
+    }, 'Đã xóa kỳ thi và dữ liệu liên quan');
+  };
 
   const resetScheduleForm = () => {
     setEditingScheduleId('');
@@ -222,12 +246,13 @@ export function AdminExamsLive() {
           <select className="live-select" value={periodForm.gradeLevel} onChange={(e) => setPeriodForm({ ...periodForm, gradeLevel: e.target.value })}><option value="">Toàn trường</option>{gradeOptions.map((x) => <option key={x} value={x}>Khối {x}</option>)}</select>
           <input className="live-input" type="date" value={periodForm.startDate} onChange={(e) => setPeriodForm({ ...periodForm, startDate: e.target.value })} />
           <input className="live-input" type="date" value={periodForm.endDate} onChange={(e) => setPeriodForm({ ...periodForm, endDate: e.target.value })} />
-          <button className="live-btn" disabled={busy} onClick={createPeriod}><Plus size={16} /> Tạo kỳ thi</button>
+          {editingPeriodId && <button className="live-btn ghost" disabled={busy} onClick={resetPeriodForm}><X size={15} /> Hủy sửa</button>}
+          <button className="live-btn" disabled={busy || !periodForm.code.trim() || !periodForm.name.trim() || !periodForm.academicYearId || !periodForm.semesterId} onClick={savePeriod}>{editingPeriodId ? <Save size={16} /> : <Plus size={16} />} {editingPeriodId ? 'Lưu kỳ thi' : 'Tạo kỳ thi'}</button>
         </div>
-        <Async state={periods} allowEmpty empty="Chưa có kỳ thi">{(rows) => <div className="exam-period-list">{rows.map((item) => <button type="button" key={item.period.id} className={item.period.id === periodId ? 'active' : ''} onClick={() => setPeriodId(item.period.id)}>
-          <div><strong>{item.period.name}</strong><span>{item.period.code} · {fmtDate(item.period.startDate)} – {fmtDate(item.period.endDate)}</span></div>
-          <StatusPill value={item.period.status} /><small>{item.scheduleCount} môn · {item.candidateCount} thí sinh · {item.period.schedulePublished ? `Đã công bố v${item.period.scheduleRevision}` : item.period.scheduleRevision ? 'Cần công bố lại' : 'Chưa công bố'}</small>
-        </button>)}</div>}</Async>
+        <Async state={periods} allowEmpty empty="Chưa có kỳ thi">{(rows) => <div className="exam-period-list">{rows.map((item) => <article key={item.period.id} className={item.period.id === periodId ? 'active' : ''}>
+          <button type="button" className="exam-period-select" onClick={() => setPeriodId(item.period.id)}><div><strong>{item.period.name}</strong><span>{item.period.code} · {fmtDate(item.period.startDate)} – {fmtDate(item.period.endDate)}</span></div><StatusPill value={item.period.status} /><small>{item.scheduleCount} môn · {item.candidateCount} thí sinh · {item.period.schedulePublished ? `Đã công bố v${item.period.scheduleRevision}` : item.period.scheduleRevision ? 'Cần công bố lại' : 'Chưa công bố'}</small></button>
+          <div className="exam-row-actions"><button title="Sửa kỳ thi" disabled={item.period.status === 'CONFIRMED'} onClick={() => editPeriod(item.period)}><Pencil size={15} /></button><button className="danger" title="Xóa kỳ thi" disabled={item.period.status !== 'DRAFT'} onClick={() => deletePeriod(item.period)}><Trash2 size={15} /></button></div>
+        </article>)}</div>}</Async>
         {selectedPeriod && <div className="exam-action-strip"><span><Megaphone size={17} /> {selectedPeriod.schedulePublished ? <><strong>Lịch chính thức</strong> đang hiển thị cho người dùng</> : <><strong>Lịch chưa phát hành</strong> nên giáo viên, học sinh và phụ huynh chưa thấy</>}</span>
           <button className="live-btn publish" disabled={busy || selectedPeriod.schedulePublished} onClick={publishSchedule}><Megaphone size={15} /> {selectedPeriod.scheduleRevision ? 'Công bố lại lịch' : 'Công bố lịch thi'}</button>
           <button className="live-btn ghost" disabled={busy || selectedPeriod.status === 'CONFIRMED'} onClick={() => changeLock(!selectedPeriod.scoreEntryLocked)}>{selectedPeriod.scoreEntryLocked ? <Unlock size={15} /> : <Lock size={15} />}{selectedPeriod.scoreEntryLocked ? 'Mở nhập điểm' : 'Khóa nhập điểm'}</button>

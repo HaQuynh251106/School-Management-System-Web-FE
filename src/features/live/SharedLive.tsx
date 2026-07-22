@@ -3,7 +3,8 @@ import type { CSSProperties } from 'react';
 import { Bell, BellRing, BookOpen, CalendarClock, CalendarPlus, CheckCircle2, Clock3, Download, FileText, Inbox, Lock, MailOpen, MapPin, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Search, School, Send, Settings2, Trash2, Upload, Users, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Notification, NotificationPreference } from '../../api/types';
+import { emitNotificationInboxChanged } from '../../api/liveEvents';
+import type { TimetableSlot, TeachingAssignment, Assignment, Submission, SubmissionAttempt, StoredFile, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime } from './common';
 import { filterNotifications, notificationSummary, NOTIFICATION_TYPE_LABEL, type NotificationPriorityFilter, type NotificationReadFilter } from './notifications';
@@ -12,6 +13,7 @@ import { filterNotifications, notificationSummary, NOTIFICATION_TYPE_LABEL, type
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
 
 function classLabel(value: string) {
+  if (!value || /^c-[0-9a-f]{8,}$/i.test(value)) return 'Đang tải lớp';
   return value.replace(/^c-/i, '').replace(/-/g, ' ').toUpperCase();
 }
 
@@ -56,7 +58,7 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
               <div className="schedule-summary-tile next-slot">
                 <span>Tiết tiếp theo hôm nay</span>
                 <strong>{summary.next?.subjectName || 'Đã hoàn tất'}</strong>
-                <small>{summary.next ? `${classLabel(summary.next.classId)} · ${timeLabel(summary.next)}` : 'Không còn lịch dạy'}</small>
+                <small>{summary.next ? `${classLabel(summary.next.classCode || summary.next.classId)} · ${timeLabel(summary.next)}` : 'Không còn lịch dạy'}</small>
               </div>
             </div>
           )}
@@ -87,7 +89,7 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
                       <div key={`${day}-${period}`} className={`teacher-slot ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
                         {slot ? (
                           <article className="teacher-class-card" style={{ '--slot-color': SUBJECT_COLORS[colorIndex] } as CSSProperties}>
-                            <div className="teacher-class-topline"><span><School size={13} /> {classLabel(slot.classId)}</span><small>{timeLabel(slot)}</small></div>
+                            <div className="teacher-class-topline"><span><School size={13} /> {classLabel(slot.classCode || slot.classId)}</span><small>{timeLabel(slot)}</small></div>
                             <strong><BookOpen size={16} /> {slot.subjectName}</strong>
                             <div className="teacher-class-meta"><span><MapPin size={13} /> {slot.roomCode || 'Chưa xếp phòng'}</span></div>
                           </article>
@@ -136,6 +138,8 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const [grading, setGrading] = useState<Record<string, { score: string; feedback: string }>>({});
   const [f, setF] = useState({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false });
   const [submissionDraft, setSubmissionDraft] = useState({ content: '', attachmentFileId: '' });
+  const [historySubmissionId, setHistorySubmissionId] = useState<string | null>(null);
+  const attemptHistory = useApi<SubmissionAttempt[]>(historySubmissionId ? `/submissions/${historySubmissionId}/attempts` : null);
 
   const teachingOptions = useMemo(() => {
     const unique = new Map<string, TeachingAssignment>();
@@ -296,7 +300,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
           <div className="assignment-composer-head"><span>{editingId ? <Pencil size={18} /> : <Plus size={18} />}</span><div><strong>{editingId ? 'Chỉnh sửa bài tập' : 'Tạo bài tập mới'}</strong><small>{editingId ? 'Các thay đổi của bài đã phát hành sẽ được thông báo tự động' : 'Thiết lập yêu cầu và tài liệu cho học sinh'}</small></div></div>
           <div className="assignment-form-grid">
             <label><span>Lớp và môn giảng dạy</span><select className="live-select" disabled={Boolean(editingId)} value={`${f.classId}:${f.subjectId}`} onChange={(e) => { const [classId, subjectId] = e.target.value.split(':'); setF({ ...f, classId: classId || '', subjectId: subjectId || '' }); }}>
-              <option value=":">— Chọn phân công —</option>{teachingOptions.map((slot) => <option key={`${slot.classId}:${slot.subjectId}`} value={`${slot.classId}:${slot.subjectId}`}>{classLabel(slot.classId)} · {slot.subjectName}</option>)}
+              <option value=":">— Chọn phân công —</option>{teachingOptions.map((slot) => <option key={`${slot.classId}:${slot.subjectId}`} value={`${slot.classId}:${slot.subjectId}`}>{slot.classCode || classLabel(slot.classId)} · {slot.subjectName}</option>)}
             </select></label>
             <label className="assignment-title-field"><span>Tiêu đề bài tập</span><input className="live-input" placeholder="Ví dụ: Ôn tập chương Hàm số" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} /></label>
             <label><span>Hạn nộp</span><input className="live-input" type="datetime-local" value={f.deadline} onChange={(e) => setF({ ...f, deadline: e.target.value })} /></label>
@@ -342,7 +346,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
                     {submission.gradedAt && <small>Chấm lúc {fmtDateTime(submission.gradedAt)}</small>}
                   </div>
                 </div>}
-                <div className="assignment-card-actions"><span className="assignment-submission-state">{submission ? `Lần ${submission.attemptNumber || 1} · ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</span>{(submission?.status !== 'GRADED' || submission?.resubmissionAllowed) && assignment.status === 'PUBLISHED' && <button className="live-btn" onClick={() => openSubmission(assignment)}><Upload size={14} /> {submission ? 'Nộp lại' : 'Nộp bài'}</button>}</div>
+                <div className="assignment-card-actions"><span className="assignment-submission-state">{submission ? `Lần ${submission.attemptNumber || 1} · ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</span>{submission && <button className="live-btn subtle" onClick={() => setHistorySubmissionId(submission.id)}><Clock3 size={14} /> Lịch sử nộp</button>}{(submission?.status !== 'GRADED' || submission?.resubmissionAllowed) && assignment.status === 'PUBLISHED' && <button className="live-btn" onClick={() => openSubmission(assignment)}><Upload size={14} /> {submission ? 'Nộp lại' : 'Nộp bài'}</button>}</div>
               </>}
             </article>;
           })}</div>
@@ -355,7 +359,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
               <table className="live-table assignment-submission-table"><thead><tr><th>Học sinh</th><th>Bài làm</th><th>Trạng thái</th><th>Điểm và phản hồi</th><th></th></tr></thead>
                 <tbody>{l.map((s) => (
                   <tr key={s.id}><td><strong>{s.studentName}</strong><small>{fmtDateTime(s.submittedAt)}</small></td><td><p>{s.content || 'Chỉ gửi tệp đính kèm'}</p>{s.attachmentFileId && <button className="assignment-file-link" onClick={() => downloadFile(s.attachmentFileId, s.attachmentName)}><Download size={13} /> {s.attachmentName}</button>}</td><td><StatusPill value={s.status} /></td><td><input className="gradebook-score-input" aria-label={`Điểm của ${s.studentName}`} type="number" min={0} max={10} step="0.1" value={grading[s.id]?.score ?? (s.score == null ? '' : String(s.score))} onChange={(e) => setGrading({ ...grading, [s.id]: { score: e.target.value, feedback: grading[s.id]?.feedback ?? s.feedback ?? '' } })} /><input className="live-input assignment-feedback" aria-label={`Phản hồi cho ${s.studentName}`} placeholder="Nhận xét" value={grading[s.id]?.feedback ?? s.feedback ?? ''} onChange={(e) => setGrading({ ...grading, [s.id]: { score: grading[s.id]?.score ?? (s.score == null ? '' : String(s.score)), feedback: e.target.value } })} /></td>
-                    <td><div className="submission-actions"><button className="live-btn subtle" disabled={busy} onClick={() => grade(s)}><CheckCircle2 size={14} /> Lưu chấm</button>{s.status === 'GRADED' && !s.resubmissionAllowed && <button className="live-btn subtle" disabled={busy || selectedAssignment?.status !== 'PUBLISHED'} onClick={() => allowResubmit(s)}><RotateCcw size={14} /> Cho nộp lại</button>}</div></td></tr>
+                    <td><div className="submission-actions"><button className="live-btn subtle" onClick={() => setHistorySubmissionId(s.id)}><Clock3 size={14} /> Lịch sử</button><button className="live-btn subtle" disabled={busy} onClick={() => grade(s)}><CheckCircle2 size={14} /> Lưu chấm</button>{s.status === 'GRADED' && !s.resubmissionAllowed && <button className="live-btn subtle" disabled={busy || selectedAssignment?.status !== 'PUBLISHED'} onClick={() => allowResubmit(s)}><RotateCcw size={14} /> Cho nộp lại</button>}</div></td></tr>
                 ))}</tbody></table>
             )}
           </Async>
@@ -366,6 +370,18 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
         <label className="assignment-file-field"><span>Tệp bài làm</span><input className="assignment-file-input" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp" onChange={(e) => setSubmissionFile(e.target.files?.[0] || null)} /><small><Paperclip size={13} /> {submissionFile?.name || submissionMap.get(sel)?.attachmentName || 'Chọn tệp tối đa 10 MB'}</small></label>
         <div className="assignment-composer-actions"><button className="live-btn" disabled={busy} onClick={submit}><Upload size={15} /> {busy ? 'Đang tải lên…' : 'Xác nhận nộp bài'}</button></div>
       </div>}
+      {historySubmissionId && <div className="submission-panel">
+        <div className="submission-panel-head"><div><small>Dữ liệu được lưu theo từng lần</small><strong>Lịch sử nộp và chấm bài</strong></div><button className="live-btn subtle" onClick={() => setHistorySubmissionId(null)}>Đóng</button></div>
+        <Async state={attemptHistory} empty="Chưa có lịch sử lần nộp">
+          {(items) => <div className="live-table-wrap"><table className="live-table"><thead><tr><th>Lần nộp</th><th>Thời gian</th><th>Nội dung / tệp</th><th>Trạng thái</th><th>Điểm và phản hồi</th></tr></thead><tbody>{items.map((attempt) => <tr key={attempt.id}>
+            <td><strong>Lần {attempt.attemptNumber}</strong></td>
+            <td>{fmtDateTime(attempt.submittedAt)}</td>
+            <td><p>{attempt.content || 'Chỉ gửi tệp đính kèm'}</p>{attempt.attachmentFileId && <button className="assignment-file-link" onClick={() => downloadFile(attempt.attachmentFileId, attempt.attachmentName)}><Download size={13} /> {attempt.attachmentName}</button>}</td>
+            <td><StatusPill value={attempt.status} /></td>
+            <td><strong>{attempt.score == null ? 'Chưa chấm' : `${attempt.score.toFixed(1)}/10`}</strong><small>{attempt.feedback || 'Chưa có nhận xét'}</small></td>
+          </tr>)}</tbody></table></div>}
+        </Async>
+      </div>}
     </Section>
   );
 }
@@ -374,6 +390,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
 export function NotificationsLive({ audience = 'student' }: { audience?: 'teacher' | 'student' | 'parent' }) {
   const inbox = useApi<Notification[]>('/notifications');
   const preferences = useApi<NotificationPreference[]>('/notification-preferences');
+  const notificationCapabilities = useApi<Record<string, boolean>>('/notification-capabilities');
   const toast = useToast();
   const [query, setQuery] = useState('');
   const [readFilter, setReadFilter] = useState<NotificationReadFilter>('ALL');
@@ -388,17 +405,33 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
   const availableTypes = useMemo(() => Array.from(new Set(items.map((item) => item.type))).sort(), [items]);
   const ownerLabel = audience === 'teacher' ? 'giáo viên' : audience === 'parent' ? 'phụ huynh' : 'học sinh';
 
-  const refresh = () => { inbox.reload(); preferences.reload(); };
+  const refresh = () => { inbox.reload(); preferences.reload(); notificationCapabilities.reload(); };
   const markRead = async (id: string) => {
-    try { await api.post(`/notifications/${id}/read`); inbox.reload(); }
+    try {
+      await api.post(`/notifications/${id}/read`);
+      inbox.setData((current) => current?.map((item) => item.id === id ? { ...item, read: true } : item) ?? current);
+      emitNotificationInboxChanged();
+      inbox.reload();
+    }
     catch (e: any) { toast.show('err', e.message); }
   };
   const markUnread = async (id: string) => {
-    try { await api.post(`/notifications/${id}/unread`); inbox.reload(); }
+    try {
+      await api.post(`/notifications/${id}/unread`);
+      inbox.setData((current) => current?.map((item) => item.id === id ? { ...item, read: false } : item) ?? current);
+      emitNotificationInboxChanged();
+      inbox.reload();
+    }
     catch (e: any) { toast.show('err', e.message); }
   };
   const markAll = async () => {
-    try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả thông báo là đã đọc'); inbox.reload(); }
+    try {
+      await api.post('/notifications/read-all');
+      inbox.setData((current) => current?.map((item) => ({ ...item, read: true })) ?? current);
+      emitNotificationInboxChanged();
+      toast.show('ok', 'Đã đánh dấu tất cả thông báo là đã đọc');
+      inbox.reload();
+    }
     catch (e: any) { toast.show('err', e.message); }
   };
   const togglePreference = async (preference: NotificationPreference) => {
@@ -432,13 +465,15 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
 
       {showPreferences && <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
         <Async state={preferences} empty="Chưa có tùy chọn thông báo">
-          {(channelPreferences) => <div className="notification-preferences">{channelPreferences.map((preference) => (
-            <label key={preference.id}>
+          {(channelPreferences) => <div className="notification-preferences">{channelPreferences.map((preference) => {
+            const available = notificationCapabilities.data?.[preference.channel] ?? preference.channel === 'IN_APP';
+            return (
+            <label key={preference.id} className={!available ? 'disabled' : ''}>
               <span><strong>{{ IN_APP: 'Trong ứng dụng', PUSH: 'Thông báo đẩy', EMAIL: 'Email' }[preference.channel]}</strong>
-                <small>{preference.channel === 'IN_APP' ? 'Hiển thị trong hộp thư của hệ thống' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
-              <input type="checkbox" checked={preference.enabled} onChange={() => togglePreference(preference)} />
+                <small>{!available ? 'Nhà trường chưa cấu hình kênh này' : preference.channel === 'IN_APP' ? 'Kênh bắt buộc để không bỏ lỡ thông tin' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
+              <input type="checkbox" checked={available && (preference.channel === 'IN_APP' || preference.enabled)} disabled={!available || preference.channel === 'IN_APP'} onChange={() => togglePreference(preference)} />
             </label>
-          ))}</div>}
+          );})}</div>}
         </Async>
       </Section>}
 
