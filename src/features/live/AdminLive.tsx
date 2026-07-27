@@ -5,12 +5,13 @@ import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult,
-  ImportResult, LoginHistory, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
+  ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
-import { Async, PaginatedData, useToast, money, fmtDateTime, fmtDate } from './common';
+import { Async, EmptyState, PaginatedData, ServerPagination, useToast, money, fmtDateTime, fmtDate } from './common';
 import { Modal, Field } from './Modal';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
+import { useHashNumber, useHashString } from '../../api/urlState';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
@@ -48,15 +49,28 @@ const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: strin
 };
 
 export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
-  const [role, setRole] = useState('');
-  const [q, setQ] = useState('');
-  const [gradeLevel, setGradeLevel] = useState('ALL');
-  const [classId, setClassId] = useState('ALL');
+  const [role, setRole] = useHashString('role', '');
+  const [q, setQ] = useHashString('q', '');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [gradeLevel, setGradeLevel] = useHashString('grade', 'ALL');
+  const [classId, setClassId] = useHashString('class', 'ALL');
+  const [status, setStatus] = useHashString('status', 'ALL');
+  const [pageNumber, setPageNumber] = useHashNumber('page', 1);
+  const [pageSize, setPageSize] = useHashNumber('size', 10);
+  const page = pageNumber - 1;
   const selectedRole = fixedRole || role;
   const supportsClassScope = fixedRole === 'STUDENT' || fixedRole === 'PARENT';
-  const params = [selectedRole && `role=${selectedRole}`, q && `q=${encodeURIComponent(q)}`,
-    supportsClassScope && classId !== 'ALL' && `classId=${encodeURIComponent(classId)}`].filter(Boolean).join('&');
-  const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
+  const params = [
+    selectedRole && `role=${selectedRole}`,
+    debouncedQ && `q=${encodeURIComponent(debouncedQ)}`,
+    supportsClassScope && classId !== 'ALL' && `classId=${encodeURIComponent(classId)}`,
+    supportsClassScope && classId === 'ALL' && gradeLevel !== 'ALL' && `gradeLevel=${encodeURIComponent(gradeLevel)}`,
+    status !== 'ALL' && `status=${status}`,
+    `page=${page}`,
+    `size=${pageSize}`,
+    'sort=fullName',
+  ].filter(Boolean).join('&');
+  const users = useApi<PageResponse<ApiUser>>(`/users/page?${params}`);
   const classes = useApi<SchoolClass[]>('/classes');
   const students = useApi<ApiUser[]>('/users?role=STUDENT');
   const toast = useToast();
@@ -67,6 +81,9 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   const [linkedStudentId, setLinkedStudentId] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [importStrategy, setImportStrategy] = useState<'ALL_OR_NOTHING' | 'SKIP_ERRORS'>('ALL_OR_NOTHING');
   const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
   const roleConfig = fixedRole ? USER_ROLE_CONFIG[fixedRole] : null;
   const availableGrades = useMemo(() => [...new Set((classes.data || [])
@@ -76,24 +93,20 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     .sort((a, b) => a.code.localeCompare(b.code, 'vi')), [classes.data, gradeLevel]);
   const selectedClass = (classes.data || []).find((schoolClass) => schoolClass.id === classId);
   const scopeFiltered = classId !== 'ALL' || gradeLevel !== 'ALL';
-  const visibleUsers = useMemo(() => {
-    const rows = users.data || [];
-    if (gradeLevel === 'ALL' || classId !== 'ALL') return rows;
-    const classIdsInGrade = new Set((classes.data || [])
-      .filter((schoolClass) => schoolClass.gradeLevel === gradeLevel).map((schoolClass) => schoolClass.id));
-    if (fixedRole === 'STUDENT') return rows.filter((user) => !!user.classId && classIdsInGrade.has(user.classId));
-    if (fixedRole === 'PARENT') {
-      const studentIdsInGrade = new Set((students.data || [])
-        .filter((student) => !!student.classId && classIdsInGrade.has(student.classId)).map((student) => student.id));
-      return rows.filter((user) => (user.childrenIds || []).some((studentId) => studentIdsInGrade.has(studentId)));
-    }
-    return rows;
-  }, [classId, classes.data, fixedRole, gradeLevel, students.data, users.data]);
   const userStats = {
-    total: visibleUsers.length,
-    active: visibleUsers.filter((user) => user.status === 'ACTIVE').length,
-    locked: visibleUsers.filter((user) => user.status !== 'ACTIVE').length,
+    total: users.data?.summary.total ?? users.data?.totalElements ?? 0,
+    active: users.data?.summary.active ?? 0,
+    locked: users.data?.summary.locked ?? 0,
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+
+  useEffect(() => {
+    setPageNumber(1);
+  }, [selectedRole, debouncedQ, gradeLevel, classId, status, setPageNumber]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const changeGrade = (value: string) => {
@@ -130,13 +143,33 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     } catch (e: any) { toast.show('err', e.message); }
   };
 
-  const importExcel = async (file?: File) => {
+  const previewExcel = async (file?: File) => {
     if (!file) return;
     setImporting(true);
     try {
-      const result = await api.upload<ImportResult>('/users/import', file);
+      const preview = await api.upload<ImportPreview>('/users/import/preview', file);
+      setImportFile(file);
+      setImportPreview(preview);
+      setImportStrategy(preview.invalidRows ? 'ALL_OR_NOTHING' : 'SKIP_ERRORS');
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setImporting(false); }
+  };
+
+  const commitImport = async () => {
+    if (!importFile || !importPreview) return;
+    if (importStrategy === 'ALL_OR_NOTHING' && importPreview.invalidRows > 0) {
+      return toast.show('err', 'Hãy sửa các dòng lỗi hoặc chọn bỏ qua dòng lỗi trước khi xác nhận');
+    }
+    setImporting(true);
+    try {
+      const result = await api.uploadForm<ImportResult>('/users/import/commit', importFile, {
+        token: importPreview.token,
+        strategy: importStrategy,
+      });
       setImportResult(result);
-      toast.show(result.failedRows ? 'err' : 'ok', `Đã nhập ${result.importedRows}/${result.totalRows} tài khoản`);
+      setImportPreview(null);
+      setImportFile(null);
+      toast.show('ok', `Đã nhập an toàn ${result.importedRows}/${result.totalRows} tài khoản`);
       users.reload(); students.reload(); classes.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setImporting(false); }
@@ -275,9 +308,14 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
         </select>}
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select className="live-select" value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Lọc trạng thái tài khoản">
+          <option value="ALL">Tất cả trạng thái</option>
+          <option value="ACTIVE">Đang hoạt động</option>
+          <option value="LOCKED">Đã khóa</option>
+        </select>
         <label className={`live-btn ghost ${importing ? 'is-disabled' : ''}`}>
-          <Upload size={15} /> {importing ? 'Đang nhập…' : 'Nhập Excel'}
-          <input hidden type="file" accept=".xlsx,.xls" disabled={importing} onChange={(e) => { importExcel(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+          <Upload size={15} /> {importing ? 'Đang kiểm tra…' : 'Nhập Excel an toàn'}
+          <input hidden type="file" accept=".xlsx,.xls" disabled={importing} onChange={(e) => { previewExcel(e.target.files?.[0]); e.currentTarget.value = ''; }} />
         </label>
         <button className="live-btn ghost" onClick={downloadImportTemplate}><Download size={15} /> Tệp mẫu</button>
         <button className="live-btn ghost" onClick={() => users.reload()}><RefreshCw size={15} /> Tải lại</button>
@@ -291,13 +329,14 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
         </div>
       )}
 
-      <Async paginate state={{ ...users, data: visibleUsers }} empty={scopeFiltered ? `Không có ${roleConfig?.itemLabel || 'người dùng'} trong phạm vi đã chọn` : roleConfig?.empty || 'Không có người dùng'} itemLabel={roleConfig?.itemLabel || 'người dùng'} resetKey={`${selectedRole}:${q}:${gradeLevel}:${classId}`}>
-        {(pageItems) => (
-          <>
+      <Async state={users}>
+        {(pageData) => pageData.items.length === 0
+          ? <EmptyState label={scopeFiltered ? `Không có ${roleConfig?.itemLabel || 'người dùng'} trong phạm vi đã chọn` : roleConfig?.empty || 'Không có người dùng'} />
+          : <>
             <table className="live-table">
               <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>{fixedRole === 'STUDENT' ? 'Lớp học' : fixedRole === 'TEACHER' ? 'Chuyên môn' : fixedRole === 'PARENT' ? 'Liên kết học sinh' : 'Vai trò'}</th><th>Trạng thái</th><th></th></tr></thead>
               <tbody>
-                {pageItems.map((u) => (
+                {pageData.items.map((u) => (
                   <tr key={u.id}>
                     <td><strong>{u.fullName}</strong>{!fixedRole && u.studentCode && <small style={{ color: 'var(--muted)' }}> · {u.studentCode}</small>}{!fixedRole && u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</td>
                     <td>@{u.username}</td>
@@ -324,9 +363,58 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
                 ))}
               </tbody>
             </table>
-          </>
-        )}
+            <ServerPagination data={pageData} itemLabel={roleConfig?.itemLabel || 'người dùng'}
+              onPageChange={(nextPage) => setPageNumber(nextPage + 1, 'push')}
+              onPageSizeChange={(size) => { setPageSize(size); setPageNumber(1); }} />
+          </>}
       </Async>
+
+      {importPreview && (
+        <Modal title="Kiểm tra dữ liệu trước khi nhập" onClose={() => { if (!importing) { setImportPreview(null); setImportFile(null); } }}
+          footer={<>
+            <button className="live-btn ghost" disabled={importing} onClick={() => { setImportPreview(null); setImportFile(null); }}>Hủy</button>
+            <button className="live-btn" disabled={importing || (importStrategy === 'ALL_OR_NOTHING' && importPreview.invalidRows > 0)} onClick={commitImport}>
+              <ShieldCheck size={15} /> {importing ? 'Đang ghi dữ liệu…' : `Xác nhận nhập ${importStrategy === 'SKIP_ERRORS' ? importPreview.validRows : importPreview.totalRows} dòng`}
+            </button>
+          </>}>
+          <div className="safe-import">
+            <div className="safe-import-summary">
+              <article><small>Tổng số dòng</small><strong>{importPreview.totalRows}</strong></article>
+              <article className="success"><small>Hợp lệ</small><strong>{importPreview.validRows}</strong></article>
+              <article className={importPreview.invalidRows ? 'danger' : ''}><small>Có lỗi</small><strong>{importPreview.invalidRows}</strong></article>
+            </div>
+            <div className="safe-import-policy">
+              <label className={importStrategy === 'ALL_OR_NOTHING' ? 'selected' : ''}>
+                <input type="radio" name="import-strategy" value="ALL_OR_NOTHING" checked={importStrategy === 'ALL_OR_NOTHING'}
+                  onChange={() => setImportStrategy('ALL_OR_NOTHING')} />
+                <span><strong>Toàn vẹn dữ liệu</strong><small>Chỉ nhập khi tất cả các dòng đều hợp lệ</small></span>
+              </label>
+              <label className={importStrategy === 'SKIP_ERRORS' ? 'selected' : ''}>
+                <input type="radio" name="import-strategy" value="SKIP_ERRORS" checked={importStrategy === 'SKIP_ERRORS'}
+                  onChange={() => setImportStrategy('SKIP_ERRORS')} />
+                <span><strong>Bỏ qua dòng lỗi</strong><small>Chỉ nhập {importPreview.validRows} dòng đã vượt qua kiểm tra</small></span>
+              </label>
+            </div>
+            <div className="safe-import-table">
+              <table className="live-table">
+                <thead><tr><th>Dòng</th><th>Tài khoản</th><th>Vai trò</th><th>Lớp</th><th>Kết quả kiểm tra</th></tr></thead>
+                <tbody>{importPreview.rows.map((row) => (
+                  <tr key={row.row} className={row.valid ? '' : 'has-error'}>
+                    <td>{row.row}</td>
+                    <td><strong>{row.fullName || '—'}</strong><small>@{row.username || 'chưa có'}</small></td>
+                    <td>{viLabel(row.role || '')}</td>
+                    <td>{row.classCode || '—'}</td>
+                    <td>{row.valid
+                      ? <span className="safe-import-valid"><CheckCircle2 size={14} /> Hợp lệ</span>
+                      : <span className="safe-import-error"><AlertTriangle size={14} /> {row.error}</span>}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <p className="safe-import-expiry">Phiên kiểm tra có hiệu lực đến {new Date(importPreview.expiresAt).toLocaleTimeString('vi-VN')}. Tệp sẽ được kiểm tra lại trước khi ghi.</p>
+          </div>
+        </Modal>
+      )}
 
       {showEditor && (
         <Modal title={editingUser ? `Chỉnh sửa hồ sơ · ${editingUser.fullName}` : roleConfig?.createLabel || 'Tạo người dùng mới'} onClose={closeEditor}
@@ -886,13 +974,24 @@ export function AdminFinanceLive() {
     setShowPeriodEditor(true);
   };
 
+  const focusPeriodSetup = (periodId: string) => {
+    setSelectedPeriodId(periodId);
+    window.setTimeout(() => {
+      document.getElementById('finance-period-setup')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+  };
+
   const savePeriod = async () => {
     if (!periodForm.code.trim() || !periodForm.name.trim()) return toast.show('err', 'Vui lòng nhập mã và tên đợt thu');
     setBusy(true);
     try {
       const payload = { ...periodForm, applyToGrades: periodForm.applyToGrades.trim() || null, dueDate: periodForm.dueDate || null };
       if (editingPeriod) await api.put(`/fee-periods/${editingPeriod.id}`, payload);
-      else await api.post('/fee-periods', payload);
+      else {
+        const created = await api.post<FeePeriod>('/fee-periods', payload);
+        periods.setData((current) => [...(current || []), created]);
+        focusPeriodSetup(created.id);
+      }
       toast.show('ok', editingPeriod ? 'Đã cập nhật đợt thu' : 'Đã tạo đợt thu mới');
       setShowPeriodEditor(false);
       refreshFinance();
@@ -932,11 +1031,22 @@ export function AdminFinanceLive() {
   };
 
   const changePeriodStatus = async (period: FeePeriod, action: 'open' | 'close') => {
+    if (action === 'open' && selectedPeriodId === period.id && !items.loading && (items.data || []).length === 0) {
+      focusPeriodSetup(period.id);
+      return toast.show('err', 'Hãy thêm ít nhất một khoản thu ở phần thiết lập bên dưới trước khi mở đợt');
+    }
     try {
-      await api.post(`/fee-periods/${period.id}/${action}`);
+      const updated = await api.post<FeePeriod>(`/fee-periods/${period.id}/${action}`);
+      periods.setData((current) => (current || []).map((item) => item.id === updated.id ? updated : item));
+      if (action === 'open') focusPeriodSetup(period.id);
       toast.show('ok', action === 'open' ? 'Đợt thu đã sẵn sàng phát hành' : 'Đã đóng đợt thu');
       refreshFinance();
-    } catch (error: any) { toast.show('err', error.message); }
+    } catch (error: any) {
+      if (action === 'open' && String(error.message).toLocaleLowerCase('vi').includes('khoản thu')) {
+        focusPeriodSetup(period.id);
+        toast.show('err', 'Đợt thu chưa có khoản thu. Hãy thêm tên khoản và số tiền ở phần thiết lập vừa mở');
+      } else toast.show('err', error.message);
+    }
   };
 
   const generateInvoices = async (period: FeePeriod) => {
@@ -1046,7 +1156,7 @@ export function AdminFinanceLive() {
                     <td><strong>{period.name || 'Chưa đặt tên'}</strong><small>{period.code}</small></td>
                     <td>{period.applyToGrades || 'Toàn trường'}</td><td>{fmtDate(period.dueDate)}</td><td><StatusPill value={period.status} /></td>
                     <td><div className="finance-row-actions">
-                      <button className="icon-action" type="button" title="Quản lý khoản thu" onClick={() => setSelectedPeriodId(period.id)}><Eye size={16} /></button>
+                      <button className="icon-action" type="button" title="Quản lý khoản thu" onClick={() => focusPeriodSetup(period.id)}><Eye size={16} /></button>
                       {period.status === 'DRAFT' && <><button className="icon-action" type="button" title="Chỉnh sửa" onClick={() => openEditPeriod(period)}><Pencil size={16} /></button><button className="icon-action danger" type="button" title="Xóa" onClick={() => deletePeriod(period)}><Trash2 size={16} /></button></>}
                       {period.status === 'DRAFT' && <button className="live-btn subtle" type="button" onClick={() => changePeriodStatus(period, 'open')}>Mở đợt</button>}
                       {period.status === 'OPEN' && <><button className="live-btn" type="button" disabled={busy} onClick={() => generateInvoices(period)}><Send size={14} /> Phát hành</button><button className="live-btn ghost" type="button" onClick={() => changePeriodStatus(period, 'close')}>Đóng đợt</button></>}
@@ -1055,7 +1165,7 @@ export function AdminFinanceLive() {
               </PaginatedData>}
             </Async>
 
-            {selectedPeriod && <div className="finance-period-workspace">
+            {selectedPeriod && <div className="finance-period-workspace" id="finance-period-setup">
               <header><div><span>Đang quản lý</span><h3>{selectedPeriod.name || selectedPeriod.code}</h3><p>{selectedPeriod.code} · {selectedPeriod.applyToGrades || 'Toàn trường'} · hạn {fmtDate(selectedPeriod.dueDate)}</p></div><div><small>Tổng định mức</small><strong>{money(configuredTotal)}</strong></div></header>
               {selectedPeriod.status === 'DRAFT' && <div className="finance-item-form">
                 <Field label="Tên khoản thu"><input className="live-input" placeholder="Ví dụ: Học phí tháng 9" value={itemForm.name} onChange={(event) => setItemForm({ ...itemForm, name: event.target.value })} /></Field>
@@ -1066,6 +1176,14 @@ export function AdminFinanceLive() {
               <Async state={items} empty="Chưa có khoản thu trong đợt này">
                 {(rows) => <div className="finance-item-list">{rows.map((item) => <article key={item.id}><span><ReceiptText size={17} /></span><div><strong>{item.name}</strong><small>{item.gradeLevel || 'Áp dụng toàn trường'}</small></div><b>{money(item.amount)}</b>{selectedPeriod.status === 'DRAFT' && <button className="icon-action danger" type="button" title="Xóa khoản thu" onClick={() => deleteItem(item)}><Trash2 size={15} /></button>}</article>)}</div>}
               </Async>
+              {selectedPeriod.status === 'DRAFT' && <div className={`finance-period-readiness ${(items.data || []).length ? 'ready' : ''}`}>
+                <div>{(items.data || []).length ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}<span><strong>{(items.data || []).length ? `Đã có ${(items.data || []).length} khoản thu` : 'Chưa thể mở đợt thu'}</strong><small>{(items.data || []).length ? 'Kiểm tra lần cuối rồi mở đợt để chuẩn bị phát hành hóa đơn.' : 'Nhập tên khoản, số tiền và bấm “Thêm khoản” trước.'}</small></span></div>
+                <button className="live-btn" type="button" disabled={items.loading || (items.data || []).length === 0} onClick={() => changePeriodStatus(selectedPeriod, 'open')}>Mở đợt thu</button>
+              </div>}
+              {selectedPeriod.status === 'OPEN' && <div className="finance-period-readiness ready publish">
+                <div><Send size={18} /><span><strong>Đợt thu đã mở, có thể phát hành</strong><small>Hệ thống sẽ tạo hóa đơn cho học sinh phù hợp và tự động thông báo tới phụ huynh.</small></span></div>
+                <button className="live-btn" type="button" disabled={busy} onClick={() => generateInvoices(selectedPeriod)}><Send size={15} /> {busy ? 'Đang phát hành…' : 'Phát hành hóa đơn'}</button>
+              </div>}
             </div>}
           </Section>
         ) },

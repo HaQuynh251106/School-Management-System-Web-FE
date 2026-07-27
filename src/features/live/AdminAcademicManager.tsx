@@ -8,6 +8,7 @@ import { Badge, FunctionTabs, Section, StatusPill, viLabel } from '../../compone
 import { Async, fmtDate, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { YearEndManager } from './AdminLive';
+import { useHashString } from '../../api/urlState';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
 type EditorState = { kind: EditorKind; id: string; data: Record<string, string | number> };
@@ -38,13 +39,18 @@ export function AdminAcademicLive() {
 
   const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
   const [sf, setSf] = useState({ academicYearId: '', code: '', name: '', sequence: 1, startDate: '', endDate: '' });
-  const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', academicYearId: '', homeroomTeacherId: '', capacity: 45 });
+  const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', studyShift: 'MORNING', academicYearId: '', roomId: '', homeroomTeacherId: '', capacity: 45 });
   const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
-  const [rm, setRm] = useState({ code: '', name: '', capacity: 45 });
-  const [query, setQuery] = useState({ years: '', semesters: '', classes: '', subjects: '', rooms: '' });
-  const [yearStatus, setYearStatus] = useState('');
-  const [semesterYear, setSemesterYear] = useState('');
-  const [classYear, setClassYear] = useState('');
+  const [rm, setRm] = useState({ code: '', name: '', capacity: 45, shiftMode: 'BOTH' });
+  const [yearQuery, setYearQuery] = useHashString('q_years', '');
+  const [semesterQuery, setSemesterQuery] = useHashString('q_semesters', '');
+  const [classQuery, setClassQuery] = useHashString('q_classes', '');
+  const [subjectQuery, setSubjectQuery] = useHashString('q_subjects', '');
+  const [roomQuery, setRoomQuery] = useHashString('q_rooms', '');
+  const query = { years: yearQuery, semesters: semesterQuery, classes: classQuery, subjects: subjectQuery, rooms: roomQuery };
+  const [yearStatus, setYearStatus] = useHashString('year_status', '');
+  const [semesterYear, setSemesterYear] = useHashString('semester_year', '');
+  const [classYear, setClassYear] = useHashString('class_year', '');
   const [assigningClassId, setAssigningClassId] = useState('');
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -52,6 +58,14 @@ export function AdminAcademicLive() {
   const activeYears = (years.data ?? []).filter((year) => year.status !== 'CLOSED');
   const yearName = (id?: string) => (years.data ?? []).find((year) => year.id === id)?.code || '—';
   const selectedSemesterYear = (years.data ?? []).find((year) => year.id === sf.academicYearId);
+  const roomSupportsShift = (room: Room, shift: string) => shift === 'AFTERNOON'
+    ? room.supportsAfternoon !== false
+    : room.supportsMorning !== false;
+  const roomAssignment = (roomId: string, academicYearId: string, studyShift: string, excludeClassId = '') =>
+    (classes.data ?? []).find((item) => item.id !== excludeClassId
+      && item.roomId === roomId
+      && item.academicYearId === academicYearId
+      && (item.studyShift || 'MORNING') === studyShift);
 
   const run = async (task: () => Promise<unknown>, success: string, reloads: Array<() => void>) => {
     setBusy(true);
@@ -85,7 +99,7 @@ export function AdminAcademicLive() {
   const addClass = async () => {
     if (!cf.code || !cf.academicYearId) return toast.show('err', 'Nhập mã lớp và chọn năm học');
     if (await run(() => api.post('/classes', { ...cf, name: cf.name || `Lớp ${cf.code}`, homeroomTeacherId: cf.homeroomTeacherId || null }), 'Đã tạo lớp học', [classes.reload])) {
-      setCf({ code: '', name: '', gradeLevel: cf.gradeLevel, academicYearId: cf.academicYearId, homeroomTeacherId: '', capacity: 45 });
+      setCf({ code: '', name: '', gradeLevel: cf.gradeLevel, studyShift: cf.studyShift, academicYearId: cf.academicYearId, roomId: '', homeroomTeacherId: '', capacity: 45 });
     }
   };
 
@@ -96,7 +110,9 @@ export function AdminAcademicLive() {
 
   const addRoom = async () => {
     if (!rm.code || rm.capacity < 1) return toast.show('err', 'Nhập mã và sức chứa phòng');
-    if (await run(() => api.post('/rooms', rm), 'Đã thêm phòng học', [rooms.reload])) setRm({ code: '', name: '', capacity: 45 });
+    const payload = { code: rm.code, name: rm.name, capacity: rm.capacity,
+      supportsMorning: rm.shiftMode !== 'AFTERNOON', supportsAfternoon: rm.shiftMode !== 'MORNING' };
+    if (await run(() => api.post('/rooms', payload), 'Đã thêm phòng học', [rooms.reload])) setRm({ code: '', name: '', capacity: 45, shiftMode: rm.shiftMode });
   };
 
   const assignHomeroomTeacher = async (classId: string, teacherId: string) => {
@@ -134,13 +150,14 @@ export function AdminAcademicLive() {
       setEditor({ kind, id: value.id, data: { academicYearId: value.academicYearId, code: value.code, name: value.name, sequence: value.sequence, startDate: value.startDate || '', endDate: value.endDate || '' } });
     } else if (kind === 'class') {
       const value = item as SchoolClass;
-      setEditor({ kind, id: value.id, data: { code: value.code, name: value.name, gradeLevel: value.gradeLevel, academicYearId: value.academicYearId || '', capacity: value.capacity || 45 } });
+      setEditor({ kind, id: value.id, data: { code: value.code, name: value.name, gradeLevel: value.gradeLevel, studyShift: value.studyShift || 'MORNING', academicYearId: value.academicYearId || '', roomId: value.roomId || '', capacity: value.capacity || 45 } });
     } else if (kind === 'subject') {
       const value = item as Subject;
       setEditor({ kind, id: value.id, data: { code: value.code, name: value.name, coefficient: value.coefficient || 1 } });
     } else {
       const value = item as Room;
-      setEditor({ kind, id: value.id, data: { code: value.code, name: value.name || '', capacity: value.capacity || 45 } });
+      setEditor({ kind, id: value.id, data: { code: value.code, name: value.name || '', capacity: value.capacity || 45,
+        shiftMode: value.supportsMorning !== false && value.supportsAfternoon !== false ? 'BOTH' : value.supportsAfternoon !== false ? 'AFTERNOON' : 'MORNING' } });
     }
   };
 
@@ -150,7 +167,11 @@ export function AdminAcademicLive() {
     const reloads: Record<EditorKind, Array<() => void>> = {
       year: [years.reload], semester: [semesters.reload], class: [classes.reload], subject: [subjects.reload], room: [rooms.reload],
     };
-    if (await run(() => api.put(`/${routes[editor.kind]}/${editor.id}`, editor.data), 'Đã lưu thay đổi', reloads[editor.kind])) setEditor(null);
+    const { shiftMode, ...roomData } = editor.data;
+    const payload = editor.kind === 'room'
+      ? { ...roomData, supportsMorning: shiftMode !== 'AFTERNOON', supportsAfternoon: shiftMode !== 'MORNING' }
+      : editor.data;
+    if (await run(() => api.put(`/${routes[editor.kind]}/${editor.id}`, payload), 'Đã lưu thay đổi', reloads[editor.kind])) setEditor(null);
   };
 
   const editField = (key: string, value: string | number) => setEditor((current) => current ? ({ ...current, data: { ...current.data, [key]: value } }) : current);
@@ -158,7 +179,8 @@ export function AdminAcademicLive() {
   const filteredSemesters = (semesters.data ?? []).filter((semester) => (!semesterYear || semester.academicYearId === semesterYear) && textMatches(query.semesters, semester.code, semester.name, yearName(semester.academicYearId)));
   const filteredClasses = (classes.data ?? []).filter((schoolClass) => (!classYear || schoolClass.academicYearId === classYear) && textMatches(query.classes, schoolClass.code, schoolClass.name, schoolClass.gradeLevel, schoolClass.homeroomTeacherName));
   const filteredSubjects = (subjects.data ?? []).filter((subject) => textMatches(query.subjects, subject.code, subject.name));
-  const filteredRooms = (rooms.data ?? []).filter((room) => textMatches(query.rooms, room.code, room.name, room.capacity));
+  const filteredRooms = (rooms.data ?? []).filter((room) => textMatches(query.rooms, room.code, room.name, room.capacity,
+    room.supportsMorning !== false ? 'ca sáng' : '', room.supportsAfternoon !== false ? 'ca chiều' : ''));
 
   const tableActions = (kind: EditorKind, item: AcademicYear | Semester | SchoolClass | Subject | Room, editable = true, deletable = true) => (
     <div className="academic-row-actions">
@@ -181,7 +203,7 @@ export function AdminAcademicLive() {
               <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
               <button className="live-btn" disabled={busy} onClick={addYear}><Plus size={15} /> Tạo năm học</button>
             </div>
-            <div className="academic-filter-bar"><SearchBox value={query.years} onChange={(value) => setQuery({ ...query, years: value })} placeholder="Tìm mã hoặc tên năm học" /><select className="live-select" value={yearStatus} onChange={(e) => setYearStatus(e.target.value)}><option value="">Tất cả trạng thái</option><option value="PLANNED">Dự kiến</option><option value="ACTIVE">Đang hoạt động</option><option value="CLOSED">Đã đóng</option></select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.years} onChange={setYearQuery} placeholder="Tìm mã hoặc tên năm học" /><select className="live-select" value={yearStatus} onChange={(e) => setYearStatus(e.target.value)}><option value="">Tất cả trạng thái</option><option value="PLANNED">Dự kiến</option><option value="ACTIVE">Đang hoạt động</option><option value="CLOSED">Đã đóng</option></select></div>
             <Async paginate resetKey={`${query.years}-${yearStatus}`} state={{ ...years, data: years.data ? filteredYears : null }} itemLabel="năm học">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((year) => <tr key={year.id}>
                 <td><strong>{year.code}</strong></td><td>{year.name}</td><td>{fmtDate(year.startDate)} → {fmtDate(year.endDate)}</td><td><StatusPill value={year.status} /></td>
@@ -201,7 +223,7 @@ export function AdminAcademicLive() {
               <input className="live-input" type="date" min={selectedSemesterYear?.startDate} max={selectedSemesterYear?.endDate} value={sf.endDate} onChange={(e) => setSf({ ...sf, endDate: e.target.value })} />
               <button className="live-btn" disabled={busy} onClick={addSemester}><Plus size={15} /> Tạo học kỳ</button>
             </div>
-            <div className="academic-filter-bar"><SearchBox value={query.semesters} onChange={(value) => setQuery({ ...query, semesters: value })} placeholder="Tìm học kỳ" /><select className="live-select" value={semesterYear} onChange={(e) => setSemesterYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.semesters} onChange={setSemesterQuery} placeholder="Tìm học kỳ" /><select className="live-select" value={semesterYear} onChange={(e) => setSemesterYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
             <Async paginate resetKey={`${query.semesters}-${semesterYear}`} state={{ ...semesters, data: semesters.data ? filteredSemesters : null }} itemLabel="học kỳ">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Năm học</th><th>Học kỳ</th><th>Thứ tự</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((semester) => <tr key={semester.id}>
                 <td>{yearName(semester.academicYearId)}</td><td><strong>{semester.code}</strong><small className="academic-cell-note">{semester.name}</small></td><td>{semester.sequence}</td><td>{fmtDate(semester.startDate)} → {fmtDate(semester.endDate)}</td><td><StatusPill value={semester.status} /></td>
@@ -215,15 +237,23 @@ export function AdminAcademicLive() {
             <div className="live-toolbar academic-create-bar">
               <input className="live-input" placeholder="Mã lớp (10A1)" value={cf.code} onChange={(e) => setCf({ ...cf, code: e.target.value })} /><input className="live-input grow" placeholder="Tên lớp" value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} />
               <select className="live-select" value={cf.gradeLevel} onChange={(e) => setCf({ ...cf, gradeLevel: e.target.value })}>{[6,7,8,9,10,11,12].map((grade) => <option key={grade} value={`K${grade}`}>Khối {grade}</option>)}</select>
-              <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value })}><option value="">— Năm học —</option>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
+              <select className="live-select class-shift-select" value={cf.studyShift} onChange={(e) => setCf({ ...cf, studyShift: e.target.value, roomId: '' })}><option value="MORNING">Ca sáng</option><option value="AFTERNOON">Ca chiều</option></select>
+              <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value, roomId: '' })}><option value="">— Năm học —</option>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
+              <select className="live-select class-room-select" value={cf.roomId} onChange={(e) => setCf({ ...cf, roomId: e.target.value })}>
+                <option value="">— Phòng học tùy chọn —</option>
+                {(rooms.data ?? []).filter((room) => roomSupportsShift(room, cf.studyShift)).map((room) => {
+                  const assigned = roomAssignment(room.id, cf.academicYearId, cf.studyShift);
+                  return <option key={room.id} value={room.id} disabled={Boolean(assigned)}>{room.code}{assigned ? ` · Đã giao lớp ${assigned.code}` : ` · ${room.name || 'Phòng học'}`}</option>;
+                })}
+              </select>
               <input className="live-input" type="number" min="1" max="100" title="Sĩ số tối đa" value={cf.capacity} onChange={(e) => setCf({ ...cf, capacity: Number(e.target.value) })} />
               <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}><option value="">— GVCN tùy chọn —</option>{(teachers.data ?? []).filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}</select>
               <button className="live-btn" disabled={busy} onClick={addClass}><Plus size={15} /> Tạo lớp</button>
             </div>
-            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={(value) => setQuery({ ...query, classes: value })} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
             <Async paginate resetKey={`${query.classes}-${classYear}`} state={{ ...classes, data: classes.data ? filteredClasses : null }} itemLabel="lớp học">{(list) => (
-              <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => <tr key={schoolClass.id}>
-                <td><strong>{schoolClass.code}</strong><small className="academic-cell-note">{schoolClass.name}</small></td><td>{yearName(schoolClass.academicYearId)}</td><td><Badge tone="violet">{schoolClass.gradeLevel}</Badge></td><td>{schoolClass.studentCount}/{schoolClass.capacity || 45}</td>
+              <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Ca học</th><th>Phòng học</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => <tr key={schoolClass.id}>
+                <td><strong>{schoolClass.code}</strong><small className="academic-cell-note">{schoolClass.name}</small></td><td>{yearName(schoolClass.academicYearId)}</td><td><Badge tone="violet">{schoolClass.gradeLevel}</Badge></td><td><span className={`class-shift-badge ${(schoolClass.studyShift || 'MORNING').toLowerCase()}`}>{schoolClass.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</span></td><td>{schoolClass.roomCode ? <span className="class-room-badge"><DoorOpen size={14} />{schoolClass.roomCode}</span> : <span className="academic-cell-note">Chưa phân phòng</span>}</td><td>{schoolClass.studentCount}/{schoolClass.capacity || 45}</td>
                 <td><select className="live-select homeroom-teacher-select" value={schoolClass.homeroomTeacherId || ''} disabled={assigningClassId === schoolClass.id || teachers.loading} onChange={(event) => assignHomeroomTeacher(schoolClass.id, event.target.value)}><option value="">— Chưa phân công —</option>{(teachers.data ?? []).map((teacher) => <option key={teacher.id} value={teacher.id} disabled={teacher.status !== 'ACTIVE'}>{teacher.fullName} · {teacher.mainSubject || 'Chưa có chuyên ngành'}</option>)}</select></td>
                 <td>{tableActions('class', schoolClass)}</td>
               </tr>)}</tbody></table>
@@ -233,15 +263,19 @@ export function AdminAcademicLive() {
         { id: 'subjects', label: 'Môn', Icon: BookOpen, content: (
           <Section title="Môn học" subtitle="Quản lý danh mục và hệ số tổng kết" wide>
             <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã môn" value={sj.code} onChange={(e) => setSj({ ...sj, code: e.target.value })} /><input className="live-input grow" placeholder="Tên môn" value={sj.name} onChange={(e) => setSj({ ...sj, name: e.target.value })} /><input className="live-input" type="number" min="0.5" max="10" step="0.5" value={sj.coefficient} onChange={(e) => setSj({ ...sj, coefficient: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addSubject}><Plus size={15} /> Thêm môn</button></div>
-            <div className="academic-filter-bar"><SearchBox value={query.subjects} onChange={(value) => setQuery({ ...query, subjects: value })} placeholder="Tìm mã hoặc tên môn" /></div>
+            <div className="academic-filter-bar"><SearchBox value={query.subjects} onChange={setSubjectQuery} placeholder="Tìm mã hoặc tên môn" /></div>
             <Async paginate resetKey={query.subjects} state={{ ...subjects, data: subjects.data ? filteredSubjects : null }} itemLabel="môn học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên môn</th><th>Hệ số tổng kết</th><th>Thao tác</th></tr></thead><tbody>{list.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{subject.coefficient || 1}</td><td>{tableActions('subject', subject)}</td></tr>)}</tbody></table>}</Async>
           </Section>
         ) },
         { id: 'rooms', label: 'Phòng', Icon: DoorOpen, content: (
-          <Section title="Phòng học" subtitle="Quản lý phòng và sức chứa phục vụ xếp thời khóa biểu" wide>
-            <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã phòng" value={rm.code} onChange={(e) => setRm({ ...rm, code: e.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={rm.name} onChange={(e) => setRm({ ...rm, name: e.target.value })} /><input className="live-input" type="number" min="1" max="1000" value={rm.capacity} onChange={(e) => setRm({ ...rm, capacity: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addRoom}><Plus size={15} /> Thêm phòng</button></div>
-            <div className="academic-filter-bar"><SearchBox value={query.rooms} onChange={(value) => setQuery({ ...query, rooms: value })} placeholder="Tìm mã hoặc tên phòng" /></div>
-            <Async paginate resetKey={query.rooms} state={{ ...rooms, data: rooms.data ? filteredRooms : null }} itemLabel="phòng học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên phòng</th><th>Sức chứa</th><th>Thao tác</th></tr></thead><tbody>{list.map((room) => <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td>{room.capacity ?? '—'} người</td><td>{tableActions('room', room)}</td></tr>)}</tbody></table>}</Async>
+          <Section title="Phòng học" subtitle="Cấu hình ca phục vụ và theo dõi phòng đã được giao cho từng lớp" wide>
+            <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã phòng" value={rm.code} onChange={(e) => setRm({ ...rm, code: e.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={rm.name} onChange={(e) => setRm({ ...rm, name: e.target.value })} /><select className="live-select" aria-label="Ca phục vụ của phòng" value={rm.shiftMode} onChange={(e) => setRm({ ...rm, shiftMode: e.target.value })}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select><input className="live-input" type="number" min="1" max="1000" value={rm.capacity} onChange={(e) => setRm({ ...rm, capacity: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addRoom}><Plus size={15} /> Thêm phòng</button></div>
+            <div className="academic-filter-bar"><SearchBox value={query.rooms} onChange={setRoomQuery} placeholder="Tìm mã hoặc tên phòng" /></div>
+            <Async paginate resetKey={query.rooms} state={{ ...rooms, data: rooms.data ? filteredRooms : null }} itemLabel="phòng học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên phòng</th><th>Ca phục vụ</th><th>Lớp đang sử dụng</th><th>Sức chứa</th><th>Thao tác</th></tr></thead><tbody>{list.map((room) => {
+              const morningClasses = (classes.data ?? []).filter((item) => item.roomId === room.id && (item.studyShift || 'MORNING') === 'MORNING');
+              const afternoonClasses = (classes.data ?? []).filter((item) => item.roomId === room.id && item.studyShift === 'AFTERNOON');
+              return <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td><div className="room-shift-list">{room.supportsMorning !== false && <span className="class-shift-badge morning">Ca sáng</span>}{room.supportsAfternoon !== false && <span className="class-shift-badge afternoon">Ca chiều</span>}</div></td><td><div className="room-usage-list"><span><b>Sáng:</b> {morningClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span><span><b>Chiều:</b> {afternoonClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span></div></td><td>{room.capacity ?? '—'} người</td><td>{tableActions('room', room)}</td></tr>;
+            })}</tbody></table>}</Async>
           </Section>
         ) },
         { id: 'year-end', label: 'Tổng kết & chuyển năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={() => { years.reload(); semesters.reload(); classes.reload(); }} /> },
@@ -253,9 +287,9 @@ export function AdminAcademicLive() {
           <Field label="Tên"><input value={editor.data.name ?? ''} onChange={(e) => editField('name', e.target.value)} /></Field>
           {editor.kind === 'year' && <><Field label="Ngày bắt đầu"><input type="date" value={editor.data.startDate ?? ''} onChange={(e) => editField('startDate', e.target.value)} /></Field><Field label="Ngày kết thúc"><input type="date" value={editor.data.endDate ?? ''} onChange={(e) => editField('endDate', e.target.value)} /></Field></>}
           {editor.kind === 'semester' && <><Field label="Năm học"><select value={editor.data.academicYearId ?? ''} onChange={(e) => editField('academicYearId', e.target.value)}>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></Field><Field label="Thứ tự"><input type="number" min="1" max="4" value={editor.data.sequence ?? 1} onChange={(e) => editField('sequence', Number(e.target.value))} /></Field><Field label="Ngày bắt đầu"><input type="date" value={editor.data.startDate ?? ''} onChange={(e) => editField('startDate', e.target.value)} /></Field><Field label="Ngày kết thúc"><input type="date" value={editor.data.endDate ?? ''} onChange={(e) => editField('endDate', e.target.value)} /></Field></>}
-          {editor.kind === 'class' && <><Field label="Năm học"><select value={editor.data.academicYearId ?? ''} onChange={(e) => editField('academicYearId', e.target.value)}>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></Field><Field label="Khối"><select value={editor.data.gradeLevel ?? ''} onChange={(e) => editField('gradeLevel', e.target.value)}>{[6,7,8,9,10,11,12].map((grade) => <option key={grade} value={`K${grade}`}>Khối {grade}</option>)}</select></Field><Field label="Sức chứa"><input type="number" min="1" max="100" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field></>}
+          {editor.kind === 'class' && <><Field label="Năm học"><select value={editor.data.academicYearId ?? ''} onChange={(e) => { editField('academicYearId', e.target.value); editField('roomId', ''); }}>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></Field><Field label="Khối"><select value={editor.data.gradeLevel ?? ''} onChange={(e) => editField('gradeLevel', e.target.value)}>{[6,7,8,9,10,11,12].map((grade) => <option key={grade} value={`K${grade}`}>Khối {grade}</option>)}</select></Field><Field label="Ca học"><select value={editor.data.studyShift ?? 'MORNING'} onChange={(e) => { editField('studyShift', e.target.value); editField('roomId', ''); }}><option value="MORNING">Ca sáng</option><option value="AFTERNOON">Ca chiều</option></select></Field><Field label="Phòng học"><select value={editor.data.roomId ?? ''} onChange={(e) => editField('roomId', e.target.value)}><option value="">— Chưa phân phòng —</option>{(rooms.data ?? []).filter((room) => roomSupportsShift(room, String(editor.data.studyShift || 'MORNING'))).map((room) => { const assigned = roomAssignment(room.id, String(editor.data.academicYearId || ''), String(editor.data.studyShift || 'MORNING'), editor.id); return <option key={room.id} value={room.id} disabled={Boolean(assigned)}>{room.code}{assigned ? ` · Đã giao lớp ${assigned.code}` : ` · ${room.name || 'Phòng học'}`}</option>; })}</select></Field><Field label="Sức chứa"><input type="number" min="1" max="100" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field></>}
           {editor.kind === 'subject' && <Field label="Hệ số tổng kết"><input type="number" min="0.5" max="10" step="0.5" value={editor.data.coefficient ?? 1} onChange={(e) => editField('coefficient', Number(e.target.value))} /></Field>}
-          {editor.kind === 'room' && <Field label="Sức chứa"><input type="number" min="1" max="1000" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field>}
+          {editor.kind === 'room' && <><Field label="Ca phục vụ"><select value={editor.data.shiftMode ?? 'BOTH'} onChange={(e) => editField('shiftMode', e.target.value)}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select></Field><Field label="Sức chứa"><input type="number" min="1" max="1000" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field></>}
         </div>
       </Modal>}
     </>

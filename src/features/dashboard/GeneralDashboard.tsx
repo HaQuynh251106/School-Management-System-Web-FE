@@ -491,6 +491,7 @@ function toMetric(item: DashboardMetric): Metric {
 }
 
 function formatMetricValue(value: number, format: string) {
+  if (format === 'PERCENT_OR_EMPTY') return 'Chưa có dữ liệu';
   if (format === 'PERCENT') return `${formatNumber(value, 1)}%`;
   if (format === 'DECIMAL_1') return formatNumber(value, 1);
   if (format === 'CURRENCY') return `${new Intl.NumberFormat('vi-VN').format(value)} ₫`;
@@ -514,6 +515,8 @@ function formatDashboardTime(value?: string) {
 
 function notificationCategoryLabel(type: string) {
   return ({
+    ATTENDANCE_REMINDER: 'Nhắc điểm danh',
+    ATTENDANCE_MISSED: 'Quên điểm danh',
     GENERAL: 'Thông báo chung',
     HOLIDAY: 'Lịch nghỉ',
     EVENT: 'Sự kiện',

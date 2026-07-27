@@ -166,7 +166,7 @@ export function ParentInvoiceFeature() {
             <Section
               title="Hóa đơn cần thanh toán"
               subtitle={`Tổng ${currency.format(totalDue)} cần xử lý`}
-              action={<CommandButton Icon={CreditCard} label="Thanh toán VNPAY" />}
+              action={<CommandButton Icon={CreditCard} label="Thanh toán MoMo" />}
               wide
             >
               <ParentInvoiceList invoices={pending} />
@@ -196,14 +196,14 @@ export function ParentInvoiceFeature() {
               <div className="compact-table">
                 <div>
                   <strong>VN20250215</strong>
-                  <span>VNPAY</span>
+                  <span>MoMo</span>
                   <span>HD-2025-HK1-0042</span>
                   <b>{currency.format(4500000)}</b>
                   <StatusPill value="SUCCESS" />
                 </div>
                 <div>
                   <strong>VN20240908</strong>
-                  <span>VNPAY</span>
+                  <span>MoMo</span>
                   <span>HD-2025-DN-0042</span>
                   <b>{currency.format(850000)}</b>
                   <StatusPill value="SUCCESS" />
@@ -227,7 +227,7 @@ export function ParentInvoiceFeature() {
             <Section title="Phương thức hỗ trợ" subtitle="Cổng thanh toán đã tích hợp" wide>
               <InfoGrid
                 items={[
-                  { title: 'VNPAY', value: 'ACTIVE', meta: 'ATM nội địa, Visa/Master, QR Pay' },
+                  { title: 'MoMo', value: 'ACTIVE', meta: 'Ví MoMo và phương thức do MoMo Sandbox hỗ trợ' },
                   { title: 'MoMo', value: 'ACTIVE', meta: 'Quét QR hoặc đăng nhập app' },
                   { title: 'Bank Transfer', value: 'MANUAL', meta: 'Đối soát thủ công sau 24h' },
                   { title: 'Tiền mặt', value: 'CASHIER', meta: 'Thu tại văn phòng' },

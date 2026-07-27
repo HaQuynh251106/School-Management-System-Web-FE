@@ -349,7 +349,7 @@ export function FinanceFeature() {
           label: 'Giao dịch',
           Icon: CircleDollarSign,
           content: (
-            <Section title="Payment gateway transaction log" subtitle="Theo dõi callback VNPAY/MoMo và đối soát" wide>
+            <Section title="Nhật ký giao dịch MoMo" subtitle="Theo dõi IPN MoMo và trạng thái đối soát" wide>
               <div className="compact-table">
                 {payments.map((item) => (
                   <div key={item.ref}>

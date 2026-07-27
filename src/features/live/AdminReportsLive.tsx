@@ -21,6 +21,7 @@ import { useApi } from '../../api/useApi';
 import type { AcademicYear, FeePeriod, SchoolClass, Semester, Subject } from '../../api/types';
 import { Badge, Section } from '../../components/ui';
 import { Async, money, useToast } from './common';
+import { useHashString } from '../../api/urlState';
 
 type OverviewReport = {
   students: number;
@@ -53,13 +54,13 @@ type RevenueReport = {
 const GRADE_TONES = ['danger', 'muted', 'primary', 'success'];
 
 export function AdminReportsLive() {
-  const [semesterId, setSemesterId] = useState('');
-  const [yearId, setYearId] = useState('');
-  const [classId, setClassId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  const [feePeriodId, setFeePeriodId] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [semesterId, setSemesterId] = useHashString('semester', '');
+  const [yearId, setYearId] = useHashString('year', '');
+  const [classId, setClassId] = useHashString('class', '');
+  const [subjectId, setSubjectId] = useHashString('subject', '');
+  const [feePeriodId, setFeePeriodId] = useHashString('fee_period', '');
+  const [startDate, setStartDate] = useHashString('from', '');
+  const [endDate, setEndDate] = useHashString('to', '');
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const overview = useApi<OverviewReport>('/reports/overview');
@@ -89,7 +90,7 @@ export function AdminReportsLive() {
     if (yearId || !years.data?.length) return;
     const active = years.data.find((year) => year.status === 'ACTIVE') || years.data[0];
     setYearId(active.id);
-  }, [yearId, years.data]);
+  }, [yearId, years.data, setYearId]);
 
   const selectedSemester = semesters.data?.find((semester) => semester.id === semesterId);
   const gradeTotal = (dist.data || []).reduce((sum, item) => sum + item.count, 0);

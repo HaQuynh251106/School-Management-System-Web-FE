@@ -4,10 +4,11 @@ import { Bell, BellRing, BookOpen, CalendarClock, CalendarPlus, CheckCircle2, Cl
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { emitNotificationInboxChanged } from '../../api/liveEvents';
-import type { TimetableSlot, TeachingAssignment, Assignment, Submission, SubmissionAttempt, StoredFile, Notification, NotificationPreference } from '../../api/types';
+import type { TimetableSlot, TeachingAssignment, Assignment, Submission, SubmissionAttempt, StoredFile, Notification, NotificationPreference, PageResponse } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
-import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime } from './common';
-import { filterNotifications, notificationSummary, NOTIFICATION_TYPE_LABEL, type NotificationPriorityFilter, type NotificationReadFilter } from './notifications';
+import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, ServerPagination } from './common';
+import { NOTIFICATION_TYPE_LABEL, type NotificationPriorityFilter, type NotificationReadFilter } from './notifications';
+import { useHashNumber, useHashString } from '../../api/urlState';
 
 /* ===== TKB tuần (B2/C2) ===== */
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
@@ -24,8 +25,24 @@ function timeLabel(slot: TimetableSlot) {
 
 export function WeeklyTimetable({ path, teacherView = false }: { path: string; teacherView?: boolean }) {
   const slots = useApi<TimetableSlot[]>(path);
-  const maxPeriod = useMemo(() => Math.max(5, ...((slots.data || []).map((slot) => slot.periodNo))), [slots.data]);
-  const cell = (day: string, period: number) => (slots.data || []).find((slot) => slot.dayOfWeek === day && slot.periodNo === period);
+  const scheduleRows = useMemo(() => {
+    const unique = new Map<string, { key: string; periodNo: number; startTime?: string; endTime?: string }>();
+    (slots.data || []).forEach((slot) => {
+      const key = `${slot.periodNo}|${slot.startTime || ''}|${slot.endTime || ''}`;
+      unique.set(key, { key, periodNo: slot.periodNo, startTime: slot.startTime, endTime: slot.endTime });
+    });
+    if (!unique.size) {
+      return Array.from({ length: 5 }, (_, index) => ({
+        key: `${index + 1}||`, periodNo: index + 1,
+        startTime: undefined as string | undefined, endTime: undefined as string | undefined,
+      }));
+    }
+    return [...unique.values()].sort((left, right) =>
+      (left.startTime || '99:99').localeCompare(right.startTime || '99:99') || left.periodNo - right.periodNo);
+  }, [slots.data]);
+  const cell = (day: string, row: { periodNo: number; startTime?: string; endTime?: string }) =>
+    (slots.data || []).find((slot) => slot.dayOfWeek === day && slot.periodNo === row.periodNo
+      && (slot.startTime || '') === (row.startTime || '') && (slot.endTime || '') === (row.endTime || ''));
   const today = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()];
 
   const summary = useMemo(() => {
@@ -34,7 +51,8 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
     const subjects = new Set(data.map((slot) => slot.subjectId || slot.subjectName));
     const byDay = DAYS.map((day) => ({ day, count: data.filter((slot) => slot.dayOfWeek === day).length }));
     const busiest = byDay.reduce((best, item) => item.count > best.count ? item : best, byDay[0]);
-    const todaySlots = data.filter((slot) => slot.dayOfWeek === today).sort((a, b) => a.periodNo - b.periodNo);
+    const todaySlots = data.filter((slot) => slot.dayOfWeek === today)
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '') || a.periodNo - b.periodNo);
     const now = new Date().toTimeString().slice(0, 5);
     const next = todaySlots.find((slot) => !slot.startTime || slot.startTime.slice(0, 5) >= now);
     return { slots: data.length, classes: classes.size, subjects: subjects.size, busiest, next };
@@ -66,6 +84,8 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
           <div className="schedule-legend" aria-hidden="true">
             <span><i className="legend-dot occupied" /> Có lịch dạy</span>
             <span><i className="legend-dot current" /> Ngày hiện tại</span>
+            <span className="shift-legend morning">Ca sáng</span>
+            <span className="shift-legend afternoon">Ca chiều</span>
             <span className="schedule-hint">Cuộn ngang để xem đầy đủ trên màn hình nhỏ</span>
           </div>
 
@@ -79,17 +99,18 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
                 </div>
               ))}
 
-              {Array.from({ length: maxPeriod }, (_, index) => index + 1).map((period) => (
-                <Fragment key={period}>
-                  <div className="teacher-period" role="rowheader"><strong>{period}</strong><span>Tiết {period}</span></div>
+              {scheduleRows.map((row) => (
+                <Fragment key={row.key}>
+                  <div className="teacher-period" role="rowheader"><strong>{row.periodNo}</strong><span>Tiết {row.periodNo}</span><small>{row.startTime && row.endTime ? `${row.startTime}–${row.endTime}` : ''}</small></div>
                   {DAYS.map((day) => {
-                    const slot = cell(day, period);
+                    const slot = cell(day, row);
                     const colorIndex = slot ? Math.abs(slot.subjectName.split('').reduce((total, char) => total + char.charCodeAt(0), 0)) % SUBJECT_COLORS.length : 0;
                     return (
-                      <div key={`${day}-${period}`} className={`teacher-slot ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
+                      <div key={`${day}-${row.key}`} className={`teacher-slot ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
                         {slot ? (
                           <article className="teacher-class-card" style={{ '--slot-color': SUBJECT_COLORS[colorIndex] } as CSSProperties}>
                             <div className="teacher-class-topline"><span><School size={13} /> {classLabel(slot.classCode || slot.classId)}</span><small>{timeLabel(slot)}</small></div>
+                            <em className={`slot-shift-label ${(slot.studyShift || (slot.startTime && slot.startTime >= '12:00' ? 'AFTERNOON' : 'MORNING')).toLowerCase()}`}>{slot.studyShift === 'AFTERNOON' || (!slot.studyShift && slot.startTime && slot.startTime >= '12:00') ? 'Ca chiều' : 'Ca sáng'}</em>
                             <strong><BookOpen size={16} /> {slot.subjectName}</strong>
                             <div className="teacher-class-meta"><span><MapPin size={13} /> {slot.roomCode || 'Chưa xếp phòng'}</span></div>
                           </article>
@@ -388,28 +409,54 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
 
 /* ===== Hộp thư thông báo dùng chung (B7/C5/D5) ===== */
 export function NotificationsLive({ audience = 'student' }: { audience?: 'teacher' | 'student' | 'parent' }) {
-  const inbox = useApi<Notification[]>('/notifications');
+  const [query, setQuery] = useHashString('q', '');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [readValue, setReadValue] = useHashString('read', 'ALL');
+  const readFilter = readValue as NotificationReadFilter;
+  const [priorityValue, setPriorityValue] = useHashString('priority', 'ALL');
+  const priorityFilter = priorityValue as NotificationPriorityFilter;
+  const [typeFilter, setTypeFilter] = useHashString('type', 'ALL');
+  const [pageNumber, setPageNumber] = useHashNumber('page', 1);
+  const [pageSize, setPageSize] = useHashNumber('size', 10);
+  const page = pageNumber - 1;
+  const [showPreferences, setShowPreferences] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setDebouncedQuery(query.trim()); setPageNumber(1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, setPageNumber]);
+  const inboxParams = [
+    `read=${readFilter}`,
+    typeFilter !== 'ALL' && `type=${encodeURIComponent(typeFilter)}`,
+    priorityFilter !== 'ALL' && `priority=${encodeURIComponent(priorityFilter)}`,
+    debouncedQuery && `q=${encodeURIComponent(debouncedQuery)}`,
+    `page=${page}`,
+    `size=${pageSize}`,
+  ].filter(Boolean).join('&');
+  const inbox = useApi<PageResponse<Notification>>(`/notifications/page?${inboxParams}`);
   const preferences = useApi<NotificationPreference[]>('/notification-preferences');
   const notificationCapabilities = useApi<Record<string, boolean>>('/notification-capabilities');
   const toast = useToast();
-  const [query, setQuery] = useState('');
-  const [readFilter, setReadFilter] = useState<NotificationReadFilter>('ALL');
-  const [priorityFilter, setPriorityFilter] = useState<NotificationPriorityFilter>('ALL');
-  const [typeFilter, setTypeFilter] = useState('ALL');
-  const [showPreferences, setShowPreferences] = useState(false);
-  const items = useMemo(() => inbox.data || [], [inbox.data]);
-  const summary = useMemo(() => notificationSummary(items), [items]);
-  const visibleNotifications = useMemo(() => filterNotifications(items, {
-    query, read: readFilter, priority: priorityFilter, type: typeFilter,
-  }), [items, priorityFilter, query, readFilter, typeFilter]);
-  const availableTypes = useMemo(() => Array.from(new Set(items.map((item) => item.type))).sort(), [items]);
+  const items = useMemo(() => inbox.data?.items || [], [inbox.data]);
+  const summary = {
+    total: inbox.data?.summary.total || 0,
+    unread: inbox.data?.summary.unread || 0,
+    important: inbox.data?.summary.important || 0,
+    today: inbox.data?.summary.today || 0,
+  };
+  const availableTypes = useMemo(() =>
+    Array.from(new Set([...Object.keys(NOTIFICATION_TYPE_LABEL), ...items.map((item) => item.type)])).sort(),
+  [items]);
   const ownerLabel = audience === 'teacher' ? 'giáo viên' : audience === 'parent' ? 'phụ huynh' : 'học sinh';
 
   const refresh = () => { inbox.reload(); preferences.reload(); notificationCapabilities.reload(); };
   const markRead = async (id: string) => {
     try {
       await api.post(`/notifications/${id}/read`);
-      inbox.setData((current) => current?.map((item) => item.id === id ? { ...item, read: true } : item) ?? current);
+      inbox.setData((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.id === id ? { ...item, read: true } : item),
+        summary: { ...current.summary, unread: Math.max(0, (current.summary.unread || 0) - 1) },
+      } : current);
       emitNotificationInboxChanged();
       inbox.reload();
     }
@@ -418,7 +465,11 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
   const markUnread = async (id: string) => {
     try {
       await api.post(`/notifications/${id}/unread`);
-      inbox.setData((current) => current?.map((item) => item.id === id ? { ...item, read: false } : item) ?? current);
+      inbox.setData((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.id === id ? { ...item, read: false } : item),
+        summary: { ...current.summary, unread: (current.summary.unread || 0) + 1 },
+      } : current);
       emitNotificationInboxChanged();
       inbox.reload();
     }
@@ -427,7 +478,11 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
   const markAll = async () => {
     try {
       await api.post('/notifications/read-all');
-      inbox.setData((current) => current?.map((item) => ({ ...item, read: true })) ?? current);
+      inbox.setData((current) => current ? {
+        ...current,
+        items: current.items.map((item) => ({ ...item, read: true })),
+        summary: { ...current.summary, unread: 0 },
+      } : current);
       emitNotificationInboxChanged();
       toast.show('ok', 'Đã đánh dấu tất cả thông báo là đã đọc');
       inbox.reload();
@@ -477,17 +532,17 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
         </Async>
       </Section>}
 
-      <Section title="Danh sách thông báo" subtitle={`${visibleNotifications.length} thông báo phù hợp với bộ lọc hiện tại`} wide>
+      <Section title="Danh sách thông báo" subtitle={`${inbox.data?.totalElements || 0} thông báo phù hợp với bộ lọc hiện tại`} wide>
         <div className="notification-inbox-toolbar">
           <label className="notification-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tiêu đề hoặc nội dung…" /></label>
           <div className="notification-read-filter" role="group" aria-label="Lọc trạng thái đọc">
-            {([['ALL', 'Tất cả'], ['UNREAD', `Chưa đọc (${summary.unread})`], ['READ', 'Đã đọc']] as const).map(([value, label]) => <button type="button" key={value} className={readFilter === value ? 'active' : ''} onClick={() => setReadFilter(value)}>{label}</button>)}
+            {([['ALL', 'Tất cả'], ['UNREAD', `Chưa đọc (${summary.unread})`], ['READ', 'Đã đọc']] as const).map(([value, label]) => <button type="button" key={value} className={readFilter === value ? 'active' : ''} onClick={() => { setReadValue(value); setPageNumber(1); }}>{label}</button>)}
           </div>
-          <select className="live-select" aria-label="Lọc loại thông báo" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="ALL">Tất cả loại</option>{availableTypes.map((type) => <option key={type} value={type}>{NOTIFICATION_TYPE_LABEL[type] || type}</option>)}</select>
-          <select className="live-select" aria-label="Lọc mức độ thông báo" value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as NotificationPriorityFilter)}><option value="ALL">Tất cả mức độ</option><option value="URGENT">Khẩn cấp</option><option value="IMPORTANT">Quan trọng</option><option value="NORMAL">Thông thường</option></select>
+          <select className="live-select" aria-label="Lọc loại thông báo" value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setPageNumber(1); }}><option value="ALL">Tất cả loại</option>{availableTypes.map((type) => <option key={type} value={type}>{NOTIFICATION_TYPE_LABEL[type] || type}</option>)}</select>
+          <select className="live-select" aria-label="Lọc mức độ thông báo" value={priorityFilter} onChange={(event) => { setPriorityValue(event.target.value); setPageNumber(1); }}><option value="ALL">Tất cả mức độ</option><option value="URGENT">Khẩn cấp</option><option value="IMPORTANT">Quan trọng</option><option value="NORMAL">Thông thường</option></select>
         </div>
 
-        <Async paginate pageSize={5} resetKey={`${query}:${readFilter}:${priorityFilter}:${typeFilter}`} state={{ ...inbox, data: visibleNotifications }} empty="Không có thông báo phù hợp" itemLabel="thông báo">
+        <Async state={{ ...inbox, data: inbox.data?.items ?? null }} empty="Không có thông báo phù hợp" itemLabel="thông báo">
           {(pageItems) => <div className="notification-inbox-list">{pageItems.map((notification) => {
             const priority = notification.priority || 'NORMAL';
             return <article key={notification.id} className={`notification-inbox-item ${notification.read ? 'read' : 'unread'} priority-${priority.toLowerCase()}`}>
@@ -500,6 +555,10 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
             </article>;
           })}</div>}
         </Async>
+        {inbox.data && <ServerPagination data={inbox.data} itemLabel="thông báo"
+          onPageChange={(nextPage) => setPageNumber(nextPage + 1, 'push')}
+          onPageSizeChange={(value) => { setPageSize(value); setPageNumber(1); }}
+          pageSizes={[5, 10, 20, 50]} />}
       </Section>
     </div>
   );

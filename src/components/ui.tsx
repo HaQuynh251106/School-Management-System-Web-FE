@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import type React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { permissionRows } from '../data/mockData';
 import type { TabItem } from '../types';
+import { useHashString } from '../api/urlState';
 
 export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
-  const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? '');
+  const [activeTab, setActiveTab] = useHashString('tab', tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
@@ -15,7 +15,7 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
           <button
             key={tab.id}
             className={active.id === tab.id ? 'active' : ''}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => setActiveTab(tab.id, 'push')}
             type="button"
           >
             <tab.Icon size={17} />
@@ -128,6 +128,7 @@ export function Badge({ tone, children }: { tone: 'green' | 'blue' | 'orange' | 
 }
 
 const VI_LABELS: Record<string, string> = {
+  ATTENDANCE_MISSED: 'Quên điểm danh',
   ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý', PLANNED: 'Dự kiến',
   PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở',
   SUBMITTED: 'Đã nộp', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
@@ -144,7 +145,7 @@ const VI_LABELS: Record<string, string> = {
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
   FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
   FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
-  CASH: 'Tiền mặt', VNPAY: 'VNPay', MOMO: 'MoMo',
+  CASH: 'Tiền mặt', MOMO: 'MoMo',
   PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
 };
 

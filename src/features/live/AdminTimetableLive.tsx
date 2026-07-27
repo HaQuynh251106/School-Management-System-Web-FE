@@ -12,20 +12,29 @@ import type {
 import { FunctionTabs, Section } from '../../components/ui';
 import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
+import { useHashNumber, useHashString } from '../../api/urlState';
 
 const PERIODS = [1, 2, 3, 4, 5, 6];
-const PERIOD_TIME: Record<number, [string, string]> = {
-  1: ['07:00', '07:45'], 2: ['07:50', '08:35'], 3: ['08:45', '09:30'],
-  4: ['09:35', '10:20'], 5: ['10:25', '11:10'], 6: ['13:30', '14:15'],
+const PERIOD_TIME: Record<'MORNING' | 'AFTERNOON', Record<number, [string, string]>> = {
+  MORNING: {
+    1: ['07:00', '07:45'], 2: ['07:50', '08:35'], 3: ['08:50', '09:35'],
+    4: ['09:40', '10:25'], 5: ['10:35', '11:20'], 6: ['11:25', '12:10'],
+  },
+  AFTERNOON: {
+    1: ['13:00', '13:45'], 2: ['13:50', '14:35'], 3: ['14:50', '15:35'],
+    4: ['15:40', '16:25'], 5: ['16:35', '17:20'], 6: ['17:25', '18:10'],
+  },
 };
 
-const assignmentQuery = (classId: string, semesterId: string, day?: string, period?: number) => {
+const assignmentQuery = (classId: string, semesterId: string, day?: string, period?: number, startTime?: string, endTime?: string) => {
   const params = new URLSearchParams();
   if (classId) params.set('classId', classId);
   if (semesterId) params.set('semesterId', semesterId);
   if (day && period) {
     params.set('dayOfWeek', day);
     params.set('periodNo', String(period));
+    if (startTime) params.set('startTime', startTime);
+    if (endTime) params.set('endTime', endTime);
   }
   return `/teaching-assignments?${params.toString()}`;
 };
@@ -100,9 +109,9 @@ function TeachingAssignmentManager() {
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const semesters = useApi<Semester[]>('/semesters');
   const toast = useToast();
-  const [classFilter, setClassFilter] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState('');
-  const [teacherSearch, setTeacherSearch] = useState('');
+  const [classFilter, setClassFilter] = useHashString('ta_class', '');
+  const [semesterFilter, setSemesterFilter] = useHashString('ta_semester', '');
+  const [teacherSearch, setTeacherSearch] = useHashString('ta_q', '');
   const assignments = useApi<TeachingAssignment[]>(assignmentQuery(classFilter, semesterFilter));
   const workloads = useApi<TeacherWorkload[]>(workloadQuery(semesterFilter));
   const [editing, setEditing] = useState<TeachingAssignment | null>(null);
@@ -117,8 +126,8 @@ function TeachingAssignmentManager() {
   const [pendingDelete, setPendingDelete] = useState<TeachingAssignment | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [workloadPage, setWorkloadPage] = useState(1);
-  const [workloadPageSize, setWorkloadPageSize] = useState(5);
+  const [workloadPage, setWorkloadPage] = useHashNumber('ta_page', 1);
+  const [workloadPageSize, setWorkloadPageSize] = useHashNumber('ta_size', 5);
 
   const selectedSubject = subjects.data?.find((subject) => subject.id === form.subjectId);
   const selectedSemester = semesters.data?.find((semester) => semester.id === form.semesterId);
@@ -192,11 +201,11 @@ function TeachingAssignmentManager() {
 
   useEffect(() => {
     setWorkloadPage(1);
-  }, [teacherSearch, classFilter, semesterFilter, workloadPageSize]);
+  }, [teacherSearch, classFilter, semesterFilter, workloadPageSize, setWorkloadPage]);
 
   useEffect(() => {
     setWorkloadPage((current) => Math.min(current, workloadPageCount));
-  }, [workloadPageCount]);
+  }, [workloadPageCount, setWorkloadPage]);
 
   const openCreate = () => {
     setEditing(null);
@@ -430,9 +439,9 @@ function TeachingAssignmentManager() {
           <div className="assignment-pagination-summary">Hiển thị <strong>{workloadRangeStart}–{workloadRangeEnd}</strong> trong <strong>{visibleWorkloads.length}</strong> giáo viên</div>
           <label className="assignment-page-size"><span>Số dòng</span><select value={workloadPageSize} onChange={(event) => setWorkloadPageSize(Number(event.target.value))}><option value={2}>2</option><option value={5}>5</option><option value={10}>10</option><option value={20}>20</option></select></label>
           <nav className="assignment-page-nav" aria-label="Phân trang danh sách giáo viên">
-            <button type="button" aria-label="Trang trước" disabled={workloadPage === 1} onClick={() => setWorkloadPage((page) => Math.max(1, page - 1))}><ChevronLeft size={16} /></button>
-            {workloadPageNumbers.map((page) => <button type="button" key={page} className={page === workloadPage ? 'active' : ''} aria-current={page === workloadPage ? 'page' : undefined} onClick={() => setWorkloadPage(page)}>{page}</button>)}
-            <button type="button" aria-label="Trang sau" disabled={workloadPage === workloadPageCount} onClick={() => setWorkloadPage((page) => Math.min(workloadPageCount, page + 1))}><ChevronRight size={16} /></button>
+            <button type="button" aria-label="Trang trước" disabled={workloadPage === 1} onClick={() => setWorkloadPage((page) => Math.max(1, page - 1), 'push')}><ChevronLeft size={16} /></button>
+            {workloadPageNumbers.map((page) => <button type="button" key={page} className={page === workloadPage ? 'active' : ''} aria-current={page === workloadPage ? 'page' : undefined} onClick={() => setWorkloadPage(page, 'push')}>{page}</button>)}
+            <button type="button" aria-label="Trang sau" disabled={workloadPage === workloadPageCount} onClick={() => setWorkloadPage((page) => Math.min(workloadPageCount, page + 1), 'push')}><ChevronRight size={16} /></button>
           </nav>
         </div>}
       </div>
@@ -600,8 +609,8 @@ function TimetableEditor() {
   const rooms = useApi<Room[]>('/rooms');
   const semesters = useApi<Semester[]>('/semesters');
   const toast = useToast();
-  const [classId, setClassId] = useState('');
-  const [semesterId, setSemesterId] = useState('');
+  const [classId, setClassId] = useHashString('tt_class', '');
+  const [semesterId, setSemesterId] = useHashString('tt_semester', '');
   const slots = useApi<TimetableSlot[]>(classId && semesterId ? `/timetableSlots?classId=${classId}&semesterId=${semesterId}` : null);
   const assignmentSummary = useApi<TeachingAssignment[]>(classId && semesterId ? assignmentQuery(classId, semesterId) : null);
   const [show, setShow] = useState(false);
@@ -609,8 +618,22 @@ function TimetableEditor() {
   const [busy, setBusy] = useState(false);
   const blank = { assignmentId: '', dayOfWeek: 'MON', periodNo: 1, subjectId: '', teacherId: '', roomCode: '', startTime: '07:00', endTime: '07:45' };
   const [form, setForm] = useState({ ...blank });
+  const selectedClass = classes.data?.find((item) => item.id === classId);
+  const studyShift = selectedClass?.studyShift || 'MORNING';
+  const shiftLabel = studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng';
+  const periodTimes = PERIOD_TIME[studyShift];
+  const roomStatus = (room: Room) => {
+    const supportsShift = studyShift === 'AFTERNOON'
+      ? room.supportsAfternoon !== false
+      : room.supportsMorning !== false;
+    const assignedClass = (classes.data ?? []).find((item) => item.id !== classId
+      && item.roomId === room.id
+      && item.academicYearId === selectedClass?.academicYearId
+      && (item.studyShift || 'MORNING') === studyShift);
+    return { available: supportsShift && !assignedClass, assignedClass };
+  };
   const availability = useApi<TeachingAssignment[]>(show && classId && semesterId
-    ? assignmentQuery(classId, semesterId, form.dayOfWeek, form.periodNo) : null);
+    ? assignmentQuery(classId, semesterId, form.dayOfWeek, form.periodNo, form.startTime, form.endTime) : null);
   const selectedAssignment = availability.data?.find((item) => item.id === form.assignmentId);
 
   const cellOf = (day: string, period: number) => (slots.data ?? []).find((slot) => slot.dayOfWeek === day && slot.periodNo === period);
@@ -625,7 +648,7 @@ function TimetableEditor() {
   }, [assignmentSummary.data]);
 
   const openAdd = (day: string, period: number) => {
-    const [startTime, endTime] = PERIOD_TIME[period] ?? ['', ''];
+    const [startTime, endTime] = periodTimes[period] ?? ['', ''];
     setForm({ ...blank, dayOfWeek: day, periodNo: period, startTime, endTime });
     setConflict(null);
     setShow(true);
@@ -643,7 +666,7 @@ function TimetableEditor() {
   };
 
   const changePeriod = (period: number) => {
-    const [startTime, endTime] = PERIOD_TIME[period] ?? ['', ''];
+    const [startTime, endTime] = periodTimes[period] ?? ['', ''];
     setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', periodNo: period, startTime, endTime }));
     setConflict(null);
   };
@@ -705,7 +728,7 @@ function TimetableEditor() {
       <div className="live-toolbar">
         <select className="live-select grow" value={classId} onChange={(event) => setClassId(event.target.value)}>
           <option value="">— Chọn lớp để xếp thời khóa biểu —</option>
-          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
+          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name} · {item.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</option>)}
         </select>
         <select className="live-select grow" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
           <option value="">— Chọn học kỳ —</option>
@@ -714,12 +737,15 @@ function TimetableEditor() {
       </div>
 
       {classId && semesterId && (
-        <div className="schedule-assignment-strip">
+        <><div className={`schedule-shift-callout ${studyShift.toLowerCase()}`}>
+          <Clock3 size={21} />
+          <div><small>Ca học của lớp {selectedClass?.code}</small><strong>{shiftLabel}</strong><span>{periodTimes[1][0]}–{periodTimes[6][1]} · Tiết 1–6 được tính riêng theo ca</span></div>
+        </div><div className="schedule-assignment-strip">
           <div><small>Phân công</small><strong>{progress.count} môn</strong></div>
           <div><small>Tiến độ</small><strong>{progress.scheduled}/{progress.total} tiết</strong></div>
           <div><small>Đã xếp đủ</small><strong>{progress.completed}/{progress.count} môn</strong></div>
           {progress.count === 0 && <p><AlertTriangle size={16} /> Lớp chưa có phân công bộ môn trong học kỳ này. Hãy tạo phân công trước khi xếp lịch.</p>}
-        </div>
+        </div></>
       )}
 
       {!classId || !semesterId ? (
@@ -731,7 +757,7 @@ function TimetableEditor() {
               <div className="time-head" />
               {DAYS.map((day) => <div key={day} className="time-head">{DAY_LABEL[day]}</div>)}
               {PERIODS.map((period) => [
-                <div key={`p${period}`} className="time-period">Tiết {period}</div>,
+                <div key={`p${period}`} className="time-period"><strong>Tiết {period}</strong><small>{periodTimes[period][0]}–{periodTimes[period][1]}</small></div>,
                 ...DAYS.map((day) => {
                   const slot = cellOf(day, period);
                   return (
@@ -753,7 +779,7 @@ function TimetableEditor() {
 
       {show && (
         <Modal
-          title={`Xếp tiết — ${DAY_LABEL[form.dayOfWeek]} · tiết ${form.periodNo}`}
+          title={`Xếp tiết — ${DAY_LABEL[form.dayOfWeek]} · tiết ${form.periodNo} · ${shiftLabel}`}
           onClose={() => setShow(false)}
           footer={<><button className="live-btn ghost" onClick={() => setShow(false)}>Hủy</button><button className="live-btn" disabled={busy || !selectedAssignment?.canSchedule} onClick={submit}><Plus size={15} /> {busy ? 'Đang lưu…' : 'Thêm tiết'}</button></>}
         >
@@ -790,11 +816,17 @@ function TimetableEditor() {
             <Field label="Phòng học">
               <select value={form.roomCode} onChange={(event) => setForm((current) => ({ ...current, roomCode: event.target.value }))}>
                 <option value="">— Chọn phòng —</option>
-                {(rooms.data ?? []).map((item) => <option key={item.id} value={item.code}>{item.code}{item.name ? ` — ${item.name}` : ''}</option>)}
+                {(rooms.data ?? []).map((item) => {
+                  const status = roomStatus(item);
+                  const isClassRoom = selectedClass?.roomId === item.id;
+                  return <option key={item.id} value={item.code} disabled={!status.available && !isClassRoom}>
+                    {item.code}{item.name ? ` — ${item.name}` : ''}{isClassRoom ? ' · Phòng của lớp' : status.assignedClass ? ` · Đã giao lớp ${status.assignedClass.code} cùng ca` : !status.available ? ` · Không phục vụ ${shiftLabel.toLowerCase()}` : ''}
+                  </option>;
+                })}
               </select>
             </Field>
             <Field label="Khung giờ">
-              <div className="slot-time-pair"><input value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))} /><span>—</span><input value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))} /></div>
+              <div className="slot-time-pair"><input type="time" value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', startTime: event.target.value }))} /><span>—</span><input type="time" value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', endTime: event.target.value }))} /></div>
             </Field>
           </div>
         </Modal>

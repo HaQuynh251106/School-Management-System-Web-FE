@@ -13,6 +13,7 @@ import type {
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, useToast } from './common';
 import { AdminExamCategoriesLive } from './AdminLive';
+import { useHashString } from '../../api/urlState';
 
 const today = new Date().toISOString().slice(0, 10);
 const blankSchedule = (date = today) => ({ subjectId: '', classIds: [] as string[], examDate: date, startTime: '07:30', durationMinutes: 90, notes: '' });
@@ -38,7 +39,7 @@ export function AdminExamsLive() {
   const schoolRooms = useApi<Room[]>('/rooms');
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const periods = useApi<ExamPeriodSummary[]>('/exam-periods');
-  const [periodId, setPeriodId] = useState('');
+  const [periodId, setPeriodId] = useHashString('exam_period', '');
   const [scheduleId, setScheduleId] = useState('');
   const schedules = useApi<ExamSchedule[]>(periodId ? `/exam-periods/${periodId}/schedules` : null);
   const rooms = useApi<ExamRoom[]>(scheduleId ? `/exam-schedules/${scheduleId}/rooms` : null);
@@ -60,7 +61,7 @@ export function AdminExamsLive() {
 
   useEffect(() => {
     if (!periodId && periods.data?.length) setPeriodId(periods.data[0].period.id);
-  }, [periodId, periods.data]);
+  }, [periodId, periods.data, setPeriodId]);
   useEffect(() => {
     if (scheduleId && !schedules.data?.some((item) => item.id === scheduleId)) setScheduleId('');
   }, [scheduleId, schedules.data]);

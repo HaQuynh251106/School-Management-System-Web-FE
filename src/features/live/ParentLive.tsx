@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, ClipboardCheck, Download, FileText, ListChecks, RefreshCw, Trophy, Users } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, ClipboardCheck, Download, FileText, ListChecks, RefreshCw, Smartphone, Trophy, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
@@ -8,6 +9,8 @@ import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../compon
 import { Async, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
 import { WeeklyTimetable } from './SharedLive';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { useHashString } from '../../api/urlState';
+import { Modal } from './Modal';
 
 function useChildren() {
   return useApi<ApiUser[]>('/me/children');
@@ -59,7 +62,7 @@ export function ParentMonitorLive() {
   const activeChild = (children.data || []).find((child) => child.id === childId);
   const semesters = useApi<Semester[]>('/semesters');
   const categories = useApi<ExamCategory[]>('/exam-categories');
-  const [semesterId, setSemesterId] = useState('');
+  const [semesterId, setSemesterId] = useHashString('semester', '');
   const effectiveSemesterId = semesterId || semesters.data?.find((item) => item.status === 'ACTIVE')?.id || semesters.data?.[0]?.id || '';
   const grades = useApi<Grade[]>(childId && effectiveSemesterId ? `/grades?studentId=${childId}&semesterId=${effectiveSemesterId}` : null);
   const att = useApi<AttendanceRecord[]>(childId ? `/attendance?studentId=${childId}` : null);
@@ -175,32 +178,46 @@ export function ParentMonitorLive() {
 export function ParentInvoiceLive() {
   const invoices = useApi<Invoice[]>('/invoices');
   const toast = useToast();
+  const [pendingPayment, setPendingPayment] = useState<{ invoice: Invoice; initiated: PaymentInitResponse } | null>(null);
+  const [paying, setPaying] = useState(false);
   const reloadInvoices = invoices.reload;
   const showToast = toast.show;
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const responseCode = params.get('vnp_ResponseCode');
-    if (!responseCode) return;
-    showToast(responseCode === '00' ? 'ok' : 'err', responseCode === '00'
-      ? 'VNPAY đã tiếp nhận giao dịch. Hệ thống đang xác nhận qua kênh IPN an toàn.'
-      : `Giao dịch chưa hoàn tất (mã ${responseCode}).`);
+    const responseCode = params.get('resultCode');
+    if (responseCode == null) return;
+    showToast(responseCode === '0' ? 'ok' : 'err', responseCode === '0'
+      ? 'MoMo đã tiếp nhận giao dịch. Hệ thống đang xác nhận kết quả qua IPN an toàn.'
+      : `Giao dịch MoMo chưa hoàn tất (mã ${responseCode}).`);
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     window.setTimeout(() => reloadInvoices(), 1200);
   }, [reloadInvoices, showToast]);
   const pay = async (inv: Invoice) => {
+    setPaying(true);
     try {
-      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VNPAY' });
+      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'MOMO' });
       if (initiated.paymentUrl) {
         window.location.assign(initiated.paymentUrl);
         return;
       } else if (initiated.callbackUrl && initiated.sandboxCallback) {
-        await api.post(initiated.callbackUrl, initiated.sandboxCallback);
-        toast.show('ok', `Thanh toán ${inv.code} thành công`);
+        setPendingPayment({ invoice: inv, initiated });
       } else {
         toast.show('ok', `Giao dịch ${inv.code} đang chờ cổng thanh toán xác nhận`);
       }
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setPaying(false); }
+  };
+
+  const completeSimulatedPayment = async () => {
+    if (!pendingPayment?.initiated.callbackUrl || !pendingPayment.initiated.sandboxCallback) return;
+    setPaying(true);
+    try {
+      await api.post(pendingPayment.initiated.callbackUrl, pendingPayment.initiated.sandboxCallback);
+      toast.show('ok', `Thanh toán thử ${pendingPayment.invoice.code} thành công. Biên nhận và email đã được tạo.`);
+      setPendingPayment(null);
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }
+    finally { setPaying(false); }
   };
   return (
     <Section title="Học phí" subtitle="Theo dõi và thanh toán các khoản thu" wide
@@ -215,13 +232,40 @@ export function ParentInvoiceLive() {
                 <td><strong>{i.code}</strong></td><td>{i.studentName}</td><td>{money(i.totalAmount)}</td><td>{money(i.paidAmount)}</td>
                 <td><StatusPill value={i.status} /></td>
                 <td>{i.status !== 'PAID'
-                  ? <button className="live-btn" onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán</button>
+                  ? <button className="live-btn" disabled={paying} onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán thử</button>
                   : <Badge tone="green">Đã thanh toán</Badge>}</td>
               </tr>
             ))}</tbody>
           </table>
         )}
       </Async>
+      {pendingPayment?.initiated.sandboxCallback && (
+        <Modal title="Quét QR thanh toán thử" onClose={() => { if (!paying) setPendingPayment(null); }}
+          footer={<>
+            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>Hủy giao dịch</button>
+            <button className="live-btn" type="button" disabled={paying} onClick={completeSimulatedPayment}>
+              <CheckCircle2 size={15} /> {paying ? 'Đang xác nhận…' : 'Xác nhận đã quét'}
+            </button>
+          </>}>
+          <div className="simulated-payment">
+            <div className="simulated-payment-badge"><Smartphone size={17} /> Môi trường mô phỏng</div>
+            <div className="simulated-qr">
+              <QRCodeSVG
+                value={`SMART-SCHOOL-SANDBOX|txn=${pendingPayment.initiated.sandboxCallback.txnRef}|invoice=${pendingPayment.invoice.code}|amount=${pendingPayment.initiated.sandboxCallback.amount}`}
+                size={220}
+                level="H"
+                marginSize={2}
+              />
+            </div>
+            <div className="simulated-payment-summary">
+              <span><small>Hóa đơn</small><strong>{pendingPayment.invoice.code}</strong></span>
+              <span><small>Số tiền</small><strong>{money(pendingPayment.initiated.sandboxCallback.amount)}</strong></span>
+              <span><small>Học sinh</small><strong>{pendingPayment.invoice.studentName}</strong></span>
+            </div>
+            <div className="simulated-payment-warning"><AlertTriangle size={18} /><p>Đây là QR mô phỏng để kiểm thử giao diện, không phải QR do MoMo phát hành và không trừ tiền thật. Sau khi quét thử, hãy bấm “Xác nhận đã quét”.</p></div>
+          </div>
+        </Modal>
+      )}
     </Section>
   );
 }

@@ -9,6 +9,7 @@ import { useApi } from '../../api/useApi';
 import type { AcademicYear, ApiUser, SchoolClass, StudentYearlySummary } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
+import { useHashString } from '../../api/urlState';
 
 const CONDUCT_OPTIONS = [
   { value: 'GOOD', label: 'Tốt' },
@@ -39,14 +40,14 @@ function useAcademicYearSelection() {
     .filter((year) => year.status !== 'PLANNED')
     .slice()
     .sort((a, b) => b.code.localeCompare(a.code)), [years.data]);
-  const [yearId, setYearId] = useState('');
+  const [yearId, setYearId] = useHashString('year', '');
 
   useEffect(() => {
     if (!availableYears.length) return;
     if (!availableYears.some((year) => year.id === yearId)) {
       setYearId(availableYears.find((year) => year.status === 'ACTIVE')?.id || availableYears[0].id);
     }
-  }, [availableYears, yearId]);
+  }, [availableYears, yearId, setYearId]);
 
   return {
     years,
@@ -63,7 +64,7 @@ export function TeacherConductLive() {
   const classes = useApi<SchoolClass[]>(yearId ? `/classes?academicYearId=${encodeURIComponent(yearId)}` : null);
   const summaries = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/homeroom-summaries` : null);
   const toast = useToast();
-  const [classId, setClassId] = useState('');
+  const [classId, setClassId] = useHashString('class', '');
   const [savingId, setSavingId] = useState('');
   const homeroomClasses = useMemo(() => (classes.data || [])
     .filter((item) => item.homeroomTeacherId === profile.data?.id), [classes.data, profile.data?.id]);
@@ -73,7 +74,7 @@ export function TeacherConductLive() {
   const assessedCount = filtered.filter((item) => item.conductGrade).length;
   const readyCount = filtered.filter((item) => item.promotionStatus === 'READY' || item.finalizedAt).length;
 
-  useEffect(() => setClassId(''), [yearId]);
+  useEffect(() => setClassId(''), [yearId, setClassId]);
 
   const setConduct = async (studentId: string, conductGrade: string) => {
     setSavingId(studentId);

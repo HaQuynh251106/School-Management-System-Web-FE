@@ -11,6 +11,7 @@ import type {
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, fmtDateTime, useToast } from './common';
+import { useHashString } from '../../api/urlState';
 
 type Actor = 'teacher' | 'student' | 'parent';
 type Filter = 'ALL' | ExamAgendaItem['taskType'];
@@ -31,7 +32,8 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
   const children = useApi<ApiUser[]>(actor === 'parent' ? '/me/children' : null);
   const query = actor === 'parent' && childId ? `?childId=${encodeURIComponent(childId)}` : '';
   const agenda = useApi<ExamAgendaItem[]>(`/me/exam-agenda${query}`);
-  const [filter, setFilter] = useState<Filter>('ALL');
+  const [filterValue, setFilterValue] = useHashString('task', 'ALL');
+  const filter = filterValue as Filter;
   const rows = useMemo(() => (agenda.data || []).filter((item) => filter === 'ALL' || item.taskType === filter), [agenda.data, filter]);
   const upcoming = (agenda.data || []).filter((item) => ['UPCOMING', 'TODAY', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS'].includes(item.status)).length;
   const todayCount = (agenda.data || []).filter((item) => item.status === 'TODAY').length;
@@ -43,7 +45,7 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
       {actor === 'parent' && <label><span>Học sinh</span><select className="live-select" value={childId || ''} onChange={(event) => setChildId(event.target.value || null)}>
         <option value="">Tất cả học sinh</option>{(children.data || []).map((child) => <option key={child.id} value={child.id}>{child.fullName} · {child.className || 'Chưa xếp lớp'}</option>)}
       </select></label>}
-      <div className="my-exams-filters">{filters.map((value) => <button type="button" key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>
+      <div className="my-exams-filters">{filters.map((value) => <button type="button" key={value} className={filter === value ? 'active' : ''} onClick={() => setFilterValue(value)}>
         {value === 'ALL' ? 'Tất cả' : taskMeta[value].label}
       </button>)}</div>
       <button type="button" className="live-btn ghost compact" onClick={agenda.reload}><RefreshCw size={15} /> Làm mới</button>

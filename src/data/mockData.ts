@@ -69,7 +69,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A3', title: 'Xếp thời khóa biểu', phase: 'GĐ1', priority: 2, summary: 'Kiểm tra xung đột giáo viên, phòng học và lớp học.', Icon: CalendarDays },
     { code: 'A4', title: 'Khảo thí & học bạ', phase: 'GĐ1', priority: 2, summary: 'Tổ chức kỳ thi, lịch thi, lớp dự thi, phòng và giám thị.', Icon: Settings },
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
-    { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ, VNPAY/MoMo.', Icon: CircleDollarSign },
+    { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ và thanh toán MoMo.', Icon: CircleDollarSign },
     { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Tổng hợp điểm, chuyên cần và doanh thu.', Icon: FileSpreadsheet },
     { code: 'A9', title: 'Trung tâm thông báo', phase: 'GĐ2', priority: 1, summary: 'Gửi thông báo toàn trường hoặc riêng theo từng vai trò.', Icon: Bell },
   ],
@@ -304,9 +304,9 @@ export const feePeriods = [
 ];
 
 export const payments = [
-  { ref: 'VNP-8291', method: 'VNPAY', payer: 'Mai Lan', amount: 3000000, status: 'SUCCESS' },
+  { ref: 'MOMO-8291', method: 'MOMO', payer: 'Mai Lan', amount: 3000000, status: 'SUCCESS' },
   { ref: 'MOMO-1772', method: 'MoMo', payer: 'Hoàng Dũng', amount: 6450000, status: 'SUCCESS' },
-  { ref: 'VNP-8410', method: 'VNPAY', payer: 'Lê Hạnh', amount: 450000, status: 'FAILED' },
+  { ref: 'MOMO-8410', method: 'MOMO', payer: 'Lê Hạnh', amount: 450000, status: 'FAILED' },
 ];
 
 export const assignments = [
@@ -423,7 +423,7 @@ export const notificationFeed = [
   {
     id: 'n-005',
     title: 'Thanh toán thành công',
-    body: 'VNPAY: HD-2025-HK1-0042 — 4.500.000 ₫',
+    body: 'MoMo: HD-2025-HK1-0042 — 4.500.000 ₫',
     category: 'PAYMENT',
     channel: 'EMAIL',
     time: '12/12/2025',
@@ -517,7 +517,7 @@ export const auditEvents = [
     action: 'PAYMENT',
     module: 'finance',
     entity: 'invoice/HD-HK2-0042',
-    note: 'VNPAY callback OK',
+    note: 'MoMo IPN hợp lệ',
   },
   {
     id: 'evt-007',

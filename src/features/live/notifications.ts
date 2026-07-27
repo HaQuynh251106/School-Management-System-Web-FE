@@ -4,6 +4,7 @@ export type NotificationReadFilter = 'ALL' | 'UNREAD' | 'READ';
 export type NotificationPriorityFilter = 'ALL' | 'NORMAL' | 'IMPORTANT' | 'URGENT';
 
 export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
+  ATTENDANCE_MISSED: 'Quên điểm danh',
   GENERAL: 'Thông báo chung', HOLIDAY: 'Nghỉ lễ', GRADE: 'Điểm số', GRADE_PUBLISHED: 'Điểm số',
   EVENT: 'Sự kiện', STUDENT_STATUS: 'Tình hình học sinh', ATTENDANCE: 'Điểm danh',
   ATTENDANCE_ALERT: 'Chuyên cần', ATTENDANCE_REMINDER: 'Nhắc điểm danh',

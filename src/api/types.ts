@@ -2,6 +2,32 @@
 
 export type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
+export interface PageResponse<T> {
+  items: T[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  summary: Record<string, number>;
+}
+
+export interface GlobalSearchItem {
+  type: string;
+  category: string;
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  pageId: string;
+}
+
+export interface GlobalSearchResponse {
+  query: string;
+  total: number;
+  items: GlobalSearchItem[];
+}
+
 export interface ApiUser {
   id: string;
   username: string;
@@ -31,6 +57,9 @@ export interface ApiUser {
 
 export interface SchoolClass {
   id: string; code: string; name: string; gradeLevel: string;
+  studyShift?: 'MORNING' | 'AFTERNOON';
+  roomId?: string;
+  roomCode?: string;
   academicYearId?: string; homeroomTeacherId?: string; homeroomTeacherName?: string;
   homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number; capacity: number;
 }
@@ -40,11 +69,19 @@ export interface Semester {
   id: string; academicYearId: string; code: string; name: string; sequence: number; status: string;
   startDate?: string; endDate?: string;
 }
-export interface Room { id: string; code: string; name?: string; capacity?: number; }
+export interface Room {
+  id: string;
+  code: string;
+  name?: string;
+  capacity?: number;
+  supportsMorning?: boolean;
+  supportsAfternoon?: boolean;
+}
 
 export interface TimetableSlot {
   id: string; classId: string; classCode?: string; subjectId: string; subjectName: string;
   teacherId: string; teacherName: string; roomCode?: string;
+  studyShift?: 'MORNING' | 'AFTERNOON';
   dayOfWeek: string; periodNo: number; startTime?: string; endTime?: string; semesterId?: string;
 }
 
@@ -268,6 +305,27 @@ export interface LoginHistory {
 export interface ImportResult {
   totalRows: number; importedRows: number; failedRows: number;
   errors: Array<{ row: number; username?: string; error: string }>;
+}
+
+export interface ImportPreviewRow {
+  row: number;
+  username?: string;
+  fullName?: string;
+  role?: string;
+  classCode?: string;
+  linkedUsername?: string;
+  valid: boolean;
+  error?: string | null;
+}
+
+export interface ImportPreview {
+  token: string;
+  checksum: string;
+  expiresAt: number;
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  rows: ImportPreviewRow[];
 }
 
 export interface StudentYearlySummary {

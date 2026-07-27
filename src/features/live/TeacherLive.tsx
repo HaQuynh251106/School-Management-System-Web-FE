@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
@@ -9,6 +9,7 @@ import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData 
 import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 import { NotificationsLive } from './SharedLive';
+import { useHashString } from '../../api/urlState';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -18,7 +19,7 @@ export function TeacherClassesLive() {
   const { user } = useAuth();
   const teachingAssignments = useApi<TeachingAssignment[]>('/me/teaching-assignments');
   const classesApi = useApi<SchoolClass[]>('/classes');
-  const [classId, setClassId] = useState('');
+  const [classId, setClassId] = useHashString('class', '');
   const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const studentProfile = useApi<ApiUser>(profileTarget
@@ -258,8 +259,8 @@ export function TeacherAttendanceLive() {
     : null);
   const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
   const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [search, setSearch] = useHashString('q', '');
+  const [statusFilter, setStatusFilter] = useHashString('status', 'ALL');
   const [saving, setSaving] = useState(false);
   const [hasSavedRegister, setHasSavedRegister] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
@@ -592,20 +593,20 @@ export function TeacherGradesLive() {
     return Object.keys(m);
   }, [classes.data, slots.data, user?.id, user?.mainSubject]);
 
-  const [classId, setClassId] = useState('');
-  const [semesterId, setSemesterId] = useState('');
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [classId, setClassId] = useHashString('class', '');
+  const [semesterId, setSemesterId] = useHashString('semester', '');
+  const [selectedSubjectId, setSelectedSubjectId] = useHashString('subject', '');
   const [reason, setReason] = useState('');
 
   useEffect(() => {
     if (!classId && classOpts.length) setClassId(classOpts[0]);
-  }, [classId, classOpts]);
+  }, [classId, classOpts, setClassId]);
 
   useEffect(() => {
     if (!semesterId && semesters.data?.length) {
       setSemesterId(semesters.data.find((semester) => semester.status === 'ACTIVE')?.id || semesters.data[0].id);
     }
-  }, [semesterId, semesters.data]);
+  }, [semesterId, semesters.data, setSemesterId]);
 
   const gradebookContext = useApi<TeacherGradebookContext>(classId && semesterId
     ? `/me/gradebook-context?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}`
@@ -617,7 +618,7 @@ export function TeacherGradesLive() {
     if (!contextMatches || !gradebookContext.data) return;
     const currentIsAvailable = gradebookContext.data.subjects.some((subject) => subject.subjectId === selectedSubjectId);
     if (!currentIsAvailable) setSelectedSubjectId(gradebookContext.data.subjectId);
-  }, [contextMatches, gradebookContext.data, selectedSubjectId]);
+  }, [contextMatches, gradebookContext.data, selectedSubjectId, setSelectedSubjectId]);
 
   const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
   const subjectId = selectedSubject?.subjectId || '';
@@ -944,13 +945,13 @@ function teacherInvoiceStatus(invoice: Invoice) {
 
 export function TeacherFinanceLive() {
   const periods = useApi<FeePeriod[]>('/fee-periods');
-  const [periodId, setPeriodId] = useState('');
+  const [periodId, setPeriodId] = useHashString('period', '');
   const summaries = useApi<FinanceClassSummary[]>(periodId
     ? `/finance/classes?periodId=${encodeURIComponent(periodId)}`
     : '/finance/classes');
-  const [classId, setClassId] = useState('');
-  const [query, setQuery] = useState('');
-  const [status, setStatus] = useState('ALL');
+  const [classId, setClassId] = useHashString('class', '');
+  const [query, setQuery] = useHashString('q', '');
+  const [status, setStatus] = useHashString('status', 'ALL');
   const [sending, setSending] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
   const toast = useToast();
@@ -964,7 +965,7 @@ export function TeacherFinanceLive() {
       const active = periods.data.find((item) => item.status === 'OPEN') || periods.data[0];
       setPeriodId(active.id);
     }
-  }, [periodId, periods.data]);
+  }, [periodId, periods.data, setPeriodId]);
 
   useEffect(() => {
     const rows = summaries.data || [];
@@ -973,7 +974,7 @@ export function TeacherFinanceLive() {
       return;
     }
     if (!rows.some((item) => item.classId === classId)) setClassId(rows[0].classId);
-  }, [classId, summaries.data]);
+  }, [classId, summaries.data, setClassId]);
 
   const selected = (summaries.data || []).find((item) => item.classId === classId);
   const filtered = useMemo(() => {
@@ -988,6 +989,8 @@ export function TeacherFinanceLive() {
   const paid = (summaries.data || []).reduce((sum, item) => sum + item.paidAmount, 0);
   const outstanding = total - paid;
   const overdue = (summaries.data || []).reduce((sum, item) => sum + item.overdueCount, 0);
+  const selectedPeriod = (periods.data || []).find((item) => item.id === periodId);
+  const activeFilterCount = (periodId ? 1 : 0) + (classId ? 1 : 0) + (query.trim() ? 1 : 0) + (status !== 'ALL' ? 1 : 0);
 
   const remindClass = async () => {
     if (!selected) return;
@@ -1017,15 +1020,53 @@ export function TeacherFinanceLive() {
     invoices.reload();
   };
 
+  const resetFilters = () => {
+    const activePeriod = (periods.data || []).find((item) => item.status === 'OPEN') || periods.data?.[0];
+    setPeriodId(activePeriod?.id || '');
+    setClassId('');
+    setQuery('');
+    setStatus('ALL');
+  };
+
   return (
     <div className="finance-page teacher-finance-page">
       {toast.node}
       <header className="finance-hero teacher-finance-hero">
         <div><span className="finance-eyebrow"><ShieldCheck size={15} /> Không gian tài chính lớp chủ nhiệm</span><h2>Đồng hành cùng phụ huynh, giảm tải cho nhà trường</h2><p>Theo dõi tiến độ khoản thu của đúng lớp chủ nhiệm và gửi nhắc hạn tập trung tới phụ huynh còn công nợ.</p></div>
-        <div className="finance-hero-actions"><select className="live-input" value={periodId} onChange={(event) => { setPeriodId(event.target.value); setClassId(''); }} aria-label="Chọn đợt thu"><option value="">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}</select><button className="live-btn ghost" type="button" onClick={refresh}><RefreshCw size={15} /> Đồng bộ</button></div>
       </header>
 
-      <div className="finance-delegation-note teacher"><UsersRound size={20} /><div><strong>Phân quyền rõ ràng</strong><small>Giáo viên chỉ nhìn thấy lớp mình làm chủ nhiệm. Admin chịu trách nhiệm phát hành và ghi nhận thanh toán; GVCN theo dõi, phối hợp và nhắc hạn phụ huynh.</small></div></div>
+      <section className="teacher-finance-controls" aria-label="Bộ lọc công nợ">
+        <header>
+          <div className="teacher-filter-heading"><span><SlidersHorizontal size={20} /></span><div><h3>Bộ lọc và phạm vi theo dõi</h3><p>Chọn đợt thu, lớp và trạng thái để tìm đúng học sinh cần xử lý.</p></div></div>
+          <strong className="teacher-filter-count">{activeFilterCount} điều kiện đang áp dụng</strong>
+        </header>
+        <div className="teacher-finance-filter-grid">
+          <label><span>Đợt thu</span><select className="live-input" value={periodId} onChange={(event) => { setPeriodId(event.target.value); setClassId(''); }}>
+            <option value="">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code} · {period.status === 'OPEN' ? 'Đang thu' : period.status === 'CLOSED' ? 'Đã đóng' : 'Bản nháp'}</option>)}
+          </select></label>
+          <label><span>Lớp chủ nhiệm</span><select className="live-input" value={classId} onChange={(event) => setClassId(event.target.value)}>
+            {(summaries.data || []).length === 0 && <option value="">Chưa có lớp phù hợp</option>}
+            {(summaries.data || []).map((summary) => <option key={summary.classId} value={summary.classId}>Lớp {summary.classCode} · {summary.invoiceCount} hóa đơn</option>)}
+          </select></label>
+          <label className="teacher-filter-search"><span>Tìm trong danh sách</span><div><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên học sinh hoặc mã hóa đơn" /></div></label>
+          <label><span>Trạng thái công nợ</span><select className="live-input" value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option>
+          </select></label>
+        </div>
+        <footer>
+          <div className="teacher-filter-context"><UsersRound size={16} /><span><b>{selectedPeriod?.name || 'Tất cả đợt thu'}</b>{selected ? ` · Lớp ${selected.classCode}` : ''} · Hiển thị <b>{filtered.length} hóa đơn</b></span></div>
+          <div><button className="live-btn ghost" type="button" onClick={resetFilters}><RotateCcw size={15} /> Đặt lại</button><button className="live-btn" type="button" onClick={refresh}><RefreshCw size={15} /> Đồng bộ dữ liệu</button></div>
+        </footer>
+      </section>
+
+      {selected && <div className="teacher-debt-primary"><Section title={`Công nợ lớp ${selected.classCode}`} subtitle={`${selected.paidCount}/${selected.invoiceCount} học sinh đã hoàn thành · Còn ${money(selected.outstanding)}`} wide
+        action={!selected.completed ? <button className="live-btn" type="button" disabled={sending} onClick={remindClass}><BellRing size={15} /> {sending ? 'Đang gửi…' : 'Nhắc phụ huynh còn nợ'}</button> : <Badge tone="green">Lớp đã hoàn thành</Badge>}>
+        <div className="teacher-active-list-filter"><SlidersHorizontal size={16} /><span>Danh sách đang áp dụng bộ lọc phía trên</span><strong>{filtered.length} hóa đơn</strong></div>
+        <Async state={{ ...invoices, data: filtered }} empty="Không có hóa đơn phù hợp">
+          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Nhắc phụ huynh</th></tr></thead><tbody>{pageRows.map((invoice) => { const invoiceStatus = teacherInvoiceStatus(invoice); return <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={invoiceStatus} /></td><td>{invoiceStatus === 'PAID' ? <span className="finance-complete-label"><CheckCircle2 size={14} /> Đã xong</span> : <button className="live-btn subtle" type="button" disabled={sendingInvoiceId === invoice.id} onClick={() => remindInvoice(invoice)}><BellRing size={14} /> {sendingInvoiceId === invoice.id ? 'Đang gửi…' : 'Nhắc riêng'}</button>}</td></tr>; })}</tbody></table></div>}</PaginatedData>}
+        </Async>
+        <div className="finance-guidance"><ReceiptText size={18} /><p>Giáo viên chủ nhiệm chỉ theo dõi và gửi nhắc hạn. Mọi thao tác tạo khoản thu, phát hành hóa đơn và ghi nhận thanh toán vẫn do Admin thực hiện để bảo đảm đối soát.</p></div>
+      </Section></div>}
 
       <section className="finance-kpi-grid" aria-label="Tổng quan công nợ lớp chủ nhiệm">
         <article className="finance-kpi-card primary"><span><TrendingUp size={20} /></span><div><small>Đã thu</small><strong>{money(paid)}</strong><p>{total ? (paid * 100 / total).toFixed(1) : 0}% tổng phải thu</p></div></article>
@@ -1034,7 +1075,8 @@ export function TeacherFinanceLive() {
         <article className={`finance-kpi-card ${overdue ? 'danger' : ''}`}><span><AlertTriangle size={20} /></span><div><small>Hóa đơn quá hạn</small><strong>{overdue}</strong><p>Cần chủ động trao đổi với phụ huynh</p></div></article>
       </section>
 
-      <Section title="Tiến độ theo lớp chủ nhiệm" subtitle="Chọn lớp để xem chi tiết hóa đơn và thực hiện nhắc hạn" wide>
+      <div className="teacher-finance-list-section"><Section title={`Danh sách lớp chủ nhiệm (${(summaries.data || []).length})`} subtitle="Chọn một lớp để mở danh sách công nợ và thực hiện nhắc hạn" wide
+        action={<span className="teacher-list-hint"><GraduationCap size={15} /> Chọn lớp cần theo dõi</span>}>
         <Async state={summaries} empty="Chưa có khoản thu nào được phát hành cho lớp chủ nhiệm">
           {(rows) => <div className="finance-class-grid teacher-class-finance-grid">{rows.map((summary) => <button type="button" key={summary.classId} className={`teacher-finance-class ${classId === summary.classId ? 'selected' : ''} ${summary.completed ? 'complete' : ''}`} onClick={() => setClassId(summary.classId)}>
             <header><span><GraduationCap size={17} /></span><div><strong>Lớp {summary.classCode}</strong><small>{summary.gradeLevel || 'Chưa xác định khối'} · {summary.invoiceCount} học sinh</small></div><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} /></header>
@@ -1042,16 +1084,8 @@ export function TeacherFinanceLive() {
             <footer><span>{summary.collectionRate.toFixed(1)}% đã thu</span><strong>Còn {money(summary.outstanding)}</strong></footer>
           </button>)}</div>}
         </Async>
-      </Section>
+      </Section></div>
 
-      {selected && <Section title={`Công nợ lớp ${selected.classCode}`} subtitle={`${selected.paidCount}/${selected.invoiceCount} học sinh đã hoàn thành · Còn ${money(selected.outstanding)}`} wide
-        action={!selected.completed ? <button className="live-btn" type="button" disabled={sending} onClick={remindClass}><BellRing size={15} /> {sending ? 'Đang gửi…' : 'Nhắc phụ huynh còn nợ'}</button> : <Badge tone="green">Lớp đã hoàn thành</Badge>}>
-        <div className="finance-filterbar"><label className="finance-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm học sinh hoặc mã hóa đơn" /></label><select className="live-input" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option></select><span>{filtered.length} hóa đơn</span></div>
-        <Async state={{ ...invoices, data: filtered }} empty="Không có hóa đơn phù hợp">
-          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Nhắc phụ huynh</th></tr></thead><tbody>{pageRows.map((invoice) => { const invoiceStatus = teacherInvoiceStatus(invoice); return <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={invoiceStatus} /></td><td>{invoiceStatus === 'PAID' ? <span className="finance-complete-label"><CheckCircle2 size={14} /> Đã xong</span> : <button className="live-btn subtle" type="button" disabled={sendingInvoiceId === invoice.id} onClick={() => remindInvoice(invoice)}><BellRing size={14} /> {sendingInvoiceId === invoice.id ? 'Đang gửi…' : 'Nhắc riêng'}</button>}</td></tr>; })}</tbody></table></div>}</PaginatedData>}
-        </Async>
-        <div className="finance-guidance"><ReceiptText size={18} /><p>Giáo viên chủ nhiệm chỉ theo dõi và gửi nhắc hạn. Mọi thao tác tạo khoản thu, phát hành hóa đơn và ghi nhận thanh toán vẫn do Admin thực hiện để bảo đảm đối soát.</p></div>
-      </Section>}
     </div>
   );
 }

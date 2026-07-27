@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { Bell, CalendarDays, LogOut, Menu, MessageCircleMore, Moon, School, Sun, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
 import { roles, modules } from '../data/mockData';
 import type { PageId, RoleId } from '../types';
 import { SessionCard, SidebarMenu } from '../components/layout';
@@ -8,7 +8,10 @@ import { ActiveChildProvider } from '../api/activeChild';
 import { useTheme } from '../api/theme';
 import { useApi } from '../api/useApi';
 import type { UnreadCount } from '../api/types';
-import { CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
+import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
+import { GlobalSearch } from '../components/GlobalSearch';
+import { readHashRoute } from '../api/urlState';
+import { subscribeRealtime } from '../api/client';
 
 const GeneralDashboard = lazy(() => import('../features/dashboard/GeneralDashboard').then((module) => ({ default: module.GeneralDashboard })));
 const FeaturePage = lazy(() => import('../features/FeaturePage').then((module) => ({ default: module.FeaturePage })));
@@ -20,7 +23,7 @@ function PageLoading() {
 }
 
 function pageFromLocation(): PageId {
-  const value = window.location.hash.replace(/^#\/?/, '').trim();
+  const value = readHashRoute().page;
   return (value || 'dashboard') as PageId;
 }
 
@@ -35,6 +38,8 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const [activePage, setActivePage] = useState<PageId>(pageFromLocation);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const notificationBadgeEnabled = Boolean(user && user.role !== 'ADMIN');
   const { data: notificationUnread, reload: reloadNotifications } = useApi<UnreadCount>(notificationBadgeEnabled ? '/notifications/unread-count' : null);
   const chatEnabled = Boolean(user && user.role !== 'ADMIN');
@@ -73,15 +78,27 @@ export default function App() {
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSidebarOpen(false);
+      if (event.key === 'Escape') {
+        setSidebarOpen(false);
+        setProfileOpen(false);
+      }
+    };
+    const closeProfileOnOutsideClick = (event: PointerEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileOpen(false);
+      }
     };
     window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    window.addEventListener('pointerdown', closeProfileOnOutsideClick);
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('pointerdown', closeProfileOnOutsideClick);
+    };
   }, []);
 
   useEffect(() => {
     if (!notificationBadgeEnabled) return;
-    const timer = window.setInterval(reloadNotifications, 60_000);
+    const timer = window.setInterval(reloadNotifications, 5 * 60_000);
     window.addEventListener('focus', reloadNotifications);
     window.addEventListener(NOTIFICATION_INBOX_CHANGED, reloadNotifications);
     return () => {
@@ -93,7 +110,7 @@ export default function App() {
 
   useEffect(() => {
     if (!chatEnabled) return;
-    const timer = window.setInterval(reloadChatUnread, 15_000);
+    const timer = window.setInterval(reloadChatUnread, 5 * 60_000);
     window.addEventListener('focus', reloadChatUnread);
     window.addEventListener(CHAT_UNREAD_CHANGED, reloadChatUnread);
     return () => {
@@ -102,6 +119,19 @@ export default function App() {
       window.removeEventListener(CHAT_UNREAD_CHANGED, reloadChatUnread);
     };
   }, [chatEnabled, reloadChatUnread]);
+
+  useEffect(() => {
+    if (!userId) return;
+    return subscribeRealtime((event) => {
+      if (event.type === 'NOTIFICATION') {
+        reloadNotifications();
+        window.dispatchEvent(new Event(NOTIFICATION_INBOX_CHANGED));
+      } else if (event.type === 'CHAT' || event.type === 'CHAT_READ') {
+        reloadChatUnread();
+        window.dispatchEvent(new CustomEvent(CHAT_REALTIME_RECEIVED, { detail: event.data }));
+      }
+    });
+  }, [userId, reloadNotifications, reloadChatUnread]);
 
   if (loading) {
     return <div className="login-screen"><div className="login-loading">Đang tải phiên đăng nhập…</div></div>;
@@ -123,10 +153,13 @@ export default function App() {
   const pageTitle = activePage === 'dashboard' ? 'Tổng quan' : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
   const today = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date());
+  const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
+  const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
     if (page !== activePage) window.history.pushState(null, '', `#/${page}`);
     setActivePage(page);
     setSidebarOpen(false);
+    setProfileOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -171,6 +204,7 @@ export default function App() {
               </div>
             </div>
             <div className="topbar-actions">
+              <GlobalSearch onNavigate={selectPage} />
               <span className="topbar-date"><CalendarDays size={16} /> {today}</span>
               <button className="theme-toggle" type="button" onClick={toggleTheme} title={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'} aria-label={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'}>
                 {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
@@ -201,13 +235,42 @@ export default function App() {
                   <strong>{unreadMessages > 99 ? '99+' : unreadMessages}</strong>
                 </>}
               </button>}
-              <div className="topbar-profile">
-                <span>{user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>
-                <div><strong>{user.fullName}</strong><small>{role.label}</small></div>
+              <div className={`topbar-user-menu ${profileOpen ? 'open' : ''}`} ref={profileMenuRef}>
+                <button
+                  className="topbar-profile"
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={profileOpen}
+                  aria-controls="topbar-profile-popup"
+                  onClick={() => setProfileOpen((value) => !value)}
+                >
+                  <span className="topbar-profile-avatar">
+                    {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
+                  </span>
+                  <span className="topbar-profile-copy"><strong>{user.fullName}</strong><small>{role.label}</small></span>
+                  <ChevronDown className="topbar-profile-chevron" size={15} aria-hidden="true" />
+                </button>
+                {profileOpen && <div id="topbar-profile-popup" className="profile-popup" role="menu" aria-label="Thông tin người dùng">
+                  <header className="profile-popup-header">
+                    <span className="profile-popup-avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}</span>
+                    <div><strong>{user.fullName}</strong><span>{role.label}</span><small>@{user.username}</small></div>
+                  </header>
+                  <div className="profile-popup-details">
+                    <span><Mail size={15} /><span><small>Email</small><strong>{user.email || 'Chưa cập nhật'}</strong></span></span>
+                    <span><Phone size={15} /><span><small>Số điện thoại</small><strong>{user.phone || 'Chưa cập nhật'}</strong></span></span>
+                  </div>
+                  <div className="profile-popup-actions">
+                    {profilePage[roleId] ? <button type="button" role="menuitem" onClick={() => selectPage(profilePage[roleId]!)}>
+                      <Settings size={17} /><span><strong>Hồ sơ & cài đặt</strong><small>Cập nhật thông tin và thông báo</small></span>
+                    </button> : <button type="button" role="menuitem" onClick={() => selectPage('dashboard')}>
+                      <UserRound size={17} /><span><strong>Thông tin tài khoản</strong><small>Xem tổng quan quản trị</small></span>
+                    </button>}
+                    <button className="profile-popup-logout" type="button" role="menuitem" onClick={logout}>
+                      <LogOut size={17} /><span><strong>Đăng xuất</strong><small>Kết thúc phiên làm việc an toàn</small></span>
+                    </button>
+                  </div>
+                </div>}
               </div>
-              <button className="logout-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
-                <LogOut size={17} /><span>Đăng xuất</span>
-              </button>
             </div>
           </header>
 
