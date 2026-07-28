@@ -151,6 +151,14 @@ export interface ExamRoom {
   proctorOneId?: string | null; proctorOneName?: string | null;
   proctorTwoId?: string | null; proctorTwoName?: string | null;
 }
+export interface ExamGradingAssignment {
+  id: string; examPeriodId: string; scheduleId: string; classId: string; classCode: string;
+  subjectId: string; subjectName: string; teacherId: string; teacherName: string;
+  assignedAt: string; assignedBy?: string | null;
+}
+export interface EligibleExamGrader {
+  teacherId: string; teacherCode?: string | null; teacherName: string;
+}
 export interface ExamCandidate {
   id: string; examPeriodId: string; scheduleId: string; examRoomId: string;
   studentId: string; studentName: string; studentCode?: string | null; classId: string;
@@ -171,7 +179,7 @@ export interface ExamScoreAdjustment {
   oldScore?: number | null; newScore?: number | null; reason: string; adjustedAt: string; adjustedBy: string;
 }
 export interface ExamAgendaItem {
-  id: string; taskType: 'CANDIDATE' | 'PROCTOR' | 'GRADE_ENTRY'; taskLabel: string;
+  id: string; taskType: 'CANDIDATE' | 'PROCTOR' | 'GRADING' | 'GRADE_ENTRY'; taskLabel: string;
   examPeriodId: string; examPeriodName: string; scheduleRevision: number;
   scheduleId: string; subjectId: string; subjectName: string; examDate: string;
   startTime: string; durationMinutes: number; notes?: string | null; roomCode?: string | null;
@@ -187,7 +195,8 @@ export interface TeacherExamCandidateRow {
 export interface TeacherGradingTask {
   examPeriodId: string; examPeriodName: string; scheduleId: string; subjectId: string;
   subjectName: string; classId: string; classCode: string; examDate: string; startTime: string;
-  scoreEntryLocked: boolean; candidates: TeacherExamCandidateRow[];
+  scoreEntryOpensAt: string; scoreEntryAvailable: boolean; scoreEntryLocked: boolean;
+  candidates: TeacherExamCandidateRow[];
 }
 export interface StudentExamResultView {
   resultId: string; examPeriodId: string; examPeriodName: string; scheduleId: string;
@@ -294,8 +303,10 @@ export interface HomeroomDebtReminderResult {
 export interface PaymentCallback { txnRef: string; status: 'SUCCESS' | 'FAILED'; amount: number; signature: string; }
 export interface PaymentInitResponse {
   payment: Payment; invoice: Invoice; gatewayStatus: string;
-  callbackUrl?: string; sandboxCallback?: PaymentCallback; paymentUrl?: string; gateway?: string;
+  gateway?: 'VIETQR'; qrImageUrl?: string; bankId?: string; accountNo?: string;
+  accountName?: string; transferContent?: string; expiresAt?: string;
 }
+export type VietQrPendingPayment = PaymentInitResponse;
 
 export interface LoginHistory {
   id: string; userId?: string | null; username: string; success: boolean;

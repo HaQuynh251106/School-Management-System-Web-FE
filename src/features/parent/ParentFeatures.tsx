@@ -166,7 +166,7 @@ export function ParentInvoiceFeature() {
             <Section
               title="Hóa đơn cần thanh toán"
               subtitle={`Tổng ${currency.format(totalDue)} cần xử lý`}
-              action={<CommandButton Icon={CreditCard} label="Thanh toán MoMo" />}
+              action={<CommandButton Icon={CreditCard} label="Thanh toán VietQR" />}
               wide
             >
               <ParentInvoiceList invoices={pending} />
@@ -196,21 +196,21 @@ export function ParentInvoiceFeature() {
               <div className="compact-table">
                 <div>
                   <strong>VN20250215</strong>
-                  <span>MoMo</span>
+                  <span>VietQR</span>
                   <span>HD-2025-HK1-0042</span>
                   <b>{currency.format(4500000)}</b>
                   <StatusPill value="SUCCESS" />
                 </div>
                 <div>
                   <strong>VN20240908</strong>
-                  <span>MoMo</span>
+                  <span>VietQR</span>
                   <span>HD-2025-DN-0042</span>
                   <b>{currency.format(850000)}</b>
                   <StatusPill value="SUCCESS" />
                 </div>
                 <div>
-                  <strong>MOMO-XX12</strong>
-                  <span>MoMo</span>
+                  <strong>VQR-XX12</strong>
+                  <span>VietQR</span>
                   <span>HD-2024-HK2-0042</span>
                   <b>{currency.format(4200000)}</b>
                   <StatusPill value="REFUNDED" />
@@ -227,8 +227,8 @@ export function ParentInvoiceFeature() {
             <Section title="Phương thức hỗ trợ" subtitle="Cổng thanh toán đã tích hợp" wide>
               <InfoGrid
                 items={[
-                  { title: 'MoMo', value: 'ACTIVE', meta: 'Ví MoMo và phương thức do MoMo Sandbox hỗ trợ' },
-                  { title: 'MoMo', value: 'ACTIVE', meta: 'Quét QR hoặc đăng nhập app' },
+                  { title: 'VietQR', value: 'ACTIVE', meta: 'Chuyển khoản nhanh qua ứng dụng ngân hàng' },
+                  { title: 'Đối soát', value: 'ACTIVE', meta: 'Xác nhận giao dịch trước khi ghi nhận hóa đơn' },
                   { title: 'Bank Transfer', value: 'MANUAL', meta: 'Đối soát thủ công sau 24h' },
                   { title: 'Tiền mặt', value: 'CASHIER', meta: 'Thu tại văn phòng' },
                 ]}

@@ -257,6 +257,10 @@ export function TeacherAttendanceLive() {
   const approvedLeaves = useApi<LeaveRequest[]>(slot
     ? `/attendance/approved-leaves?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
     : null);
+  const approvedLeaveStudentIds = useMemo(
+    () => new Set((approvedLeaves.data || []).map((request) => request.studentId)),
+    [approvedLeaves.data],
+  );
   const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
   const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
   const [search, setSearch] = useHashString('q', '');
@@ -272,10 +276,9 @@ export function TeacherAttendanceLive() {
     const existing = new Map((attendance.data || [])
       .filter((record) => record.slotId === slot.id && record.date === date)
       .map((record) => [record.studentId, record]));
-    const approvedStudentIds = new Set((approvedLeaves.data || []).map((request) => request.studentId));
     const next = Object.fromEntries(students.data.map((student) => {
       const record = existing.get(student.id);
-      const approved = approvedStudentIds.has(student.id);
+      const approved = approvedLeaveStudentIds.has(student.id);
       return [student.id, {
         status: record?.status || (approved ? 'ABSENT_EXCUSED' : 'PRESENT'),
         note: record?.note || (approved ? 'Đơn xin nghỉ đã được GVCN duyệt' : ''),
@@ -285,7 +288,7 @@ export function TeacherAttendanceLive() {
     setBaseline(next);
     setHasSavedRegister(existing.size > 0);
     setLastSavedAt(existing.size ? 'Đã tải dữ liệu đã lưu' : 'Chưa có dữ liệu cho tiết này');
-  }, [approvedLeaves.data, attendance.data, attendance.loading, date, slot, students.data]);
+  }, [approvedLeaveStudentIds, attendance.data, attendance.loading, date, slot, students.data]);
 
   const dirty = useMemo(() => JSON.stringify(marks) !== JSON.stringify(baseline), [baseline, marks]);
   const saveRequired = !hasSavedRegister || dirty;
@@ -316,9 +319,19 @@ export function TeacherAttendanceLive() {
   };
 
   const updateStatus = (studentId: string, status: string) => {
+    const resolvedStatus = approvedLeaveStudentIds.has(studentId) && status.startsWith('ABSENT')
+      ? 'ABSENT_EXCUSED'
+      : status;
     setMarks((current) => ({
       ...current,
-      [studentId]: { status, note: status === 'PRESENT' ? '' : current[studentId]?.note || '' },
+      [studentId]: {
+        status: resolvedStatus,
+        note: resolvedStatus === 'PRESENT'
+          ? ''
+          : approvedLeaveStudentIds.has(studentId) && resolvedStatus === 'ABSENT_EXCUSED'
+            ? 'Đơn xin nghỉ đã được GVCN duyệt'
+            : current[studentId]?.note || '',
+      },
     }));
   };
 
@@ -329,7 +342,9 @@ export function TeacherAttendanceLive() {
   const markAll = (status: string) => {
     setMarks((current) => Object.fromEntries((students.data || []).map((student) => [
       student.id,
-      { status, note: status === 'PRESENT' ? '' : current[student.id]?.note || '' },
+      approvedLeaveStudentIds.has(student.id) && status === 'PRESENT'
+        ? { status: 'ABSENT_EXCUSED', note: 'Đơn xin nghỉ đã được GVCN duyệt' }
+        : { status, note: status === 'PRESENT' ? '' : current[student.id]?.note || '' },
     ])));
   };
 
@@ -368,7 +383,7 @@ export function TeacherAttendanceLive() {
       setHasSavedRegister(true);
       setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
       sessionStatus.reload();
-      toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Mọi trạng thái thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
+      toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Hệ thống chỉ gửi cảnh báo cho trường hợp cần phụ huynh chú ý; học sinh có đơn nghỉ đã duyệt không nhận thông báo trùng.`);
     } catch (e: any) {
       toast.show('err', e.message);
     } finally {
@@ -505,9 +520,10 @@ export function TeacherAttendanceLive() {
                   <thead><tr><th>STT</th><th>Học sinh</th><th>Trạng thái chuyên cần</th><th>Ghi chú</th></tr></thead>
                   <tbody>{pagedStudents.map((student) => {
                     const mark = marks[student.id] || { status: 'PRESENT', note: '' };
+                    const hasApprovedLeave = approvedLeaveStudentIds.has(student.id);
                     return <tr key={student.id} data-status={mark.status}>
                       <td>{(students.data || []).findIndex((item) => item.id === student.id) + 1}</td>
-                      <td><div className="attendance-student"><span>{student.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><p><strong>{student.fullName}</strong><small>{student.studentCode || 'Chưa có mã học sinh'}</small></p></div></td>
+                      <td><div className="attendance-student"><span>{student.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><p><strong>{student.fullName}</strong><small>{student.studentCode || 'Chưa có mã học sinh'}</small>{hasApprovedLeave && <b className="attendance-approved-leave"><ShieldCheck size={12} /> Đơn nghỉ đã duyệt</b>}</p></div></td>
                       <td><div className="attendance-status-options">{ATT_STATES.map((status) => <button
                         type="button"
                         key={status}
@@ -532,7 +548,7 @@ export function TeacherAttendanceLive() {
               </PaginatedData>
               <footer className="attendance-register-footer">
                 <span>Hiển thị {filteredStudents.length}/{summary.total} học sinh</span>
-                <p><ShieldCheck size={15} /> {sessionStatus.data?.state === 'LATE_UNLOCKED' || sessionStatus.data?.state === 'COMPLETED_LATE' ? `Điểm danh muộn · Lý do: ${sessionStatus.data.unlockReason}` : 'Trạng thái thay đổi được tự động gửi tới học sinh và phụ huynh; dữ liệu không đổi sẽ không tạo thông báo trùng.'}</p>
+                <p><ShieldCheck size={15} /> {sessionStatus.data?.state === 'LATE_UNLOCKED' || sessionStatus.data?.state === 'COMPLETED_LATE' ? `Điểm danh muộn · Lý do: ${sessionStatus.data.unlockReason}` : 'Cảnh báo chỉ gửi khi cần chú ý; vắng có phép từ đơn đã duyệt không tạo thông báo điểm danh trùng.'}</p>
               </footer>
             </>}
           </Async>

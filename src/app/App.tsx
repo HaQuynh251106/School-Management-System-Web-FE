@@ -10,6 +10,7 @@ import { useApi } from '../api/useApi';
 import type { UnreadCount } from '../api/types';
 import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
 import { GlobalSearch } from '../components/GlobalSearch';
+import { ConnectivityBanner } from '../components/SystemFeedback';
 import { readHashRoute } from '../api/urlState';
 import { subscribeRealtime } from '../api/client';
 import { loginHash, pageHash, resolvePageRoute } from '../api/routes';
@@ -174,6 +175,7 @@ export default function App() {
     setSidebarOpen(false);
     setProfileOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }));
   };
   const logoutAndRedirect = () => {
     window.history.replaceState(null, '', loginHash());
@@ -183,6 +185,8 @@ export default function App() {
   return (
     <ActiveChildProvider scopeKey={user.id}>
       <div className={`app-shell app-shell--${roleId}`}>
+        <a className="skip-link" href="#main-content">Bỏ qua menu, đến nội dung chính</a>
+        <ConnectivityBanner />
         <button className={`sidebar-backdrop ${sidebarOpen ? 'show' : ''}`} aria-label="Đóng menu" onClick={() => setSidebarOpen(false)} />
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sidebar-brand-row">
@@ -211,7 +215,7 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="workspace">
+        <main className="workspace" id="main-content" tabIndex={-1}>
           <header className="topbar">
             <div className="topbar-heading">
               <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>

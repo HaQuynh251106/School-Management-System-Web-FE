@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Landmark, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
   ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
@@ -910,6 +910,7 @@ export function AdminFinanceLive() {
   const classSummaries = useApi<FinanceClassSummary[]>(invoicePeriod === 'ALL'
     ? '/finance/classes'
     : `/finance/classes?periodId=${encodeURIComponent(invoicePeriod)}`);
+  const pendingVietQr = useApi<VietQrPendingPayment[]>('/payments/vietqr/pending');
   const [showPeriodEditor, setShowPeriodEditor] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<FeePeriod | null>(null);
   const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
@@ -917,11 +918,13 @@ export function AdminFinanceLive() {
   const [busy, setBusy] = useState(false);
   const [sendingClassId, setSendingClassId] = useState<string | null>(null);
   const [sendingVisible, setSendingVisible] = useState(false);
+  const [reconcilingPaymentId, setReconcilingPaymentId] = useState<string | null>(null);
 
   const refreshFinance = () => {
     periods.reload();
     overview.reload();
     classSummaries.reload();
+    pendingVietQr.reload();
     if (selectedPeriodId) items.reload();
   };
 
@@ -1088,6 +1091,20 @@ export function AdminFinanceLive() {
     finally { setSendingVisible(false); }
   };
 
+  const reconcileVietQr = async (item: VietQrPendingPayment, accepted: boolean) => {
+    const action = accepted ? 'xác nhận' : 'từ chối';
+    if (!confirm(`${accepted ? 'Xác nhận đã nhận' : 'Từ chối'} ${money(item.payment.amount)} cho hóa đơn ${item.invoice.code}?`)) return;
+    setReconcilingPaymentId(item.payment.id);
+    try {
+      await api.post(`/payments/${item.payment.id}/${accepted ? 'confirm-vietqr' : 'reject-vietqr'}`, accepted ? {} : undefined);
+      toast.show('ok', `Đã ${action} giao dịch VietQR của hóa đơn ${item.invoice.code}`);
+      pendingVietQr.reload();
+      overview.reload();
+      classSummaries.reload();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setReconcilingPaymentId(null); }
+  };
+
   const collectionRate = Math.min(100, Math.max(0, overview.data?.collectionRate || 0));
   const configuredTotal = (items.data || []).reduce((sum, item) => sum + item.amount, 0);
 
@@ -1185,6 +1202,26 @@ export function AdminFinanceLive() {
                 <button className="live-btn" type="button" disabled={busy} onClick={() => generateInvoices(selectedPeriod)}><Send size={15} /> {busy ? 'Đang phát hành…' : 'Phát hành hóa đơn'}</button>
               </div>}
             </div>}
+          </Section>
+        ) },
+        { id: 'vietqr', label: `Đối soát VietQR${pendingVietQr.data?.length ? ` (${pendingVietQr.data.length})` : ''}`, Icon: Landmark, content: (
+          <Section title="Đối soát thanh toán VietQR" subtitle="Chỉ xác nhận sau khi giao dịch đã xuất hiện trong tài khoản ngân hàng của nhà trường" wide
+            action={<button className="live-btn ghost" type="button" onClick={() => pendingVietQr.reload()}><RefreshCw size={15} /> Làm mới</button>}>
+            <div className="finance-delegation-note"><ShieldCheck size={20} /><div><strong>Không ghi nhận thanh toán chỉ dựa trên ảnh chụp hoặc thao tác của phụ huynh</strong><small>Kiểm tra đúng số tiền và nội dung chuyển khoản trên sao kê ngân hàng trước khi xác nhận. Hệ thống sẽ gửi biên nhận cho phụ huynh sau bước này.</small></div></div>
+            <Async state={pendingVietQr} empty="Không có giao dịch VietQR đang chờ đối soát">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="giao dịch" resetKey={rows.length}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table"><thead><tr><th>Hóa đơn</th><th>Học sinh</th><th>Số tiền</th><th>Nội dung chuyển khoản</th><th>Trạng thái</th><th>Đối soát</th></tr></thead><tbody>
+                  {pageRows.map((item) => <tr key={item.payment.id}>
+                    <td><strong>{item.invoice.code}</strong><small>{fmtDateTime(item.payment.paidAt || item.expiresAt)}</small></td>
+                    <td><strong>{item.invoice.studentName}</strong><small>{item.invoice.classCode || item.invoice.gradeLevel || '—'}</small></td>
+                    <td><strong>{money(item.payment.amount)}</strong></td>
+                    <td><strong className="candidate-number">{item.transferContent || item.payment.txnRef}</strong></td>
+                    <td><StatusPill value={item.gatewayStatus === 'AWAITING_CONFIRMATION' ? 'Chờ đối soát' : 'Đã tạo QR'} /></td>
+                    <td><div className="finance-row-actions"><button className="live-btn subtle" type="button" disabled={reconcilingPaymentId === item.payment.id} onClick={() => reconcileVietQr(item, false)}>Từ chối</button><button className="live-btn" type="button" disabled={reconcilingPaymentId === item.payment.id} onClick={() => reconcileVietQr(item, true)}><CheckCircle2 size={14} /> Xác nhận đã nhận</button></div></td>
+                  </tr>)}
+                </tbody></table></div>}
+              </PaginatedData>}
+            </Async>
           </Section>
         ) },
         { id: 'invoices', label: 'Công nợ theo lớp', Icon: FileText, content: (

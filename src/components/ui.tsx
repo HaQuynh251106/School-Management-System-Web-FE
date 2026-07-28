@@ -14,16 +14,29 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            id={`tab-${tab.id}`}
             className={active.id === tab.id ? 'active' : ''}
             onClick={() => setActiveTab(tab.id, 'push')}
             type="button"
+            role="tab"
+            aria-selected={active.id === tab.id}
+            aria-controls={`panel-${tab.id}`}
+            tabIndex={active.id === tab.id ? 0 : -1}
           >
             <tab.Icon size={17} />
             <span>{tab.label}</span>
           </button>
         ))}
       </div>
-      <div className="tab-panel">{active.content}</div>
+      <div
+        className="tab-panel"
+        id={`panel-${active.id}`}
+        role="tabpanel"
+        aria-labelledby={`tab-${active.id}`}
+        tabIndex={0}
+      >
+        {active.content}
+      </div>
     </div>
   );
 }
@@ -130,7 +143,7 @@ export function Badge({ tone, children }: { tone: 'green' | 'blue' | 'orange' | 
 const VI_LABELS: Record<string, string> = {
   ATTENDANCE_MISSED: 'Quên điểm danh',
   ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý', PLANNED: 'Dự kiến',
-  PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở',
+    PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở', NOT_STARTED: 'Chưa đến thời gian',
   SUBMITTED: 'Đã nộp', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
   PENDING_PARENT: 'Chờ phụ huynh xác nhận', PENDING_HOMEROOM: 'Chờ GVCN duyệt',
   APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối', CANCELLED: 'Đã hủy', RESUBMISSION_ALLOWED: 'Được nộp lại',
@@ -145,7 +158,7 @@ const VI_LABELS: Record<string, string> = {
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
   FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
   FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
-  CASH: 'Tiền mặt', MOMO: 'MoMo',
+  CASH: 'Tiền mặt', VIETQR: 'VietQR',
   PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
 };
 

@@ -19,6 +19,7 @@ type Filter = 'ALL' | ExamAgendaItem['taskType'];
 const taskMeta = {
   CANDIDATE: { label: 'Lịch dự thi', Icon: GraduationCap },
   PROCTOR: { label: 'Nhiệm vụ coi thi', Icon: UserCheck },
+  GRADING: { label: 'Nhiệm vụ chấm thi', Icon: ClipboardPenLine },
   GRADE_ENTRY: { label: 'Nhiệm vụ nhập điểm', Icon: ClipboardPenLine },
 } as const;
 
@@ -38,7 +39,7 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
   const upcoming = (agenda.data || []).filter((item) => ['UPCOMING', 'TODAY', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS'].includes(item.status)).length;
   const todayCount = (agenda.data || []).filter((item) => item.status === 'TODAY').length;
   const revisions = Math.max(0, ...(agenda.data || []).map((item) => item.scheduleRevision));
-  const filters: Filter[] = actor === 'teacher' ? ['ALL', 'PROCTOR', 'GRADE_ENTRY'] : ['ALL'];
+  const filters: Filter[] = actor === 'teacher' ? ['ALL', 'PROCTOR', 'GRADING', 'GRADE_ENTRY'] : ['ALL'];
 
   const scheduleContent = <Section title="Lịch và công việc" subtitle="Dữ liệu được cập nhật trực tiếp sau khi quản trị viên công bố lịch" wide>
     <div className="my-exams-toolbar">
@@ -86,6 +87,7 @@ function TeacherGradingWorkspace() {
   const [draft, setDraft] = useState<Record<string, { score: string; note: string }>>({});
   const [busy, setBusy] = useState(false);
   const selected = (tasks.data || []).find((task) => `${task.scheduleId}:${task.classId}` === taskKey);
+  const scoreEntryTime = selected ? fmtDateTime(selected.scoreEntryOpensAt) : '';
   useEffect(() => {
     if (!taskKey && tasks.data?.length) setTaskKey(`${tasks.data[0].scheduleId}:${tasks.data[0].classId}`);
   }, [taskKey, tasks.data]);
@@ -113,11 +115,22 @@ function TeacherGradingWorkspace() {
     } catch (error: any) { toast.show('err', error.message); }
     finally { setBusy(false); }
   };
-  return <Section title="Nhập điểm theo lớp phụ trách" subtitle="Chỉ giáo viên bộ môn được phân công mới có quyền xem và cập nhật điểm" wide>
-    {toast.node}<div className="exam-grading-toolbar"><select className="live-select" value={taskKey} onChange={(event) => setTaskKey(event.target.value)}><option value="">Chọn môn và lớp</option>{(tasks.data || []).map((task) => <option key={`${task.scheduleId}:${task.classId}`} value={`${task.scheduleId}:${task.classId}`}>{task.examPeriodName} · {task.subjectName} · {task.classCode}</option>)}</select><button className="live-btn" disabled={!selected || selected.scoreEntryLocked || busy || !selected.candidates.length} onClick={save}><Save size={15} /> Lưu điểm</button></div>
-    <Async state={tasks} allowEmpty empty="Chưa có lớp nào được phân công nhập điểm thi">{() => selected ? <>
-      <div className="exam-grading-context"><div><small>Kỳ thi</small><strong>{selected.examPeriodName}</strong></div><div><small>Môn · lớp</small><strong>{selected.subjectName} · {selected.classCode}</strong></div><div><small>Ngày thi</small><strong>{fmtDate(selected.examDate)} · {selected.startTime}</strong></div><StatusPill value={selected.scoreEntryLocked ? 'LOCKED' : 'OPEN'} /></div>
-      <div className="exam-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Phòng</th><th>Chỗ</th><th>Điểm</th><th>Nhận xét</th><th>Trạng thái</th></tr></thead><tbody>{selected.candidates.map((candidate) => <tr key={candidate.candidateId}><td><strong className="candidate-number">{candidate.candidateNo}</strong></td><td><strong>{candidate.studentName}</strong><small className="table-subline">{candidate.studentCode}</small></td><td>{candidate.roomCode || '—'}</td><td>{candidate.seatNo ?? '—'}</td><td><input className="exam-score-input" type="number" min="0" max="10" step="0.1" disabled={selected.scoreEntryLocked} value={draft[candidate.studentId]?.score ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: event.target.value, note: draft[candidate.studentId]?.note || '' } })} /></td><td><input className="live-input exam-note-input" disabled={selected.scoreEntryLocked} value={draft[candidate.studentId]?.note ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: draft[candidate.studentId]?.score || '', note: event.target.value } })} placeholder="Nhận xét (không bắt buộc)" /></td><td><StatusPill value={candidate.resultStatus} /></td></tr>)}</tbody></table></div>
+  return <Section title="Nhập điểm theo phân công chấm thi" subtitle="Chỉ giáo viên đúng chuyên môn được quản trị viên giao chấm lớp này mới có quyền cập nhật điểm" wide>
+    {toast.node}<div className="exam-grading-toolbar"><select className="live-select" value={taskKey} onChange={(event) => setTaskKey(event.target.value)}><option value="">Chọn môn và lớp được phân công</option>{(tasks.data || []).map((task) => <option key={`${task.scheduleId}:${task.classId}`} value={`${task.scheduleId}:${task.classId}`}>{task.examPeriodName} · {task.subjectName} · {task.classCode}</option>)}</select><button className="live-btn" disabled={!selected || selected.scoreEntryLocked || busy || !selected.candidates.length} onClick={save}><Save size={15} /> Lưu bảng điểm</button></div>
+    <Async state={tasks} allowEmpty empty="Chưa có lớp nào được phân công chấm thi">{() => selected ? <>
+      <div className="exam-grading-context"><div><small>Kỳ thi</small><strong>{selected.examPeriodName}</strong></div><div><small>Môn · lớp</small><strong>{selected.subjectName} · {selected.classCode}</strong></div><div><small>Ngày thi</small><strong>{fmtDate(selected.examDate)} · {selected.startTime}</strong></div><StatusPill value={!selected.scoreEntryAvailable ? 'NOT_STARTED' : selected.scoreEntryLocked ? 'LOCKED' : 'OPEN'} /></div>
+      <div className={`exam-score-unlock-notice ${!selected.scoreEntryAvailable ? 'waiting' : selected.scoreEntryLocked ? 'locked' : 'open'}`}>
+        {!selected.scoreEntryAvailable ? <Clock3 size={18} /> : <ShieldCheck size={18} />}
+        <div>
+          <strong>{!selected.scoreEntryAvailable ? 'Chưa đến thời gian nhập điểm' : selected.scoreEntryLocked ? 'Bảng điểm đang bị khóa' : 'Đã mở nhập điểm thi'}</strong>
+          <span>{!selected.scoreEntryAvailable
+            ? `Hệ thống tự mở và gửi thông báo nhập điểm lúc ${scoreEntryTime}, sau khi ca thi kết thúc đủ 7 ngày.`
+            : selected.scoreEntryLocked
+              ? 'Kỳ thi đang khóa kết quả; liên hệ quản trị viên nếu cần cập nhật.'
+              : 'Bạn có thể nhập và lưu điểm cho đúng lớp được phân công chấm thi.'}</span>
+        </div>
+      </div>
+      <div className="exam-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Phòng</th><th>Chỗ</th><th>Điểm</th><th>Nhận xét</th><th>Trạng thái</th></tr></thead><tbody>{selected.candidates.map((candidate) => <tr key={candidate.candidateId}><td><strong className="candidate-number">{candidate.candidateNo}</strong></td><td><strong>{candidate.studentName}</strong><small className="table-subline">{candidate.studentCode}</small></td><td>{candidate.roomCode || '—'}</td><td>{candidate.seatNo ?? '—'}</td><td><input className="exam-score-input" type="number" min="0" max="10" step="0.1" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.score ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: event.target.value, note: draft[candidate.studentId]?.note || '' } })} /></td><td><input className="live-input exam-note-input" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.note ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: draft[candidate.studentId]?.score || '', note: event.target.value } })} placeholder="Nhận xét (không bắt buộc)" /></td><td><StatusPill value={candidate.resultStatus} /></td></tr>)}</tbody></table></div>
     </> : <div className="empty-state"><strong>Chọn môn và lớp để nhập điểm</strong></div>}</Async>
   </Section>;
 }

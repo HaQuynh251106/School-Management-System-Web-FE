@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { AlertCircle, Inbox } from 'lucide-react';
 import type { PageResponse } from '../../api/types';
 import { urlKey, useHashNumber } from '../../api/urlState';
 
@@ -23,13 +24,28 @@ export const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 export const DAY_LABEL: Record<string, string> = { MON: 'T2', TUE: 'T3', WED: 'T4', THU: 'T5', FRI: 'T6', SAT: 'T7' };
 
 export function LoadingBlock() {
-  return <div className="live-loading">Đang tải…</div>;
+  return (
+    <div className="async-state async-state--loading" role="status" aria-live="polite">
+      <span className="async-state__spinner" aria-hidden="true" />
+      <div><strong>Đang tải dữ liệu</strong><span>Vui lòng chờ trong giây lát…</span></div>
+    </div>
+  );
 }
 export function ErrorBlock({ msg }: { msg: string }) {
-  return <div className="live-msg err">{msg}</div>;
+  return (
+    <div className="async-state async-state--error" role="alert">
+      <span className="async-state__icon"><AlertCircle size={21} /></span>
+      <div><strong>Chưa thể tải dữ liệu</strong><span>{msg}</span></div>
+    </div>
+  );
 }
 export function EmptyState({ label = 'Chưa có dữ liệu' }: { label?: string }) {
-  return <div className="empty-state"><strong>{label}</strong></div>;
+  return (
+    <div className="empty-state async-state--empty">
+      <span className="async-state__icon"><Inbox size={21} /></span>
+      <div><strong>{label}</strong><span>Dữ liệu mới sẽ xuất hiện tại đây khi được cập nhật.</span></div>
+    </div>
+  );
 }
 
 /** Bọc trạng thái fetch: loading / error / empty / data. */

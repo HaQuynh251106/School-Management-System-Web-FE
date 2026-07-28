@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
-import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, ClipboardCheck, Download, FileText, ListChecks, RefreshCw, Smartphone, Trophy, Users } from 'lucide-react';
+import { BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, ClipboardCheck, Copy, Download, FileText, Landmark, ListChecks, RefreshCw, Trophy, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
@@ -180,47 +179,38 @@ export function ParentInvoiceLive() {
   const toast = useToast();
   const [pendingPayment, setPendingPayment] = useState<{ invoice: Invoice; initiated: PaymentInitResponse } | null>(null);
   const [paying, setPaying] = useState(false);
-  const reloadInvoices = invoices.reload;
-  const showToast = toast.show;
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const responseCode = params.get('resultCode');
-    if (responseCode == null) return;
-    showToast(responseCode === '0' ? 'ok' : 'err', responseCode === '0'
-      ? 'MoMo đã tiếp nhận giao dịch. Hệ thống đang xác nhận kết quả qua IPN an toàn.'
-      : `Giao dịch MoMo chưa hoàn tất (mã ${responseCode}).`);
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    window.setTimeout(() => reloadInvoices(), 1200);
-  }, [reloadInvoices, showToast]);
+
   const pay = async (inv: Invoice) => {
     setPaying(true);
     try {
-      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'MOMO' });
-      if (initiated.paymentUrl) {
-        window.location.assign(initiated.paymentUrl);
-        return;
-      } else if (initiated.callbackUrl && initiated.sandboxCallback) {
-        setPendingPayment({ invoice: inv, initiated });
-      } else {
-        toast.show('ok', `Giao dịch ${inv.code} đang chờ cổng thanh toán xác nhận`);
-      }
+      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VIETQR' });
+      if (!initiated.qrImageUrl) throw new Error('VietQR chưa trả về mã thanh toán');
+      setPendingPayment({ invoice: inv, initiated });
     } catch (e: any) { toast.show('err', e.message); }
     finally { setPaying(false); }
   };
 
-  const completeSimulatedPayment = async () => {
-    if (!pendingPayment?.initiated.callbackUrl || !pendingPayment.initiated.sandboxCallback) return;
+  const markTransferred = async () => {
+    if (!pendingPayment?.initiated.payment.id) return;
     setPaying(true);
     try {
-      await api.post(pendingPayment.initiated.callbackUrl, pendingPayment.initiated.sandboxCallback);
-      toast.show('ok', `Thanh toán thử ${pendingPayment.invoice.code} thành công. Biên nhận và email đã được tạo.`);
+      await api.post(`/payments/${pendingPayment.initiated.payment.id}/submitted`);
+      toast.show('ok', `Đã gửi yêu cầu đối soát ${pendingPayment.invoice.code}. Hóa đơn sẽ cập nhật sau khi nhà trường xác nhận.`);
       setPendingPayment(null);
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setPaying(false); }
   };
+
+  const copyTransferContent = async () => {
+    const content = pendingPayment?.initiated.transferContent;
+    if (!content) return;
+    await navigator.clipboard.writeText(content);
+    toast.show('ok', 'Đã sao chép nội dung chuyển khoản');
+  };
+
   return (
-    <Section title="Học phí" subtitle="Theo dõi và thanh toán các khoản thu" wide
+    <Section title="Học phí" subtitle="Thanh toán chuyển khoản nhanh bằng VietQR" wide
       action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
       {toast.node}
       <Async paginate state={invoices} empty="Chưa có hóa đơn. Vui lòng liên hệ nhà trường." itemLabel="hóa đơn">
@@ -232,37 +222,41 @@ export function ParentInvoiceLive() {
                 <td><strong>{i.code}</strong></td><td>{i.studentName}</td><td>{money(i.totalAmount)}</td><td>{money(i.paidAmount)}</td>
                 <td><StatusPill value={i.status} /></td>
                 <td>{i.status !== 'PAID'
-                  ? <button className="live-btn" disabled={paying} onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán thử</button>
+                  ? <button className="live-btn" disabled={paying} onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán VietQR</button>
                   : <Badge tone="green">Đã thanh toán</Badge>}</td>
               </tr>
             ))}</tbody>
           </table>
         )}
       </Async>
-      {pendingPayment?.initiated.sandboxCallback && (
-        <Modal title="Quét QR thanh toán thử" onClose={() => { if (!paying) setPendingPayment(null); }}
+      {pendingPayment?.initiated.qrImageUrl && (
+        <Modal title="Quét mã VietQR để thanh toán" onClose={() => { if (!paying) setPendingPayment(null); }}
           footer={<>
-            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>Hủy giao dịch</button>
-            <button className="live-btn" type="button" disabled={paying} onClick={completeSimulatedPayment}>
-              <CheckCircle2 size={15} /> {paying ? 'Đang xác nhận…' : 'Xác nhận đã quét'}
+            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>Đóng</button>
+            <button className="live-btn" type="button" disabled={paying} onClick={markTransferred}>
+              <CheckCircle2 size={15} /> {paying ? 'Đang gửi đối soát…' : 'Tôi đã chuyển khoản'}
             </button>
           </>}>
-          <div className="simulated-payment">
-            <div className="simulated-payment-badge"><Smartphone size={17} /> Môi trường mô phỏng</div>
-            <div className="simulated-qr">
-              <QRCodeSVG
-                value={`SMART-SCHOOL-SANDBOX|txn=${pendingPayment.initiated.sandboxCallback.txnRef}|invoice=${pendingPayment.invoice.code}|amount=${pendingPayment.initiated.sandboxCallback.amount}`}
-                size={220}
-                level="H"
-                marginSize={2}
-              />
+          <div className="vietqr-payment">
+            <div className="vietqr-payment-badge"><Landmark size={17} /> Chuyển khoản ngân hàng qua VietQR</div>
+            <div className="vietqr-code">
+              <img src={pendingPayment.initiated.qrImageUrl} alt={`VietQR cho hóa đơn ${pendingPayment.invoice.code}`} />
             </div>
-            <div className="simulated-payment-summary">
+            <div className="vietqr-payment-summary">
               <span><small>Hóa đơn</small><strong>{pendingPayment.invoice.code}</strong></span>
-              <span><small>Số tiền</small><strong>{money(pendingPayment.initiated.sandboxCallback.amount)}</strong></span>
+              <span><small>Số tiền</small><strong>{money(pendingPayment.initiated.payment.amount)}</strong></span>
               <span><small>Học sinh</small><strong>{pendingPayment.invoice.studentName}</strong></span>
             </div>
-            <div className="simulated-payment-warning"><AlertTriangle size={18} /><p>Đây là QR mô phỏng để kiểm thử giao diện, không phải QR do MoMo phát hành và không trừ tiền thật. Sau khi quét thử, hãy bấm “Xác nhận đã quét”.</p></div>
+            <div className="vietqr-bank-detail">
+              <span><small>Ngân hàng</small><strong>{pendingPayment.initiated.bankId}</strong></span>
+              <span><small>Số tài khoản</small><strong>{pendingPayment.initiated.accountNo}</strong></span>
+              <span><small>Chủ tài khoản</small><strong>{pendingPayment.initiated.accountName}</strong></span>
+            </div>
+            <button className="vietqr-transfer-content" type="button" onClick={copyTransferContent}>
+              <span><small>Nội dung chuyển khoản bắt buộc</small><strong>{pendingPayment.initiated.transferContent}</strong></span>
+              <Copy size={17} />
+            </button>
+            <p className="vietqr-payment-note">Sau khi chuyển khoản, chọn “Tôi đã chuyển khoản”. Hệ thống chỉ cập nhật hóa đơn sau khi nhà trường đối soát giao dịch ngân hàng.</p>
           </div>
         </Modal>
       )}

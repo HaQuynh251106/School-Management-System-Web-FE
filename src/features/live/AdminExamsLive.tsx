@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BookOpenCheck, CalendarClock, DoorOpen, Lock, Megaphone, Pencil, Plus, RefreshCw,
-  Save, ShieldCheck, Trash2,
-  Unlock, UsersRound, X,
+  BookOpenCheck, CalendarClock, CheckCircle2, ClipboardPenLine, DoorOpen, Lock, Megaphone, Pencil,
+  Plus, RefreshCw, Save, ShieldCheck, Trash2, Unlock, UsersRound, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
-  AcademicYear, ApiUser, ExamCandidate, ExamPeriod, ExamPeriodSummary, ExamRoom,
-  ExamSchedule, Room, SchoolClass, Semester, Subject,
+  AcademicYear, ApiUser, EligibleExamGrader, ExamCandidate, ExamGradingAssignment,
+  ExamPeriod, ExamPeriodSummary, ExamRoom, ExamSchedule, Room, SchoolClass, Semester, Subject,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, useToast } from './common';
@@ -17,6 +16,7 @@ import { useHashString } from '../../api/urlState';
 
 const today = new Date().toISOString().slice(0, 10);
 const blankSchedule = (date = today) => ({ subjectId: '', classIds: [] as string[], examDate: date, startTime: '07:30', durationMinutes: 90, notes: '' });
+type ExamSetupStep = 'rooms' | 'candidates' | 'graders';
 
 function toMinutes(value: string) {
   const [hours, minutes] = value.split(':').map(Number);
@@ -43,6 +43,8 @@ export function AdminExamsLive() {
   const [scheduleId, setScheduleId] = useState('');
   const schedules = useApi<ExamSchedule[]>(periodId ? `/exam-periods/${periodId}/schedules` : null);
   const rooms = useApi<ExamRoom[]>(scheduleId ? `/exam-schedules/${scheduleId}/rooms` : null);
+  const graders = useApi<ExamGradingAssignment[]>(scheduleId ? `/exam-schedules/${scheduleId}/graders` : null);
+  const eligibleGraders = useApi<EligibleExamGrader[]>(scheduleId ? `/exam-schedules/${scheduleId}/eligible-graders` : null);
   const candidates = useApi<ExamCandidate[]>(periodId
     ? `/exam-periods/${periodId}/candidates${scheduleId ? `?scheduleId=${scheduleId}` : ''}` : null);
 
@@ -57,6 +59,8 @@ export function AdminExamsLive() {
   const [editingRoomId, setEditingRoomId] = useState('');
   const [allocationClassId, setAllocationClassId] = useState('');
   const [allocationRoomId, setAllocationRoomId] = useState('');
+  const [graderForm, setGraderForm] = useState({ classId: '', teacherId: '' });
+  const [setupStep, setSetupStep] = useState<ExamSetupStep>('rooms');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -70,6 +74,8 @@ export function AdminExamsLive() {
     setAllocationRoomId('');
     setAllocationClassId('');
     setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
+    setGraderForm({ classId: '', teacherId: '' });
+    setSetupStep('rooms');
   }, [scheduleId]);
   useEffect(() => {
     setEditingScheduleId('');
@@ -80,6 +86,37 @@ export function AdminExamsLive() {
   const gradeOptions = useMemo(() => [...new Set((classes.data || []).map((item) => item.gradeLevel).filter(Boolean))].sort(), [classes.data]);
   const eligibleClasses = useMemo(() => (classes.data || []).filter((item) => !selectedPeriod?.gradeLevel || item.gradeLevel === selectedPeriod.gradeLevel), [classes.data, selectedPeriod]);
   const classById = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item])), [classes.data]);
+  const selectedScheduleClasses = useMemo(
+    () => eligibleClasses.filter((item) => (selectedSchedule?.classIds || []).includes(item.id)),
+    [eligibleClasses, selectedSchedule],
+  );
+  const candidatesByClass = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const candidate of candidates.data || []) {
+      counts.set(candidate.classId, (counts.get(candidate.classId) || 0) + 1);
+    }
+    return counts;
+  }, [candidates.data]);
+  const candidateRoomsByClass = useMemo(() => {
+    const roomNames = new Map((rooms.data || []).map((room) => [room.id, room.roomCode]));
+    const grouped = new Map<string, Set<string>>();
+    for (const candidate of candidates.data || []) {
+      const roomCode = roomNames.get(candidate.examRoomId);
+      if (!roomCode) continue;
+      const current = grouped.get(candidate.classId) || new Set<string>();
+      current.add(roomCode);
+      grouped.set(candidate.classId, current);
+    }
+    return new Map([...grouped].map(([classId, values]) => [classId, [...values].join(', ')]));
+  }, [candidates.data, rooms.data]);
+  const allocatedClassCount = selectedScheduleClasses.filter((item) => (candidatesByClass.get(item.id) || 0) > 0).length;
+  const assignedGraderCount = selectedScheduleClasses.filter((item) =>
+    (graders.data || []).some((assignment) => assignment.classId === item.id)).length;
+  const readyRoomCount = (rooms.data || []).filter((room) => !!room.proctorOneId).length;
+  const roomsReady = !!rooms.data?.length && readyRoomCount === rooms.data.length;
+  const candidatesReady = !!selectedScheduleClasses.length && allocatedClassCount === selectedScheduleClasses.length;
+  const gradersReady = !!selectedScheduleClasses.length && assignedGraderCount === selectedScheduleClasses.length;
+  const completedSetupSteps = [roomsReady, candidatesReady, gradersReady].filter(Boolean).length;
   const scheduleConflicts = useMemo(() => (schedules.data || []).filter((item) => {
     if (item.id === editingScheduleId) return false;
     const sharedClass = (item.classIds || []).some((classId) => scheduleForm.classIds.includes(classId));
@@ -97,6 +134,7 @@ export function AdminExamsLive() {
 
   const refreshExam = () => {
     periods.reload(); schedules.reload(); rooms.reload(); candidates.reload();
+    graders.reload(); eligibleGraders.reload();
   };
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -197,6 +235,25 @@ export function AdminExamsLive() {
     'Đã cấp số báo danh và xếp chỗ cho lớp',
   );
 
+  const assignGrader = () => scheduleId && graderForm.classId && graderForm.teacherId && run(async () => {
+    await api.put(`/exam-schedules/${scheduleId}/graders`, graderForm);
+    setGraderForm({ classId: '', teacherId: '' });
+  }, 'Đã phân công giáo viên chấm thi');
+
+  const editGrader = (assignment: ExamGradingAssignment) => {
+    setGraderForm({ classId: assignment.classId, teacherId: assignment.teacherId });
+  };
+
+  const deleteGrader = (assignment: ExamGradingAssignment) => {
+    if (!window.confirm(`Xóa phân công chấm thi lớp ${assignment.classCode} của ${assignment.teacherName}?`)) return;
+    run(async () => {
+      await api.del(`/exam-grading-assignments/${assignment.id}`);
+      if (graderForm.classId === assignment.classId) {
+        setGraderForm({ classId: '', teacherId: '' });
+      }
+    }, 'Đã xóa phân công chấm thi');
+  };
+
   const changeLock = (locked: boolean) => periodId && run(
     () => api.post(`/exam-periods/${periodId}/${locked ? 'lock-scores' : 'unlock-scores'}`),
     locked ? 'Đã khóa nhập điểm và công bố kết quả' : 'Đã mở lại quyền nhập điểm',
@@ -204,7 +261,9 @@ export function AdminExamsLive() {
 
   const publishSchedule = () => periodId && run(
     () => api.post(`/exam-periods/${periodId}/publish-schedule`),
-    selectedPeriod?.scheduleRevision ? 'Đã công bố lại lịch và gửi thông báo cập nhật' : 'Đã công bố lịch và gửi thông báo',
+    selectedPeriod?.scheduleRevision
+      ? 'Đã công bố lại lịch; nhiệm vụ giáo viên sẽ được nhắc đúng thời điểm'
+      : 'Đã công bố lịch; nhiệm vụ giáo viên sẽ được nhắc đúng thời điểm',
   );
 
   const confirmPeriod = () => periodId && run(
@@ -275,16 +334,135 @@ export function AdminExamsLive() {
             <div className="exam-class-scope"><div><strong>Lớp áp dụng</strong><button type="button" onClick={() => setScheduleForm((current) => ({ ...current, classIds: current.classIds.length === eligibleClasses.length ? [] : eligibleClasses.map((item) => item.id) }))}>{scheduleForm.classIds.length === eligibleClasses.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}</button></div><div className="exam-class-options">{eligibleClasses.map((item) => <label key={item.id} className={scheduleForm.classIds.includes(item.id) ? 'selected' : ''}><input type="checkbox" checked={scheduleForm.classIds.includes(item.id)} onChange={() => toggleScheduleClass(item.id)} /><span>{item.code}</span></label>)}</div></div>
             {!!scheduleConflicts.length && <div className="exam-conflict-alert"><CalendarClock size={18} /><div><strong>Không thể lưu vì trùng lịch</strong>{scheduleConflicts.map((item) => <span key={item.id}>{item.subjectName} · {fmtDate(item.examDate)} {item.startTime} · {(item.classIds || []).filter((id) => scheduleForm.classIds.includes(id)).map((id) => classById.get(id)?.code).filter(Boolean).join(', ')}</span>)}</div></div>}
           </div>
-          <div className="exam-split"><div><div className="exam-list-heading"><h3>Danh sách ca thi</h3>{!!conflictingScheduleIds.size && <span>{conflictingScheduleIds.size} ca cần xử lý</span>}</div><Async state={schedules} allowEmpty empty="Chưa có lịch thi">{(rows) => <div className="exam-schedule-list">{rows.map((item) => <article key={item.id} className={`${item.id === scheduleId ? 'active' : ''} ${conflictingScheduleIds.has(item.id) ? 'conflict' : ''}`}><button type="button" className="exam-schedule-select" onClick={() => setScheduleId(item.id)}><CalendarClock size={18} /><span><strong>{item.subjectName}</strong><small>{fmtDate(item.examDate)} · {item.startTime} · {item.durationMinutes} phút</small><em>{(item.classIds || []).map((id) => classById.get(id)?.code).filter(Boolean).join(' · ') || 'Chưa chọn lớp'}</em></span></button><div className="exam-row-actions"><button title="Sửa ca thi" onClick={() => editSchedule(item)}><Pencil size={15} /></button><button className="danger" title="Xóa ca thi" onClick={() => deleteSchedule(item)}><Trash2 size={15} /></button></div>{conflictingScheduleIds.has(item.id) && <small className="exam-conflict-tag">Trùng giờ của lớp</small>}</article>)}</div>}</Async></div>
-            <div><h3>Phòng và giám thị {selectedSchedule && `· ${selectedSchedule.subjectName}`}</h3>{scheduleId ? <>
-              <div className="exam-form-grid room"><select className="live-select" value={roomForm.roomCode} onChange={(e) => setRoomForm({ ...roomForm, roomCode: e.target.value })}><option value="">Phòng</option>{(schoolRooms.data || []).map((x) => <option key={x.id} value={x.code}>{x.code}</option>)}</select>
-                <input className="live-input" type="number" min="1" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: Number(e.target.value) })} />
-                <select className="live-select" value={roomForm.proctorOneId} onChange={(e) => setRoomForm({ ...roomForm, proctorOneId: e.target.value })}><option value="">Giám thị 1</option>{(teachers.data || []).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select>
-                <select className="live-select" value={roomForm.proctorTwoId} onChange={(e) => setRoomForm({ ...roomForm, proctorTwoId: e.target.value })}><option value="">Giám thị 2</option>{(teachers.data || []).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select>
-                <button className="live-btn" disabled={busy || !!selectedPeriod?.scoreEntryLocked} onClick={saveRoom}>{editingRoomId ? <Save size={15} /> : <Plus size={15} />} {editingRoomId ? 'Lưu phòng' : 'Phân phòng'}</button>{editingRoomId && <button className="live-btn ghost" onClick={() => { setEditingRoomId(''); setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' }); }}><X size={15} /> Hủy</button>}</div>
-              <Async state={rooms} allowEmpty empty="Chưa phân phòng">{(rows) => <div className="exam-room-grid">{rows.map((room) => <article key={room.id} className={room.id === allocationRoomId ? 'active' : ''} onClick={() => setAllocationRoomId(room.id)}><DoorOpen size={20} /><div><strong>{room.roomCode}</strong><span>{room.capacity} chỗ</span><small>{room.proctorOneName || 'Chưa có GT1'} · {room.proctorTwoName || 'Chưa có GT2'}</small></div><div className="exam-row-actions"><button title="Sửa phòng" onClick={(event) => { event.stopPropagation(); editRoom(room); }}><Pencil size={14} /></button><button className="danger" title="Xóa phòng" onClick={(event) => { event.stopPropagation(); deleteRoom(room); }}><Trash2 size={14} /></button></div></article>)}</div>}</Async>
-              <div className="exam-allocation"><select className="live-select" value={allocationClassId} onChange={(e) => setAllocationClassId(e.target.value)}><option value="">Chọn lớp cần xếp phòng</option>{eligibleClasses.filter((item) => (selectedSchedule?.classIds || []).includes(item.id)).map((x) => <option key={x.id} value={x.id}>{x.code}</option>)}</select><button className="live-btn" disabled={busy || !allocationRoomId || !allocationClassId} onClick={allocate}><UsersRound size={15} /> Cấp SBD & xếp chỗ</button></div>
-            </> : <div className="empty-state"><strong>Chọn ca thi để phân phòng</strong></div>}</div></div>
+          <div className="exam-setup-layout">
+            <aside className="exam-schedule-rail">
+              <div className="exam-list-heading">
+                <div>
+                  <h3>Danh sách ca thi</h3>
+                  <small>Chọn một ca để hoàn thiện công tác tổ chức</small>
+                </div>
+                {!!conflictingScheduleIds.size && <span>{conflictingScheduleIds.size} ca cần xử lý</span>}
+              </div>
+              <Async state={schedules} allowEmpty empty="Chưa có lịch thi">
+                {(rows) => <div className="exam-schedule-list">{rows.map((item) => {
+                  const classCodes = (item.classIds || []).map((id) => classById.get(id)?.code).filter(Boolean);
+                  return <article key={item.id} className={`${item.id === scheduleId ? 'active' : ''} ${conflictingScheduleIds.has(item.id) ? 'conflict' : ''}`}>
+                    <button type="button" className="exam-schedule-select" onClick={() => setScheduleId(item.id)}>
+                      <CalendarClock size={18} />
+                      <span>
+                        <strong>{item.subjectName}</strong>
+                        <small>{fmtDate(item.examDate)} · {item.startTime} · {item.durationMinutes} phút</small>
+                        <em>{classCodes.join(' · ') || 'Chưa chọn lớp'}</em>
+                      </span>
+                    </button>
+                    <div className="exam-row-actions">
+                      <button title="Sửa ca thi" onClick={() => editSchedule(item)}><Pencil size={15} /></button>
+                      <button className="danger" title="Xóa ca thi" onClick={() => deleteSchedule(item)}><Trash2 size={15} /></button>
+                    </div>
+                    {conflictingScheduleIds.has(item.id) && <small className="exam-conflict-tag">Trùng giờ của lớp</small>}
+                  </article>;
+                })}</div>}
+              </Async>
+            </aside>
+
+            <div className="exam-setup-workspace">
+              {scheduleId && selectedSchedule ? <>
+                <header className="exam-selected-schedule">
+                  <span><CalendarClock size={21} /></span>
+                  <div>
+                    <small>Ca thi đang hoàn thiện</small>
+                    <h3>{selectedSchedule.subjectName}</h3>
+                    <p>{fmtDate(selectedSchedule.examDate)} · {selectedSchedule.startTime} · {selectedSchedule.durationMinutes} phút · {selectedScheduleClasses.map((item) => item.code).join(', ')}</p>
+                  </div>
+                  <strong className={completedSetupSteps === 3 ? 'complete' : ''}>
+                    {completedSetupSteps}/3 bước
+                  </strong>
+                </header>
+
+                <nav className="exam-setup-steps" aria-label="Các bước tổ chức ca thi">
+                  <button type="button" className={`${setupStep === 'rooms' ? 'active' : ''} ${roomsReady ? 'done' : ''}`} onClick={() => setSetupStep('rooms')}>
+                    <span>{roomsReady ? <CheckCircle2 size={18} /> : <DoorOpen size={18} />}</span>
+                    <div><small>Bước 1</small><strong>Phòng & giám thị</strong><em>{rooms.data?.length || 0} phòng</em></div>
+                  </button>
+                  <button type="button" className={`${setupStep === 'candidates' ? 'active' : ''} ${candidatesReady ? 'done' : ''}`} onClick={() => setSetupStep('candidates')}>
+                    <span>{candidatesReady ? <CheckCircle2 size={18} /> : <UsersRound size={18} />}</span>
+                    <div><small>Bước 2</small><strong>Thí sinh & SBD</strong><em>{allocatedClassCount}/{selectedScheduleClasses.length} lớp</em></div>
+                  </button>
+                  <button type="button" className={`${setupStep === 'graders' ? 'active' : ''} ${gradersReady ? 'done' : ''}`} onClick={() => setSetupStep('graders')}>
+                    <span>{gradersReady ? <CheckCircle2 size={18} /> : <ClipboardPenLine size={18} />}</span>
+                    <div><small>Bước 3</small><strong>Giáo viên chấm</strong><em>{assignedGraderCount}/{selectedScheduleClasses.length} lớp</em></div>
+                  </button>
+                </nav>
+
+                {setupStep === 'rooms' && <section className="exam-operation-panel">
+                  <header>
+                    <div><span><DoorOpen size={18} /></span><div><h4>Phân phòng và giám thị</h4><p>Tạo từng phòng thi; giám thị 1 là bắt buộc, giám thị 2 có thể bổ sung sau.</p></div></div>
+                    <b>{readyRoomCount}/{rooms.data?.length || 0} phòng sẵn sàng</b>
+                  </header>
+                  <div className="exam-room-editor">
+                    <label><span>Phòng thi</span><select className="live-select" value={roomForm.roomCode} onChange={(e) => setRoomForm({ ...roomForm, roomCode: e.target.value })}><option value="">Chọn phòng</option>{(schoolRooms.data || []).map((x) => <option key={x.id} value={x.code}>{x.code} · {x.capacity || 0} chỗ</option>)}</select></label>
+                    <label><span>Sức chứa sử dụng</span><input className="live-input" type="number" min="1" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: Number(e.target.value) })} /></label>
+                    <label><span>Giám thị 1 <b>*</b></span><select className="live-select" value={roomForm.proctorOneId} onChange={(e) => setRoomForm({ ...roomForm, proctorOneId: e.target.value })}><option value="">Chọn giám thị chính</option>{(teachers.data || []).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select></label>
+                    <label><span>Giám thị 2</span><select className="live-select" value={roomForm.proctorTwoId} onChange={(e) => setRoomForm({ ...roomForm, proctorTwoId: e.target.value })}><option value="">Không bắt buộc</option>{(teachers.data || []).filter((x) => x.id !== roomForm.proctorOneId).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select></label>
+                    <div className="exam-editor-actions">
+                      {editingRoomId && <button className="live-btn ghost" onClick={() => { setEditingRoomId(''); setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' }); }}><X size={15} /> Hủy</button>}
+                      <button className="live-btn" disabled={busy || !!selectedPeriod?.scoreEntryLocked || !roomForm.roomCode || !roomForm.proctorOneId || roomForm.capacity < 1} onClick={saveRoom}>{editingRoomId ? <Save size={15} /> : <Plus size={15} />} {editingRoomId ? 'Lưu thay đổi' : 'Thêm phòng thi'}</button>
+                    </div>
+                  </div>
+                  <Async state={rooms} allowEmpty empty="Chưa có phòng thi. Hãy thêm phòng đầu tiên ở biểu mẫu phía trên.">
+                    {(rows) => <div className="exam-room-grid">{rows.map((room) => <article key={room.id} className={room.id === allocationRoomId ? 'active' : ''}>
+                      <span className="exam-room-icon"><DoorOpen size={20} /></span>
+                      <div><strong>{room.roomCode}</strong><span>{room.capacity} chỗ</span><small><b>GT1:</b> {room.proctorOneName || 'Chưa phân công'}</small><small><b>GT2:</b> {room.proctorTwoName || 'Chưa phân công'}</small></div>
+                      <div className="exam-row-actions"><button title="Sửa phòng" onClick={() => editRoom(room)}><Pencil size={14} /></button><button className="danger" title="Xóa phòng" onClick={() => deleteRoom(room)}><Trash2 size={14} /></button></div>
+                    </article>)}</div>}
+                  </Async>
+                  {!!rooms.data?.length && <button className="exam-next-step" type="button" onClick={() => setSetupStep('candidates')}>Tiếp tục xếp thí sinh <UsersRound size={15} /></button>}
+                </section>}
+
+                {setupStep === 'candidates' && <section className="exam-operation-panel">
+                  <header>
+                    <div><span><UsersRound size={18} /></span><div><h4>Cấp số báo danh và xếp chỗ</h4><p>Chọn phòng tiếp nhận và lớp dự thi. Hệ thống tự sinh SBD 6 chữ số, xếp chỗ và kiểm tra sức chứa.</p></div></div>
+                    <b>{allocatedClassCount}/{selectedScheduleClasses.length} lớp hoàn tất</b>
+                  </header>
+                  {!rooms.data?.length ? <div className="exam-step-warning"><DoorOpen size={18} /><div><strong>Chưa có phòng thi</strong><span>Hoàn thành bước Phòng & giám thị trước khi xếp thí sinh.</span></div><button type="button" onClick={() => setSetupStep('rooms')}>Về bước 1</button></div> : <>
+                    <div className="exam-allocation-editor">
+                      <label><span>Phòng tiếp nhận</span><select className="live-select" value={allocationRoomId} onChange={(event) => setAllocationRoomId(event.target.value)}><option value="">Chọn phòng</option>{(rooms.data || []).map((room) => <option key={room.id} value={room.id}>{room.roomCode} · {room.capacity} chỗ</option>)}</select></label>
+                      <label><span>Lớp dự thi</span><select className="live-select" value={allocationClassId} onChange={(event) => setAllocationClassId(event.target.value)}><option value="">Chọn lớp</option>{selectedScheduleClasses.map((item) => <option key={item.id} value={item.id}>{item.code}{candidatesByClass.get(item.id) ? ` · Đã xếp ${candidatesByClass.get(item.id)} HS` : ''}</option>)}</select></label>
+                      <button className="live-btn" disabled={busy || !allocationRoomId || !allocationClassId} onClick={allocate}><UsersRound size={15} /> Cấp SBD & xếp chỗ</button>
+                    </div>
+                    <div className="exam-class-progress-grid">{selectedScheduleClasses.map((item) => {
+                      const count = candidatesByClass.get(item.id) || 0;
+                      return <article key={item.id} className={count ? 'done' : ''}><span>{count ? <CheckCircle2 size={18} /> : <UsersRound size={18} />}</span><div><strong>Lớp {item.code}</strong><small>{count ? `${count} thí sinh · Phòng ${candidateRoomsByClass.get(item.id) || '—'}` : 'Chưa cấp SBD và xếp chỗ'}</small></div><b>{count ? 'Hoàn tất' : 'Chờ xếp'}</b></article>;
+                    })}</div>
+                  </>}
+                  {candidatesReady && <button className="exam-next-step" type="button" onClick={() => setSetupStep('graders')}>Tiếp tục phân công chấm thi <ClipboardPenLine size={15} /></button>}
+                </section>}
+
+                {setupStep === 'graders' && <section className="exam-operation-panel exam-grader-panel">
+                  <header>
+                    <div><span><ClipboardPenLine size={18} /></span><div><h4>Phân công giáo viên chấm thi</h4><p>Mỗi lớp có một người chấm; danh sách chỉ gồm giáo viên đúng chuyên môn {selectedSchedule.subjectName}.</p></div></div>
+                    <b>{assignedGraderCount}/{selectedScheduleClasses.length} lớp hoàn tất</b>
+                  </header>
+                  <div className="exam-grader-policy"><ShieldCheck size={16} /><span>Nhiệm vụ chấm thi được nhắc trước 7 ngày. Quyền nhập điểm tự mở sau <b>7 ngày kể từ khi ca thi kết thúc</b>.</span></div>
+                  <div className="exam-grader-form">
+                    <label><span>Lớp chấm thi</span><select className="live-select" value={graderForm.classId} onChange={(event) => {
+                      const current = graders.data?.find((assignment) => assignment.classId === event.target.value);
+                      setGraderForm({ classId: event.target.value, teacherId: current?.teacherId || '' });
+                    }}><option value="">Chọn lớp cần phân công</option>{selectedScheduleClasses.map((item) => {
+                      const current = graders.data?.find((assignment) => assignment.classId === item.id);
+                      return <option key={item.id} value={item.id}>{item.code}{current ? ` · ${current.teacherName}` : ' · Chưa phân công'}</option>;
+                    })}</select></label>
+                    <label><span>Giáo viên đúng chuyên môn</span><select className="live-select" value={graderForm.teacherId} onChange={(event) => setGraderForm({ ...graderForm, teacherId: event.target.value })}><option value="">Chọn giáo viên</option>{(eligibleGraders.data || []).map((teacher) => <option key={teacher.teacherId} value={teacher.teacherId}>{teacher.teacherName}{teacher.teacherCode ? ` · ${teacher.teacherCode}` : ''}</option>)}</select></label>
+                    <button className="live-btn" disabled={busy || !graderForm.classId || !graderForm.teacherId} onClick={assignGrader}><Save size={15} /> Lưu phân công</button>
+                  </div>
+                  {eligibleGraders.data && eligibleGraders.data.length === 0 && <div className="exam-step-warning"><ShieldCheck size={18} /><div><strong>Chưa có giáo viên phù hợp</strong><span>Hãy cập nhật môn chuyên ngành hoặc phân công giảng dạy môn {selectedSchedule.subjectName} cho giáo viên trước.</span></div></div>}
+                  <Async state={graders} allowEmpty empty="Chưa phân công giáo viên chấm thi">
+                    {(rows) => rows.length ? <div className="exam-grader-list">{rows.map((assignment) => <article key={assignment.id}><span className="exam-grader-class">{assignment.classCode}</span><div><strong>{assignment.teacherName}</strong><small>{assignment.subjectName} · Có quyền nhập điểm lớp {assignment.classCode}</small></div><div className="exam-row-actions"><button title="Sửa phân công chấm thi" onClick={() => editGrader(assignment)}><Pencil size={14} /></button><button className="danger" title="Xóa phân công chấm thi" onClick={() => deleteGrader(assignment)}><Trash2 size={14} /></button></div></article>)}</div> : <div className="exam-grader-empty"><ClipboardPenLine size={18} /><span>Chưa có giáo viên chấm thi</span></div>}
+                  </Async>
+                </section>}
+              </> : <div className="exam-select-schedule-empty"><CalendarClock size={28} /><strong>Chọn một ca thi ở cột bên trái</strong><span>Sau đó hoàn thiện lần lượt phòng thi, thí sinh và giáo viên chấm thi.</span></div>}
+            </div>
+          </div>
         </>}
       </Section> },
       { id: 'categories', label: 'Cấu hình đầu điểm', Icon: BookOpenCheck, content: <AdminExamCategoriesLive /> },

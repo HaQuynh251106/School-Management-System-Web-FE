@@ -34,9 +34,25 @@ export const AUTH_SESSION_EXPIRED = 'sse:auth-session-expired';
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  code?: string;
+  requestId?: string;
+  fieldErrors: Record<string, string>;
+
+  constructor(
+    status: number,
+    message: string,
+    options: {
+      code?: string;
+      requestId?: string;
+      fieldErrors?: Record<string, string>;
+    } = {},
+  ) {
     super(message);
+    this.name = 'ApiError';
     this.status = status;
+    this.code = options.code;
+    this.requestId = options.requestId;
+    this.fieldErrors = options.fieldErrors ?? {};
   }
 }
 
@@ -173,25 +189,82 @@ async function parseResponse(res: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(path: string, opts: RequestInit = {}, retry = true): Promise<T> {
+function createRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `web-${crypto.randomUUID()}`;
+  }
+  return `web-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+type ErrorPayload = {
+  error?: unknown;
+  code?: unknown;
+  requestId?: unknown;
+  fieldErrors?: unknown;
+};
+
+function apiError(res: Response, data: unknown, fallbackRequestId: string) {
+  const payload = typeof data === 'object' && data !== null ? data as ErrorPayload : {};
+  const fieldErrors = typeof payload.fieldErrors === 'object' && payload.fieldErrors !== null
+    ? Object.fromEntries(
+      Object.entries(payload.fieldErrors)
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    )
+    : {};
+  const requestId = typeof payload.requestId === 'string'
+    ? payload.requestId
+    : res.headers.get('X-Request-ID') ?? fallbackRequestId;
+  const publicMessage = typeof payload.error === 'string' && payload.error.trim()
+    ? payload.error
+    : res.statusText;
+  const firstFieldError = Object.entries(fieldErrors)[0];
+  const message = firstFieldError
+    ? `${firstFieldError[0]}: ${firstFieldError[1]}`
+    : res.status >= 500 && requestId
+      ? `${publicMessage} Mã hỗ trợ: ${requestId}`
+      : publicMessage;
+  return new ApiError(
+    res.status,
+    message,
+    {
+      code: typeof payload.code === 'string' ? payload.code : undefined,
+      requestId,
+      fieldErrors,
+    },
+  );
+}
+
+async function request<T>(
+  path: string,
+  opts: RequestInit = {},
+  retry = true,
+  requestId = createRequestId(),
+): Promise<T> {
   const headers: Record<string, string> = { ...((opts.headers as Record<string, string>) || {}) };
   if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
+  headers['X-Request-ID'] = requestId;
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers, credentials: 'include' });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...opts, headers, credentials: 'include' });
+  } catch {
+    throw new ApiError(
+      0,
+      'Không thể kết nối tới máy chủ. Vui lòng kiểm tra mạng và thử lại.',
+      { code: 'NETWORK_ERROR', requestId },
+    );
+  }
 
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
-    if (await tryRefresh()) return request<T>(path, opts, false);
+    if (await tryRefresh()) return request<T>(path, opts, false, requestId);
     setTokens(null);
     window.dispatchEvent(new Event(AUTH_SESSION_EXPIRED));
   }
 
   const data = await parseResponse(res);
   if (!res.ok) {
-    const message = typeof data === 'object' && data !== null && 'error' in data
-      ? String((data as { error: unknown }).error)
-      : res.statusText;
-    throw new ApiError(res.status, message);
+    throw apiError(res, data, requestId);
   }
   return data as T;
 }
