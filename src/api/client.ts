@@ -1,8 +1,31 @@
-// API client gọi backend SSE (Spring Boot, mặc định http://localhost:4000).
-// Token chỉ tồn tại trong bộ nhớ của tab hiện tại để tránh bị đọc lại từ localStorage khi có XSS.
+// Token chỉ tồn tại trong bộ nhớ của tab hiện tại để tránh bị đọc lại từ
+// localStorage khi có XSS. Phiên được khôi phục bằng refresh cookie HttpOnly.
+//
+// Trên máy phát triển, `localhost` và `127.0.0.1` là hai site khác nhau đối với
+// SameSite cookie. Vì vậy API loopback phải luôn dùng cùng hostname với website.
+type BrowserLocation = Pick<Location, 'protocol' | 'hostname'>;
 
-const BASE: string =
-  ((import.meta as any).env?.VITE_API_BASE as string) || 'http://localhost:4000';
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
+export function resolveApiBase(
+  configuredBase?: string,
+  location: BrowserLocation = window.location,
+) {
+  const configured = configuredBase?.trim();
+  if (!configured) return `${location.protocol}//${location.hostname}:4000`;
+
+  try {
+    const url = new URL(configured);
+    if (LOOPBACK_HOSTS.has(url.hostname) && LOOPBACK_HOSTS.has(location.hostname)) {
+      url.hostname = location.hostname;
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return configured.replace(/\/$/, '');
+  }
+}
+
+const BASE = resolveApiBase((import.meta as any).env?.VITE_API_BASE as string | undefined);
 
 let accessToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;

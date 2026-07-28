@@ -4,7 +4,10 @@ import App from './App';
 import { AuthProvider } from '../api/auth';
 
 describe('App authentication shell', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
 
   it('shows the login form when no session exists', async () => {
     render(
@@ -15,5 +18,6 @@ describe('App authentication shell', () => {
 
     expect(await screen.findByRole('heading', { name: 'Đăng nhập' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Đăng nhập' })).toBeEnabled();
+    expect(window.location.hash).toBe('#/dang-nhap');
   });
 });

@@ -3,10 +3,14 @@ name: Web CI
 on:
   pull_request:
   push:
-    branches: [main, develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: web-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:

@@ -12,6 +12,7 @@ import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED
 import { GlobalSearch } from '../components/GlobalSearch';
 import { readHashRoute } from '../api/urlState';
 import { subscribeRealtime } from '../api/client';
+import { loginHash, pageHash, resolvePageRoute } from '../api/routes';
 
 const GeneralDashboard = lazy(() => import('../features/dashboard/GeneralDashboard').then((module) => ({ default: module.GeneralDashboard })));
 const FeaturePage = lazy(() => import('../features/FeaturePage').then((module) => ({ default: module.FeaturePage })));
@@ -23,8 +24,7 @@ function PageLoading() {
 }
 
 function pageFromLocation(): PageId {
-  const value = readHashRoute().page;
-  return (value || 'dashboard') as PageId;
+  return resolvePageRoute(readHashRoute().path)?.pageId ?? 'dashboard';
 }
 
 function pageAllowed(page: PageId, roleId: RoleId) {
@@ -49,11 +49,13 @@ export default function App() {
   useEffect(() => {
     if (!userRole) return;
     const roleId = userRole.toLowerCase() as RoleId;
+    const route = readHashRoute();
     const requested = pageFromLocation();
     const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
     setActivePage(next);
-    if (requested !== next || !window.location.hash) {
-      window.history.replaceState(null, '', `#/${next}`);
+    const canonicalHash = pageHash(roleId, next, route.params);
+    if (window.location.hash !== canonicalHash) {
+      window.history.replaceState(null, '', canonicalHash);
     }
     setSidebarOpen(false);
   }, [userId, userRole]);
@@ -62,11 +64,15 @@ export default function App() {
     if (!userRole) return;
     const roleId = userRole.toLowerCase() as RoleId;
     const syncFromLocation = () => {
+      const route = readHashRoute();
       const requested = pageFromLocation();
       const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
       setActivePage(next);
       setSidebarOpen(false);
-      if (requested !== next) window.history.replaceState(null, '', `#/${next}`);
+      const canonicalHash = pageHash(roleId, next, route.params);
+      if (window.location.hash !== canonicalHash) {
+        window.history.replaceState(null, '', canonicalHash);
+      }
     };
     window.addEventListener('popstate', syncFromLocation);
     window.addEventListener('hashchange', syncFromLocation);
@@ -75,6 +81,11 @@ export default function App() {
       window.removeEventListener('hashchange', syncFromLocation);
     };
   }, [userId, userRole]);
+
+  useEffect(() => {
+    if (loading || user || readHashRoute().path) return;
+    window.history.replaceState(null, '', loginHash());
+  }, [loading, user]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -156,11 +167,17 @@ export default function App() {
   const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
-    if (page !== activePage) window.history.pushState(null, '', `#/${page}`);
-    setActivePage(page);
+    const next = pageAllowed(page, role.id) ? page : 'dashboard';
+    const nextHash = pageHash(role.id, next);
+    if (window.location.hash !== nextHash) window.history.pushState(null, '', nextHash);
+    setActivePage(next);
     setSidebarOpen(false);
     setProfileOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const logoutAndRedirect = () => {
+    window.history.replaceState(null, '', loginHash());
+    logout();
   };
 
   return (
@@ -265,7 +282,7 @@ export default function App() {
                     </button> : <button type="button" role="menuitem" onClick={() => selectPage('dashboard')}>
                       <UserRound size={17} /><span><strong>Thông tin tài khoản</strong><small>Xem tổng quan quản trị</small></span>
                     </button>}
-                    <button className="profile-popup-logout" type="button" role="menuitem" onClick={logout}>
+                    <button className="profile-popup-logout" type="button" role="menuitem" onClick={logoutAndRedirect}>
                       <LogOut size={17} /><span><strong>Đăng xuất</strong><small>Kết thúc phiên làm việc an toàn</small></span>
                     </button>
                   </div>

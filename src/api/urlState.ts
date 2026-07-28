@@ -8,13 +8,13 @@ export function readHashRoute() {
   const raw = window.location.hash.replace(/^#\/?/, '');
   const separator = raw.indexOf('?');
   return {
-    page: (separator >= 0 ? raw.slice(0, separator) : raw).trim(),
+    path: (separator >= 0 ? raw.slice(0, separator) : raw).trim(),
     params: new URLSearchParams(separator >= 0 ? raw.slice(separator + 1) : ''),
   };
 }
 
 function writeHashParams(params: URLSearchParams, mode: UrlHistoryMode) {
-  const route = readHashRoute().page || 'dashboard';
+  const route = readHashRoute().path || 'dashboard';
   const query = params.toString();
   const next = `#/${route}${query ? `?${query}` : ''}`;
   if (next === window.location.hash) return;
