@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api, setTokens, hasToken } from './client';
+import { api, setTokens, hasToken, getRefreshToken } from './client';
 import type { ApiUser } from './types';
 
 interface AuthContextValue {
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    api.post('/auth/logout').catch(() => {});
+    api.post('/auth/logout', { refreshToken: getRefreshToken() }).catch(() => {});
     setTokens(null, null);
     setUser(null);
   };

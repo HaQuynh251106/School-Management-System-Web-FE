@@ -1,11 +1,12 @@
 // API client gọi backend SSE (Spring Boot, mặc định http://localhost:4000).
-// Quản lý JWT trong localStorage + tự refresh khi 401.
+// Token chỉ tồn tại trong bộ nhớ của tab hiện tại để tránh bị đọc lại từ localStorage khi có XSS.
 
 const BASE: string =
   ((import.meta as any).env?.VITE_API_BASE as string) || 'http://localhost:4000';
 
-let accessToken: string | null = localStorage.getItem('sse_token');
-let refreshToken: string | null = localStorage.getItem('sse_refresh');
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -17,13 +18,9 @@ export class ApiError extends Error {
 
 export function setTokens(access: string | null, refresh?: string | null) {
   accessToken = access;
-  if (access) localStorage.setItem('sse_token', access);
-  else localStorage.removeItem('sse_token');
 
   if (refresh !== undefined) {
     refreshToken = refresh;
-    if (refresh) localStorage.setItem('sse_refresh', refresh);
-    else localStorage.removeItem('sse_refresh');
   }
 }
 
@@ -31,7 +28,11 @@ export function hasToken() {
   return !!accessToken;
 }
 
-async function tryRefresh(): Promise<boolean> {
+export function getRefreshToken() {
+  return refreshToken;
+}
+
+async function performRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   try {
     const res = await fetch(`${BASE}/auth/refresh`, {
@@ -48,11 +49,31 @@ async function tryRefresh(): Promise<boolean> {
   }
 }
 
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
+
+async function parseResponse(res: Response): Promise<unknown> {
+  if (res.status === 204) return null;
+  const text = await res.text();
+  if (!text) return null;
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new ApiError(res.status, 'Máy chủ trả về dữ liệu JSON không hợp lệ');
+  }
+}
+
 async function request<T>(path: string, opts: RequestInit = {}, retry = true): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((opts.headers as Record<string, string>) || {}),
-  };
+  const headers: Record<string, string> = { ...((opts.headers as Record<string, string>) || {}) };
+  if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
   const res = await fetch(`${BASE}${path}`, { ...opts, headers });
@@ -62,12 +83,30 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
     setTokens(null, null);
   }
 
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = await parseResponse(res);
   if (!res.ok) {
-    throw new ApiError(res.status, (data && data.error) || res.statusText);
+    const message = typeof data === 'object' && data !== null && 'error' in data
+      ? String((data as { error: unknown }).error)
+      : res.statusText;
+    throw new ApiError(res.status, message);
   }
   return data as T;
+}
+
+async function download(path: string, retry = true): Promise<{ blob: Blob; filename?: string }> {
+  const headers: Record<string, string> = {};
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const response = await fetch(`${BASE}${path}`, { headers });
+  if (response.status === 401 && retry && await tryRefresh()) return download(path, false);
+  if (!response.ok) {
+    const data = await parseResponse(response);
+    throw new ApiError(response.status, typeof data === 'object' && data && 'error' in data
+      ? String((data as { error: unknown }).error) : response.statusText);
+  }
+  const disposition = response.headers.get('content-disposition') || '';
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  return { blob: await response.blob(), filename: encoded ? decodeURIComponent(encoded) : plain };
 }
 
 export const api = {
@@ -78,4 +117,10 @@ export const api = {
   put: <T = any>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
   del: <T = any>(path: string) => request<T>(path, { method: 'DELETE' }),
+  upload: <T = any>(path: string, file: File) => {
+    const data = new FormData();
+    data.append('file', file);
+    return request<T>(path, { method: 'POST', body: data });
+  },
+  download,
 };

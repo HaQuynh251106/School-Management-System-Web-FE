@@ -1,7 +1,7 @@
 import { BarChart3, BookOpenCheck, CalendarDays, ClipboardCheck, ClipboardList, GraduationCap, History, LockKeyhole, Mail, TrendingUp, Users } from 'lucide-react';
 import { attendanceTrend, children, subjects, subjectScores } from '../../data/mockData';
 import { BarList, ChartCard, ColumnChart } from '../../components/charts';
-import { Badge, FormPreview, FunctionTabs, InfoGrid, ProcessList, Section, StatusPill } from '../../components/ui';
+import { Badge, FormPreview, FunctionTabs, InfoGrid, ProcessList, Section } from '../../components/ui';
 import { AttendanceHistory, StudentProfileCard, StudentSchedule, StudentScoreTable } from '../shared/FeatureWidgets';
 
 export function StudentProfileFeature() {

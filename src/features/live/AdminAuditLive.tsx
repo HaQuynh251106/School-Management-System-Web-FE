@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useApi } from '../../api/useApi';
-import { Section, Badge } from '../../components/ui';
+import { Section, Badge, viLabel } from '../../components/ui';
 import { Async, fmtDateTime } from './common';
 import { RefreshCw } from 'lucide-react';
 
@@ -22,7 +22,7 @@ export function AdminAuditLive() {
   const stats = useApi<{ byModule: Record<string, number>; byAction: Record<string, number>; total: number }>('/audit-logs/stats');
 
   return (
-    <Section title="Lưu vết hệ thống (A6)" subtitle="audit_logs · actor · action · module · thời gian" wide>
+    <Section title="Lịch sử hệ thống" subtitle="Theo dõi các hoạt động quan trọng" wide>
       <div className="live-toolbar">
         <select className="live-select" value={module} onChange={(e) => setModule(e.target.value)}>
           <option value="">Mọi module</option>
@@ -31,8 +31,8 @@ export function AdminAuditLive() {
         </select>
         <select className="live-select" value={action} onChange={(e) => setAction(e.target.value)}>
           <option value="">Mọi hành động</option>
-          <option value="LOGIN">LOGIN</option><option value="CREATE">CREATE</option>
-          <option value="UPDATE">UPDATE</option><option value="PAYMENT">PAYMENT</option><option value="EXPORT">EXPORT</option>
+          <option value="LOGIN">Đăng nhập</option><option value="CREATE">Tạo mới</option>
+          <option value="UPDATE">Cập nhật</option><option value="PAYMENT">Thanh toán</option><option value="EXPORT">Xuất dữ liệu</option>
         </select>
         <span className="grow" />
         <button className="live-btn ghost" onClick={() => { logs.reload(); stats.reload(); }}><RefreshCw size={14} /> Tải lại</button>
@@ -42,16 +42,16 @@ export function AdminAuditLive() {
           Tổng <strong>{stats.data.total}</strong> sự kiện · theo module: {Object.entries(stats.data.byModule).map(([k, v]) => `${k}(${v})`).join(', ')}
         </div>
       )}
-      <Async state={logs} empty="Chưa có sự kiện">
+      <Async paginate state={logs} empty="Chưa có sự kiện" itemLabel="sự kiện">
         {(list) => (
           <table className="live-table">
             <thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Module</th><th>Chi tiết</th></tr></thead>
             <tbody>{list.map((l) => (
               <tr key={l.id}>
                 <td><small>{fmtDateTime(l.createdAt)}</small></td>
-                <td><strong>{l.actorName}</strong> <small style={{ color: 'var(--muted)' }}>{l.role}</small></td>
-                <td><Badge tone={ACTION_TONE[l.action] || 'blue'}>{l.action}</Badge></td>
-                <td>{l.module}</td>
+                <td><strong>{l.actorName}</strong> <small style={{ color: 'var(--muted)' }}>{viLabel(l.role)}</small></td>
+                <td><Badge tone={ACTION_TONE[l.action] || 'blue'}>{viLabel(l.action)}</Badge></td>
+                <td>{l.module === 'identity' ? 'Tài khoản' : l.module === 'academic' ? 'Học tập' : l.module === 'finance' ? 'Tài chính' : l.module === 'reports' ? 'Báo cáo' : l.module}</td>
                 <td><small>{l.detail}</small></td>
               </tr>
             ))}</tbody>

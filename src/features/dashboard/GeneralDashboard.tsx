@@ -1,227 +1,232 @@
 import {
-  AlertTriangle,
-  BarChart3,
-  Bell,
-  BookOpenCheck,
-  CalendarDays,
-  CheckCircle2,
-  ClipboardCheck,
-  Clock3,
-  MessageSquareText,
-  School,
-  Users,
-  WalletCards,
+  Activity, BarChart3, Bell, BookOpenCheck, CalendarDays, CheckCircle2,
+  GraduationCap, School, ShieldCheck, Sparkles, Users, WalletCards,
 } from 'lucide-react';
-import {
-  assignments,
-  attendanceTrend,
-  chatThreads,
-  children,
-  classes,
-  currency,
-  eventFlow,
-  gradeBands,
-  initialGrades,
-  invoiceStatus,
-  invoices,
-  roleDistribution,
-  roster,
-  subjectScores,
-  teacherClasses,
-} from '../../data/mockData';
+import type { LucideIcon } from 'lucide-react';
+import { useAuth } from '../../api/auth';
+import { useApi } from '../../api/useApi';
+import type {
+  ApiUser, DashboardChart, DashboardMetric, DashboardResponse, Notification, SchoolClass,
+} from '../../api/types';
+import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
+import { Section, StatusPill, viLabel } from '../../components/ui';
 import type { Metric, RoleId } from '../../types';
-import { BarList, ChartCard, ColumnChart, MetricCard, SplitDashboard } from '../../components/charts';
-import { InfoGrid, ProcessList, StatusPill } from '../../components/ui';
+import { PaginatedData } from '../live/common';
+
+type RoleIntro = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  facts: string[];
+  imageAlt: string;
+  Icon: LucideIcon;
+};
+
+const roleDashboardIntros: Record<RoleId, RoleIntro> = {
+  admin: {
+    eyebrow: 'Trung tâm điều hành',
+    title: 'Một góc nhìn, toàn bộ nhà trường',
+    description: 'Theo dõi vận hành, học tập, nhân sự và tài chính bằng dữ liệu được cập nhật trực tiếp từ hệ thống.',
+    facts: ['Phân quyền an toàn', 'Dữ liệu tập trung'],
+    imageAlt: 'Minh hoạ quản trị viên đang theo dõi dữ liệu nhà trường',
+    Icon: ShieldCheck,
+  },
+  teacher: {
+    eyebrow: 'Không gian giáo viên',
+    title: 'Tổ chức lớp học hiệu quả hơn mỗi ngày',
+    description: 'Theo dõi lịch dạy, chuyên cần, điểm số và bài tập trong một không gian làm việc thống nhất.',
+    facts: ['Lịch dạy rõ ràng', 'Dữ liệu lớp học trực tiếp'],
+    imageAlt: 'Minh hoạ giáo viên đang hướng dẫn học sinh trong lớp',
+    Icon: School,
+  },
+  student: {
+    eyebrow: 'Hành trình học tập',
+    title: 'Nắm bắt tiến độ, chủ động học tập',
+    description: 'Tổng hợp thời khóa biểu, kết quả học tập, chuyên cần và nhiệm vụ cần hoàn thành.',
+    facts: ['Kết quả theo học kỳ', 'Bài tập và thông báo mới'],
+    imageAlt: 'Minh hoạ học sinh cùng nhau học tập',
+    Icon: GraduationCap,
+  },
+  parent: {
+    eyebrow: 'Đồng hành cùng con',
+    title: 'Theo dõi việc học một cách dễ dàng',
+    description: 'Cập nhật kết quả, chuyên cần, thông báo và học phí của từng học sinh được liên kết.',
+    facts: ['Thông tin tập trung', 'Cập nhật từ nhà trường'],
+    imageAlt: 'Minh hoạ phụ huynh theo dõi thông tin học tập trên điện thoại',
+    Icon: Users,
+  },
+};
+
+const metricIcons: Record<string, LucideIcon> = {
+  users: Users,
+  classes: School,
+  attendance: CalendarDays,
+  alerts: Activity,
+  grades: BarChart3,
+  assignments: BookOpenCheck,
+  calendar: CalendarDays,
+  children: Users,
+  invoices: WalletCards,
+  notifications: Bell,
+};
+
+const validTones = new Set<Metric['tone']>(['blue', 'green', 'orange', 'red', 'violet']);
 
 export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
-  const metrics = dashboardMetricsByRole[roleId];
+  const { user } = useAuth();
+  const dashboard = useApi<DashboardResponse>('/dashboard');
+  const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
+  const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
+  const notifications = useApi<Notification[]>('/notifications');
+  const intro = roleDashboardIntros[roleId];
+  const IntroIcon = intro.Icon;
+  const metrics = (dashboard.data?.metrics ?? []).map(toMetric);
+  const nameParts = user?.fullName.trim().split(/\s+/) ?? [];
+  const firstName = nameParts[nameParts.length - 1] || roleLabel(roleId);
+  const today = new Intl.DateTimeFormat('vi-VN', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  }).format(new Date());
+  const error = dashboard.error || users.error || classes.error || notifications.error;
+  const loading = dashboard.loading;
 
   return (
-    <div className="dashboard">
-      <section className="metric-grid">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.label} metric={metric} />
-        ))}
+    <div className={`dashboard role-dashboard role-dashboard--${roleId}`}>
+      {error && <div className="error-banner">Không thể tải một phần dữ liệu: {error}</div>}
+
+      <section className={`portal-hero portal-hero--${roleId}`}>
+        <div className="portal-hero-copy">
+          <span className="portal-hero-kicker"><Sparkles size={15} /> {intro.eyebrow}</span>
+          <p className="portal-hero-welcome">Xin chào, {firstName}</p>
+          <h2>{intro.title}</h2>
+          <p>{intro.description}</p>
+          <div className="portal-hero-facts">
+            {intro.facts.map((fact) => <strong key={fact}><CheckCircle2 size={16} /> {fact}</strong>)}
+            <strong><IntroIcon size={16} /> {today}</strong>
+          </div>
+        </div>
+        <div className={`portal-hero-art role-art role-art--${roleId}`} role="img" aria-label={intro.imageAlt} />
       </section>
 
-      {roleId === 'admin' && <AdminDashboard />}
-      {roleId === 'teacher' && <TeacherDashboard />}
-      {roleId === 'student' && <StudentDashboard />}
-      {roleId === 'parent' && <ParentDashboard />}
+      {loading && <DashboardSkeleton />}
+      {!loading && metrics.length > 0 && (
+        <section className="metric-grid">
+          {metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
+        </section>
+      )}
+
+      {!loading && (dashboard.data?.charts.length ?? 0) > 0 && (
+        <div className="dashboard-grid">
+          {dashboard.data?.charts.map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}
+        </div>
+      )}
+
+      {roleId === 'admin' && (
+        <AdminDashboardTables users={users.data ?? []} classes={classes.data ?? []} notifications={notifications.data ?? []} />
+      )}
     </div>
   );
 }
 
-const dashboardMetricsByRole: Record<RoleId, Metric[]> = {
-  admin: [
-    { label: 'Tài khoản hoạt động', value: '2,438', hint: '4 vai trò RBAC', Icon: Users, tone: 'blue' },
-    { label: 'Lớp đang mở', value: String(classes.length), hint: 'Năm học 2025-2026', Icon: School, tone: 'green' },
-    { label: 'Cảnh báo TKB', value: '6', hint: 'GV/phòng/lớp trùng lịch', Icon: AlertTriangle, tone: 'orange' },
-    { label: 'Sự kiện hôm nay', value: '2.7K', hint: 'RabbitMQ + audit log', Icon: Bell, tone: 'violet' },
-  ],
-  teacher: [
-    { label: 'Lớp đang dạy', value: String(teacherClasses.length), hint: 'Toán 10 và 11', Icon: School, tone: 'blue' },
-    { label: 'Tiết hôm nay', value: '4', hint: '2 tiết cần điểm danh', Icon: CalendarDays, tone: 'green' },
-    { label: 'Bài chưa chấm', value: '18', hint: 'Deadline tuần này', Icon: BookOpenCheck, tone: 'orange' },
-    { label: 'Tin nhắn mới', value: '3', hint: 'HS/PH và lớp 10A1', Icon: MessageSquareText, tone: 'violet' },
-  ],
-  student: [
-    { label: 'Điểm trung bình', value: '8.4', hint: 'HK1 đang học', Icon: BarChart3, tone: 'green' },
-    { label: 'Chuyên cần', value: '96%', hint: '1 buổi vắng có phép', Icon: CheckCircle2, tone: 'blue' },
-    { label: 'Bài sắp đến hạn', value: '3', hint: 'Trong 7 ngày', Icon: Clock3, tone: 'orange' },
-    { label: 'Thông báo', value: '12', hint: 'In-app + push', Icon: Bell, tone: 'violet' },
-  ],
-  parent: [
-    { label: 'Hồ sơ con', value: String(children.length), hint: 'Switch profile sẵn sàng', Icon: Users, tone: 'blue' },
-    { label: 'Cảnh báo chuyên cần', value: '1', hint: 'Cần xác nhận lý do', Icon: AlertTriangle, tone: 'red' },
-    { label: 'Hóa đơn mở', value: '2', hint: 'VNPAY/MoMo sandbox', Icon: WalletCards, tone: 'orange' },
-    { label: 'Trao đổi GVCN', value: '4', hint: 'Tin nhắn trong tuần', Icon: MessageSquareText, tone: 'violet' },
-  ],
-};
-
-function AdminDashboard() {
+function DashboardSkeleton() {
   return (
-    <section className="chart-grid">
-      <ChartCard title="Phân bổ tài khoản" subtitle="Admin theo dõi cơ cấu người dùng toàn trường">
-        <BarList data={roleDistribution} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Chuyên cần toàn trường" subtitle="Tỷ lệ có mặt 7 ngày gần nhất">
-        <ColumnChart data={attendanceTrend} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Phổ điểm học kỳ" subtitle="Admin xem chất lượng học tập theo dải điểm">
-        <BarList data={gradeBands} max={80} suffix=" HS" />
-      </ChartCard>
-
-      <ChartCard title="Tài chính & event queue" subtitle="Hóa đơn, trạng thái thanh toán và lượng event">
-        <SplitDashboard />
-      </ChartCard>
+    <section className="metric-grid dashboard-skeleton" aria-label="Đang tải dữ liệu tổng quan">
+      {[0, 1, 2, 3].map((item) => <div key={item} className="metric-card"><i /><i /><i /></div>)}
     </section>
   );
 }
 
-function TeacherDashboard() {
-  const assignmentProgress = assignments.map((item) => ({
-    label: item.className,
-    value: Math.round((item.submitted / item.total) * 100),
-  }));
-  const classLoad = teacherClasses.map((item) => ({ label: item.className, value: item.students }));
-  const scoreDistribution = roster.map((student) => ({
-    label: student.name,
-    value: Math.round((initialGrades[student.id] ?? 0) * 10),
-  }));
-  const unreadByThread = chatThreads.map((thread) => ({
-    label: thread.name,
-    value: thread.unread,
-  }));
-
+function DashboardChartCard({ chart }: { chart: DashboardChart }) {
+  const max = Math.max(1, chart.max, ...chart.data.map((item) => item.value));
   return (
-    <section className="chart-grid">
-      <ChartCard title="Lớp đang phụ trách" subtitle="Sĩ số theo phân công giáo viên">
-        <BarList data={classLoad} max={45} suffix=" HS" />
-      </ChartCard>
-
-      <ChartCard title="Tiến độ nộp bài" subtitle="Tỷ lệ bài nộp theo lớp">
-        <BarList data={assignmentProgress} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Điểm lớp 10A1" subtitle="Điểm miệng gần nhất của học sinh">
-        <BarList data={scoreDistribution} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Tin nhắn cần xử lý" subtitle="Luồng giao tiếp với HS/PH">
-        <BarList data={unreadByThread} max={3} suffix=" mới" />
-      </ChartCard>
-    </section>
+    <ChartCard title={chart.title} subtitle={chart.subtitle}>
+      {chart.data.length === 0 ? (
+        <div className="chart-empty"><BarChart3 size={24} /><span>Chưa có dữ liệu để hiển thị</span></div>
+      ) : chart.type === 'COLUMN' ? (
+        <ColumnChart data={chart.data} max={max} suffix={chart.suffix} />
+      ) : (
+        <BarList data={chart.data} max={max} suffix={chart.suffix} />
+      )}
+    </ChartCard>
   );
 }
 
-function StudentDashboard() {
-  const scoreBySubject = subjectScores.map((score) => ({
-    label: score.subject,
-    value: Math.round(score.avg * 10),
-  }));
-  const assignmentStatus = assignments.map((item) => ({
-    label: item.title.replace('Bài tập ', ''),
-    value: Math.round((item.submitted / item.total) * 100),
-  }));
-
+function AdminDashboardTables({ users, classes, notifications }: {
+  users: ApiUser[];
+  classes: SchoolClass[];
+  notifications: Notification[];
+}) {
   return (
-    <section className="chart-grid">
-      <ChartCard title="Điểm theo môn" subtitle="Học sinh theo dõi kết quả HK1 của mình">
-        <BarList data={scoreBySubject} max={100} suffix="%" />
-      </ChartCard>
+    <>
+      <div className="admin-dashboard-table-grid">
+        <Section title="Tài khoản người dùng" subtitle="Dữ liệu người dùng theo từng vai trò">
+          <PaginatedData items={users} pageSize={5} itemLabel="tài khoản">
+            {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
+              <thead><tr><th>Họ và tên</th><th>Vai trò</th><th>Tài khoản</th><th>Trạng thái</th></tr></thead>
+              <tbody>{items.map((item) => <tr key={item.id}>
+                <td><strong>{item.fullName}</strong><small>{item.email || 'Chưa cập nhật email'}</small></td>
+                <td>{viLabel(item.role)}</td><td>@{item.username}</td><td><StatusPill value={item.status} /></td>
+              </tr>)}</tbody>
+            </table></div>}
+          </PaginatedData>
+        </Section>
 
-      <ChartCard title="Chuyên cần cá nhân" subtitle="Tỷ lệ có mặt theo ngày trong tuần">
-        <ColumnChart data={attendanceTrend} max={100} suffix="%" />
-      </ChartCard>
+        <Section title="Lớp học hiện tại" subtitle="Sĩ số và giáo viên chủ nhiệm">
+          <PaginatedData items={classes} pageSize={5} itemLabel="lớp học">
+            {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
+              <thead><tr><th>Lớp</th><th>Khối</th><th>Giáo viên chủ nhiệm</th><th>Sĩ số</th></tr></thead>
+              <tbody>{items.map((item) => <tr key={item.id}>
+                <td><strong>{item.code}</strong><small>{item.name}</small></td>
+                <td>{item.gradeLevel}</td><td>{item.homeroomTeacherName || 'Chưa phân công'}</td><td><strong>{item.studentCount}</strong> học sinh</td>
+              </tr>)}</tbody>
+            </table></div>}
+          </PaginatedData>
+        </Section>
+      </div>
 
-      <ChartCard title="Bài tập cần theo dõi" subtitle="Tiến độ nộp bài trong lớp">
-        <BarList data={assignmentStatus} max={100} suffix="%" />
-      </ChartCard>
-
-      <ChartCard title="Lịch học hôm nay" subtitle="Các tiết học và việc cần làm">
-        <ProcessList
-          items={[
-            'Tiết 1: Toán tại P201, kiểm tra miệng.',
-            'Tiết 2: Vật lý tại P304, chuẩn bị thí nghiệm.',
-            'Tiết 3: Tiếng Anh tại P108, nộp bài speaking.',
-            'Sau giờ học: CLB Robotics tại Lab 2.',
-          ]}
-        />
-      </ChartCard>
-    </section>
+      <Section title="Thông báo mới nhất" subtitle="Các sự kiện và cảnh báo trong hệ thống" wide>
+        <PaginatedData items={notifications} pageSize={5} itemLabel="thông báo">
+          {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
+            <thead><tr><th>Loại</th><th>Nội dung</th><th>Thời gian</th><th>Trạng thái</th></tr></thead>
+            <tbody>{items.map((item) => <tr key={item.id}>
+              <td>{viLabel(item.type)}</td><td><strong>{item.title}</strong><small>{item.body}</small></td>
+              <td>{formatDashboardTime(item.createdAt)}</td><td><StatusPill value={item.read ? 'READ' : 'UNREAD'} /></td>
+            </tr>)}</tbody>
+          </table></div>}
+        </PaginatedData>
+      </Section>
+    </>
   );
 }
 
-function ParentDashboard() {
-  const childScores = children.map((child) => ({
-    label: child.name,
-    value: Math.round(child.avg * 10),
-  }));
-  const childAttendance = children.map((child) => ({
-    label: child.name,
-    value: child.attendance,
-  }));
-  const invoiceAmounts = invoices.map((invoice) => ({
-    label: invoice.title.replace(' học sinh', ''),
-    value: Math.round(invoice.amount / 100000),
-  }));
+function toMetric(item: DashboardMetric): Metric {
+  const tone = validTones.has(item.tone as Metric['tone']) ? item.tone as Metric['tone'] : 'blue';
+  return {
+    label: item.label,
+    value: formatMetricValue(item.value, item.format),
+    hint: item.hint,
+    Icon: metricIcons[item.key] || Activity,
+    tone,
+  };
+}
 
-  return (
-    <section className="chart-grid">
-      <ChartCard title="Kết quả học tập của con" subtitle="Điểm trung bình theo từng hồ sơ con">
-        <BarList data={childScores} max={100} suffix="%" />
-      </ChartCard>
+function formatMetricValue(value: number, format: string) {
+  if (format === 'PERCENT') return `${formatNumber(value, 1)}%`;
+  if (format === 'DECIMAL_1') return formatNumber(value, 1);
+  if (format === 'CURRENCY') return `${new Intl.NumberFormat('vi-VN').format(value)} ₫`;
+  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value);
+}
 
-      <ChartCard title="Chuyên cần của con" subtitle="Phụ huynh theo dõi tỷ lệ đi học">
-        <ColumnChart data={childAttendance} max={100} suffix="%" />
-      </ChartCard>
+function formatNumber(value: number, digits: number) {
+  return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
 
-      <ChartCard title="Học phí cần theo dõi" subtitle="Số tiền theo từng hóa đơn">
-        <BarList data={invoiceAmounts} max={70} suffix="00K" />
-      </ChartCard>
+function formatDashboardTime(value?: string) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
+}
 
-      <ChartCard title="Việc cần làm" subtitle="Các đầu việc ưu tiên của phụ huynh">
-        <div className="dashboard-task-list">
-          <div>
-            <span>Xác nhận vắng</span>
-            <strong>{children[0].alert}</strong>
-            <StatusPill value="Cần xử lý" />
-          </div>
-          <div>
-            <span>Học phí</span>
-            <strong>{currency.format(invoices[0].amount)}</strong>
-            <StatusPill value={invoices[0].status} />
-          </div>
-          <div>
-            <span>Liên lạc</span>
-            <strong>4 tin nhắn với GVCN</strong>
-            <StatusPill value="PENDING" />
-          </div>
-        </div>
-      </ChartCard>
-    </section>
-  );
+function roleLabel(role: RoleId) {
+  return { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh', parent: 'Phụ huynh' }[role];
 }

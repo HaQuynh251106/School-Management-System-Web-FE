@@ -7,15 +7,17 @@ export function Modal({
   onClose,
   children,
   footer,
+  size = 'default',
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  size?: 'default' | 'wide';
 }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-card ${size === 'wide' ? 'modal-card-wide' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>{title}</h3>
           <button className="modal-close" onClick={onClose} aria-label="Đóng"><X size={20} /></button>

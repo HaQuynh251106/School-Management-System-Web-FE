@@ -44,7 +44,7 @@ import {
   subjects,
 } from '../../data/mockData';
 import { BarList, ChartCard, ColumnChart, SplitDashboard } from '../../components/charts';
-import { Badge, CommandButton, FormPreview, FunctionTabs, InfoGrid, PermissionMatrix, ProcessList, Section, StatusPill } from '../../components/ui';
+import { Badge, CommandButton, FunctionTabs, InfoGrid, PermissionMatrix, ProcessList, Section, StatusPill } from '../../components/ui';
 import { ClassTable, InvoiceSection, TimetableGrid, UserList } from '../shared/FeatureWidgets';
 
 export function AdminAcademicFeature() {

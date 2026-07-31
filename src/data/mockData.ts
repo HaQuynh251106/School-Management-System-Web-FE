@@ -25,7 +25,7 @@ import type { AttendanceStatus, Metric, ModuleItem, RoleDefinition, RoleId } fro
 export const roles: RoleDefinition[] = [
   {
     id: 'admin',
-    label: 'Admin',
+    label: 'Quản trị viên',
     title: 'Quản trị hệ thống',
     subtitle: 'Người dùng, cơ cấu đào tạo, TKB, khảo thí',
     sessionName: 'Lê Minh Admin',
@@ -34,7 +34,7 @@ export const roles: RoleDefinition[] = [
   },
   {
     id: 'teacher',
-    label: 'Teacher',
+    label: 'Giáo viên',
     title: 'Không gian giảng dạy',
     subtitle: 'Lớp dạy, điểm danh, điểm số, bài tập',
     sessionName: 'Trần Quốc Huy',
@@ -43,7 +43,7 @@ export const roles: RoleDefinition[] = [
   },
   {
     id: 'student',
-    label: 'Student',
+    label: 'Học sinh',
     title: 'Cổng học sinh',
     subtitle: 'Hồ sơ, TKB, điểm, chuyên cần, bài tập',
     sessionName: 'Nguyễn An',
@@ -52,45 +52,47 @@ export const roles: RoleDefinition[] = [
   },
   {
     id: 'parent',
-    label: 'Parent',
+    label: 'Phụ huynh',
     title: 'Cổng phụ huynh',
-    subtitle: 'Switch profile, học tập, cảnh báo, học phí',
+    subtitle: 'Theo dõi học tập, cảnh báo và học phí của con',
     sessionName: 'Mai Lan',
     Icon: RefreshCcw,
-    color: '#c2410c',
+    color: '#2563eb',
   },
 ];
 
 export const modules: Record<RoleId, ModuleItem[]> = {
   admin: [
-    { code: 'A1', title: 'Người dùng & phân quyền', phase: 'GĐ1', priority: 1, summary: 'CRUD, import Excel, reset mật khẩu, khóa/mở tài khoản.', Icon: Users },
+    { code: 'A1', title: 'Người dùng & phân quyền', phase: 'GĐ1', priority: 1, summary: 'Quản lý tài khoản, phân quyền và bảo mật.', Icon: Users },
     { code: 'A2', title: 'Cơ cấu đào tạo', phase: 'GĐ1', priority: 1, summary: 'Năm học, học kỳ, khối, lớp, môn, GVCN, phân lớp.', Icon: School },
     { code: 'A3', title: 'Xếp thời khóa biểu', phase: 'GĐ1', priority: 2, summary: 'Kiểm tra xung đột GV, phòng, lớp và ngày nghỉ.', Icon: CalendarDays },
     { code: 'A4', title: 'Cấu hình khảo thí', phase: 'GĐ1', priority: 2, summary: 'Loại điểm, hệ số môn học, quy tắc trung bình.', Icon: Settings },
     { code: 'A5', title: 'Khóa ngoại khóa', phase: 'GĐ2', priority: 3, summary: 'Tạo, mở đăng ký, theo dõi sĩ số và doanh thu.', Icon: Sparkles },
-    { code: 'A6', title: 'Lưu vết hệ thống', phase: 'GĐ2', priority: 2, summary: 'Audit log MongoDB theo actor, entity và thời gian.', Icon: History },
+    { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ, VNPAY/MoMo.', Icon: CircleDollarSign },
-    { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Phổ điểm, chuyên cần, doanh thu, export Excel/PDF.', Icon: FileSpreadsheet },
-    { code: 'A9', title: 'Template thông báo', phase: 'GĐ2', priority: 3, summary: 'Mẫu Handlebars cho Push/Email/In-app theo category.', Icon: Bell },
+    { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Tổng hợp điểm, chuyên cần và doanh thu.', Icon: FileSpreadsheet },
+    { code: 'A9', title: 'Trung tâm thông báo', phase: 'GĐ2', priority: 1, summary: 'Gửi thông báo toàn trường hoặc riêng theo từng vai trò.', Icon: Bell },
   ],
   teacher: [
     { code: 'B1', title: 'Lớp được phân công', phase: 'GĐ1', priority: 1, summary: 'Danh sách lớp, sĩ số, môn và học kỳ phụ trách.', Icon: School },
     { code: 'B2', title: 'TKB cá nhân', phase: 'GĐ1', priority: 1, summary: 'Lịch dạy theo ngày, phòng, tiết và lớp.', Icon: CalendarDays },
     { code: 'B3', title: 'Sổ điểm danh', phase: 'GĐ1', priority: 1, summary: 'Có mặt, trễ, vắng, ghi chú lý do theo tiết.', Icon: ClipboardCheck },
     { code: 'B4', title: 'Bảng điểm', phase: 'GĐ1', priority: 2, summary: 'Nhập/sửa điểm, ghi log thay đổi, phổ điểm lớp.', Icon: BarChart3 },
-    { code: 'B5', title: 'Bài tập', phase: 'GĐ2', priority: 2, summary: 'Tạo bài, đính kèm file, deadline, chấm bài.', Icon: BookOpenCheck },
-    { code: 'B6', title: 'Giao tiếp', phase: 'GĐ2', priority: 2, summary: 'Broadcast lớp và chat 1-1 với HS/PH.', Icon: MessageSquareText },
+    { code: 'B5', title: 'Bài tập', phase: 'GĐ2', priority: 2, summary: 'Giao bài, đính kèm tệp và chấm bài.', Icon: BookOpenCheck },
+    { code: 'B6', title: 'Trao đổi', phase: 'GĐ2', priority: 2, summary: 'Nhắn tin với học sinh và phụ huynh.', Icon: MessageSquareText },
+    { code: 'B7', title: 'Thông báo tự động', phase: 'GĐ2', priority: 1, summary: 'Theo dõi cơ chế báo điểm, điểm danh và trao đổi tình hình lớp.', Icon: Bell },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },
     { code: 'C2', title: 'Theo dõi học thuật', phase: 'GĐ1', priority: 1, summary: 'TKB, môn học, điểm, trung bình học kỳ.', Icon: BookOpenCheck },
     { code: 'C3', title: 'Chuyên cần cá nhân', phase: 'GĐ1', priority: 3, summary: 'Lịch sử đi học, vắng, trễ, ghi chú giáo viên.', Icon: ClipboardCheck },
-    { code: 'C4', title: 'Nộp bài tập', phase: 'GĐ2', priority: 1, summary: 'Tải tài liệu, upload bài, xem feedback.', Icon: Upload },
-    { code: 'C5', title: 'Thông báo', phase: 'GĐ2', priority: 2, summary: 'Push, in-app notification và chat với GV.', Icon: Bell },
+    { code: 'C4', title: 'Nộp bài tập', phase: 'GĐ2', priority: 1, summary: 'Xem đề, nộp bài và nhận kết quả chấm.', Icon: Upload },
+    { code: 'C5', title: 'Thông báo', phase: 'GĐ2', priority: 2, summary: 'Theo dõi thông tin mới từ nhà trường.', Icon: Bell },
     { code: 'C6', title: 'Ngoại khóa', phase: 'GĐ2', priority: 3, summary: 'Đăng ký khóa ngoại khóa còn chỗ.', Icon: Plus },
+    { code: 'C7', title: 'Trao đổi giáo viên', phase: 'GĐ2', priority: 1, summary: 'Hỏi bài và trao đổi trực tiếp với giáo viên phụ trách.', Icon: MessageSquareText },
   ],
   parent: [
-    { code: 'D1', title: 'Switch Profile', phase: 'GĐ1', priority: 1, summary: 'Chọn con đang theo dõi trong một tài khoản PH.', Icon: RefreshCcw },
+    { code: 'D1', title: 'Chọn học sinh', phase: 'GĐ1', priority: 1, summary: 'Chọn con cần theo dõi.', Icon: RefreshCcw },
     { code: 'D2', title: 'Giám sát học tập', phase: 'GĐ1', priority: 1, summary: 'Điểm, chuyên cần, cảnh báo vắng tức thời.', Icon: BarChart3 },
     { code: 'D3', title: 'Liên lạc GVCN', phase: 'GĐ2', priority: 2, summary: 'Nhắn tin với giáo viên chủ nhiệm.', Icon: MessageSquareText },
     { code: 'D4', title: 'Học phí', phase: 'GĐ2', priority: 1, summary: 'Hóa đơn, thanh toán online, lịch sử thanh toán.', Icon: WalletCards },
@@ -106,10 +108,10 @@ export const dashboardMetrics: Metric[] = [
 ];
 
 export const roleDistribution = [
-  { label: 'Student', value: 72 },
-  { label: 'Parent', value: 18 },
-  { label: 'Teacher', value: 8 },
-  { label: 'Admin', value: 2 },
+  { label: 'Học sinh', value: 72 },
+  { label: 'Phụ huynh', value: 18 },
+  { label: 'Giáo viên', value: 8 },
+  { label: 'Quản trị viên', value: 2 },
 ];
 
 export const attendanceTrend = [

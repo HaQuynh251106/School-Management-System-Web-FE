@@ -3,7 +3,7 @@ import { AlertTriangle, BarChart3, Bell, CalendarDays, CheckCircle2, ClipboardCh
 import { assignments, gradeChangeLogs, initialAttendance, initialGrades, roster, teacherClasses, timetable } from '../../data/mockData';
 import type { AttendanceStatus } from '../../types';
 import { BarList, ChartCard } from '../../components/charts';
-import { Badge, CommandButton, FunctionTabs, InfoGrid, ProcessList, Section, StatusPill } from '../../components/ui';
+import { CommandButton, FunctionTabs, InfoGrid, ProcessList, Section } from '../../components/ui';
 import { ScoreConfigFeature } from '../admin/AdminFeatures';
 import { AttendanceEditor, AttendanceHistory, GradeEditor, RosterList, TeacherClassList } from '../shared/FeatureWidgets';
 

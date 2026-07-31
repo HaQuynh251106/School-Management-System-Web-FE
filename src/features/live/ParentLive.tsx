@@ -3,7 +3,7 @@ import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw } from 'lucide-r
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import type { ApiUser, Grade, AttendanceRecord, Invoice } from '../../api/types';
+import type { ApiUser, Grade, AttendanceRecord, Invoice, PaymentInitResponse } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, fmtDate, money } from './common';
 import { ExtracurricularLive } from './SharedLive';
@@ -28,7 +28,7 @@ export function ParentSwitchLive() {
   }, [children.data, childId, setChildId]);
 
   return (
-    <Section title="Switch Profile (D1)" subtitle="/me/children · chọn con để xem ở các mục khác" wide>
+    <Section title="Chọn học sinh" subtitle="Chọn con cần theo dõi" wide>
       <Async state={children} empty="Tài khoản chưa liên kết học sinh">
         {(list) => {
           const active = list.find((c) => c.id === childId) || list[0];
@@ -44,9 +44,9 @@ export function ParentSwitchLive() {
               {active && (
                 <InfoGrid items={[
                   { title: 'Họ tên', value: active.fullName, meta: '@' + active.username },
-                  { title: 'Mã HS', value: active.studentCode || '—', meta: 'student_code' },
+                  { title: 'Mã học sinh', value: active.studentCode || '—', meta: 'Mã định danh' },
                   { title: 'Lớp', value: active.className || '—', meta: active.classId || '' },
-                  { title: 'Đang theo dõi', value: 'Active', meta: 'X-Active-Student-Id' },
+                  { title: 'Trạng thái', value: 'Đang theo dõi', meta: 'Đã chọn' },
                 ]} />
               )}
             </>
@@ -64,23 +64,23 @@ export function ParentMonitorLive() {
   const att = useApi<AttendanceRecord[]>(childId ? `/attendance?studentId=${childId}` : null);
 
   if (!childId) {
-    return <Section title="Giám sát học tập (D2)" subtitle="Chọn con trước" wide>
-      <div className="live-loading">Hãy vào tab “Switch Profile” và chọn một con để theo dõi.</div></Section>;
+    return <Section title="Theo dõi học tập" subtitle="Bạn chưa chọn học sinh" wide>
+      <div className="live-loading">Hãy vào mục “Chọn học sinh” để tiếp tục.</div></Section>;
   }
 
   return (
     <FunctionTabs tabs={[
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
-        <Section title="Điểm của con (D2)" subtitle="BE kiểm tra parent_student_relations · 403 nếu không phải con" wide>
-          <Async state={grades} empty="Chưa có điểm">
+        <Section title="Điểm của con" subtitle="Kết quả học tập theo từng môn" wide>
+          <Async paginate state={grades} empty="Chưa có điểm" itemLabel="điểm số">
             {(l) => (<table className="live-table"><thead><tr><th>Môn</th><th>Loại điểm</th><th>Điểm</th><th>Ngày</th></tr></thead>
               <tbody>{l.map((g) => <tr key={g.id}><td><strong>{g.subjectName}</strong></td><td>{g.categoryName}</td><td><strong>{g.score?.toFixed(1)}</strong></td><td>{fmtDate(g.recordedAt)}</td></tr>)}</tbody></table>)}
           </Async>
         </Section>
       ) },
       { id: 'att', label: 'Chuyên cần', Icon: ClipboardCheck, content: (
-        <Section title="Chuyên cần của con" subtitle="Cảnh báo vắng gửi realtime tới hộp thư PH" wide>
-          <Async state={att} empty="Chưa có dữ liệu">
+        <Section title="Chuyên cần của con" subtitle="Lịch sử đi học và ghi chú" wide>
+          <Async paginate state={att} empty="Chưa có dữ liệu" itemLabel="lượt điểm danh">
             {(l) => (<table className="live-table"><thead><tr><th>Ngày</th><th>Môn</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead>
               <tbody>{l.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((r) => <tr key={r.id}><td>{fmtDate(r.date)}</td><td>{r.subjectName}</td><td><StatusPill value={ATT_LABEL[r.status] || r.status} /></td><td><small>{r.note || '—'}</small></td></tr>)}</tbody></table>)}
           </Async>
@@ -96,16 +96,21 @@ export function ParentInvoiceLive() {
   const toast = useToast();
   const pay = async (inv: Invoice) => {
     try {
-      await api.post('/payments', { invoiceId: inv.id, method: 'VNPAY' });
-      toast.show('ok', `Thanh toán ${inv.code} thành công (sandbox VNPAY)`);
+      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VNPAY' });
+      if (initiated.callbackUrl && initiated.sandboxCallback) {
+        await api.post(initiated.callbackUrl, initiated.sandboxCallback);
+        toast.show('ok', `Thanh toán ${inv.code} thành công`);
+      } else {
+        toast.show('ok', `Giao dịch ${inv.code} đang chờ cổng thanh toán xác nhận`);
+      }
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
   return (
-    <Section title="Học phí (D4)" subtitle="/invoices của phụ huynh · thanh toán sandbox" wide
+    <Section title="Học phí" subtitle="Theo dõi và thanh toán các khoản thu" wide
       action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
       {toast.node}
-      <Async state={invoices} empty="Chưa có hóa đơn (Admin cần sinh hóa đơn ở mục A7)">
+      <Async paginate state={invoices} empty="Chưa có hóa đơn. Vui lòng liên hệ nhà trường." itemLabel="hóa đơn">
         {(l) => (
           <table className="live-table">
             <thead><tr><th>Mã HĐ</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>

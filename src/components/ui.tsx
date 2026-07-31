@@ -71,11 +71,11 @@ export function FormPreview({ rows }: { rows: Array<[string, string]> }) {
 export function PermissionMatrix() {
   return (
     <div className="permission-matrix">
-      <div className="matrix-head">Permission</div>
-      <div className="matrix-head">Admin</div>
-      <div className="matrix-head">Teacher</div>
-      <div className="matrix-head">Student</div>
-      <div className="matrix-head">Parent</div>
+      <div className="matrix-head">Quyền</div>
+      <div className="matrix-head">Quản trị</div>
+      <div className="matrix-head">Giáo viên</div>
+      <div className="matrix-head">Học sinh</div>
+      <div className="matrix-head">Phụ huynh</div>
       {permissionRows.map((row) => [
         <strong key={`${row.permission}-name`}>{row.permission}</strong>,
         <span key={`${row.permission}-admin`}>{row.admin ? '✓' : '-'}</span>,
@@ -127,17 +127,36 @@ export function Badge({ tone, children }: { tone: 'green' | 'blue' | 'orange' | 
   return <span className={`badge ${tone}`}>{children}</span>;
 }
 
+const VI_LABELS: Record<string, string> = {
+  ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý',
+  PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở',
+  SUBMITTED: 'Đã nộp', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
+  PAID: 'Đã thanh toán', PARTIAL: 'Thanh toán một phần', OVERDUE: 'Quá hạn',
+  SUCCESS: 'Thành công', FAILED: 'Thất bại', REFUNDED: 'Đã hoàn tiền',
+  SENT: 'Đã gửi', RETRYING: 'Đang gửi lại', MAINTENANCE: 'Đang bảo trì',
+  READ: 'Đã đọc', UNREAD: 'Chưa đọc',
+  PRESENT: 'Có mặt', ABSENT: 'Vắng mặt', ABSENT_EXCUSED: 'Vắng có phép', ABSENT_UNEXCUSED: 'Vắng không phép',
+  ADMIN: 'Quản trị viên', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
+  LOGIN: 'Đăng nhập', LOGIN_FAILED: 'Đăng nhập thất bại', CREATE: 'Tạo mới', UPDATE: 'Cập nhật', DELETE: 'Xóa', EXPORT: 'Xuất dữ liệu', PAYMENT: 'Thanh toán',
+  PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
+};
+
+export function viLabel(value?: string | null) {
+  if (!value) return '—';
+  return VI_LABELS[value.trim().toUpperCase()] ?? value;
+}
+
 export function StatusPill({ value }: { value: string }) {
   const normalized = value.toLowerCase();
   const tone =
-    normalized.includes('active') || normalized.includes('paid') || normalized.includes('có mặt') || normalized.includes('đang học')
+    normalized === 'active' || normalized === 'paid' || normalized === 'success' || normalized === 'read' || normalized.includes('có mặt') || normalized.includes('đang học')
       ? 'green'
-      : normalized.includes('pending') || normalized.includes('partial') || normalized.includes('trễ') || normalized.includes('cần')
+      : normalized === 'pending' || normalized === 'partial' || normalized === 'unread' || normalized.includes('trễ') || normalized.includes('cần')
         ? 'orange'
-        : normalized.includes('vắng') || normalized.includes('locked')
+        : normalized.includes('vắng') || normalized === 'locked' || normalized === 'inactive' || normalized === 'failed'
           ? 'red'
           : 'blue';
 
-  return <Badge tone={tone}>{value}</Badge>;
+  return <Badge tone={tone}>{viLabel(value)}</Badge>;
 }
 

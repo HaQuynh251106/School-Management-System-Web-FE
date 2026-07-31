@@ -1,45 +1,32 @@
 # Smart School Ecosystem Web
 
-Giao diện ReactJS ban đầu cho dự án Smart School Ecosystem, bám theo các use case trong tài liệu:
-
-- Admin: A1-A4 cho GĐ1, kèm điểm vào A7/A8 cho GĐ2.
-- Teacher: B1-B4 cho luồng điểm danh và điểm số.
-- Student: C1-C3 cho hồ sơ, TKB, điểm và chuyên cần.
-- Parent: D1-D2, hiển thị switch profile và giám sát học tập.
-- Dashboard chỉ hiển thị KPI/chart tổng quan; các chức năng được truy cập từ menu theo role đăng nhập.
-- Mỗi chức năng có tab chi tiết riêng cho danh sách, cấu hình, lịch sử/log, workflow hoặc thao tác chính.
+React + TypeScript console cho Admin, giáo viên, học sinh và phụ huynh. Các màn hình nghiệp vụ và dashboard gọi SSE Backend; dữ liệu mẫu chỉ phục vụ profile phát triển local của Backend.
 
 ## Chạy local
 
 ```bash
-npm install
+cp .env.example .env.local
+npm ci
 npm run dev
 ```
 
-Ứng dụng dùng dữ liệu mẫu trong `src/App.tsx`; khi backend sẵn sàng có thể thay bằng TanStack Query gọi API Gateway.
+Backend local mặc định ở `http://localhost:4000`; thay `VITE_API_BASE` khi cần.
 
-## Cấu trúc source
+Tài khoản profile local: `admin/admin@123`, `gv.hoa/teacher@123`, `hs.minh/student@123`, `ph.pham/parent@123`.
 
-```text
-src/
-├── app/                    # App shell chính
-├── components/             # Layout, UI primitives, chart components
-├── data/                   # Mock data và menu role
-├── features/               # Màn hình nghiệp vụ theo phân hệ
-│   ├── admin/
-│   ├── dashboard/
-│   ├── parent/
-│   ├── shared/
-│   ├── student/
-│   └── teacher/
-├── styles/                 # CSS toàn app
-├── main.tsx
-└── types.ts
+## Kiểm tra
+
+```bash
+npm run check
 ```
 
-Điểm bắt đầu nên đọc:
+Lệnh này bắt buộc ESLint, Vitest, TypeScript và Vite production build cùng thành công. CI chạy lại cùng lệnh trên mọi pull request.
 
-- `src/app/App.tsx`: layout tổng và điều hướng role/menu.
-- `src/data/mockData.ts`: dữ liệu mẫu, role, menu chức năng.
-- `src/features/FeaturePage.tsx`: map mã chức năng A1/B3/C2/D4 sang màn hình.
-- `src/features/shared/FeatureWidgets.tsx`: bảng/form/widget dùng lại giữa nhiều role.
+## Production image
+
+```bash
+docker build --build-arg VITE_API_BASE=https://api.example.com -t smart-school-web .
+docker run --rm -p 8080:80 smart-school-web
+```
+
+Nginx phục vụ SPA fallback, cache asset có hash và các security header cơ bản. URL API là compile-time value của Vite nên phải truyền đúng khi build image.
