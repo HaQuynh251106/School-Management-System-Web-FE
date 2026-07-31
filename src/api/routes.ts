@@ -2,6 +2,8 @@ import type { PageId, RoleId } from '../types';
 
 export const ROLE_PATHS: Record<RoleId, string> = {
   admin: 'quan-tri',
+  academic_staff: 'giao-vu',
+  accountant: 'ke-toan',
   teacher: 'giao-vien',
   student: 'hoc-sinh',
   parent: 'phu-huynh',
@@ -12,13 +14,20 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A1S: 'hoc-sinh',
     A1T: 'giao-vien',
     A1P: 'phu-huynh',
-    A2: 'co-cau-dao-tao',
-    A3: 'thoi-khoa-bieu',
-    A4: 'khao-thi-hoc-ba',
+    A1A: 'cuu-hoc-sinh',
+    A1O: 'nhan-su-van-hanh',
     A6: 'lich-su-he-thong',
-    A7: 'tai-chinh-noi-bo',
     A8: 'bao-cao-thong-ke',
     A9: 'trung-tam-thong-bao',
+  },
+  academic_staff: {
+    E1: 'co-cau-dao-tao',
+    E2: 'xep-thoi-khoa-bieu',
+    E3: 'tao-ky-thi',
+    E4: 'cuu-hoc-sinh',
+  },
+  accountant: {
+    F1: 'tai-chinh-noi-bo',
   },
   teacher: {
     B1: 'lop-duoc-phan-cong',

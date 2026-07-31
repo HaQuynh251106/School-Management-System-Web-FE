@@ -1,6 +1,6 @@
 // Kiểu dữ liệu khớp response của backend SSE.
 
-export type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
+export type Role = 'ADMIN' | 'ACADEMIC_STAFF' | 'ACCOUNTANT' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 export interface PageResponse<T> {
   items: T[];
@@ -53,6 +53,11 @@ export interface ApiUser {
   teacherCode?: string | null;
   mainSubject?: string | null;
   childrenIds?: string[] | null;
+  cohortId?: string | null;
+  studentStatus?: 'ENROLLED' | 'GRADUATED' | 'WITHDRAWN' | 'TRANSFERRED' | null;
+  graduatedAt?: string | null;
+  graduationAcademicYearId?: string | null;
+  graduationClassId?: string | null;
 }
 
 export interface SchoolClass {
@@ -61,7 +66,22 @@ export interface SchoolClass {
   roomId?: string;
   roomCode?: string;
   academicYearId?: string; homeroomTeacherId?: string; homeroomTeacherName?: string;
+  cohortId?: string;
   homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number; capacity: number;
+}
+export interface Cohort {
+  id: string; code: string; name: string; entryYear: number; graduationYear: number;
+  durationYears: number; status: string; entryAcademicYearId?: string | null;
+  createdAt?: string | null; createdBy?: string | null; completedAt?: string | null;
+}
+export interface AlumniRecord {
+  id: string; studentCode?: string | null; fullName: string; dateOfBirth?: string | null;
+  gender?: string | null; email?: string | null; phone?: string | null;
+  cohortId?: string | null; cohortCode?: string | null; cohortName?: string | null;
+  entryYear?: number | null; graduationYear?: number | null; graduatedAt?: string | null;
+  graduationAcademicYearId?: string | null; graduationAcademicYearCode?: string | null;
+  graduationClassId?: string | null; graduationClassCode?: string | null;
+  annualAverage?: number | null; conductGrade?: string | null; accountStatus: string;
 }
 export interface Subject { id: string; code: string; name: string; coefficient: number; }
 export interface AcademicYear { id: string; code: string; name: string; status: string; startDate?: string; endDate?: string; }
@@ -127,6 +147,38 @@ export interface TeacherWorkload {
   status: string; classCount: number; subjectCount: number; weeklyPeriods: number;
   scheduledPeriods: number; classCodes: string[]; subjectNames: string[];
   assignments: TeacherClassAssignment[];
+}
+export interface CurriculumRequirement {
+  id: string; semesterId: string; gradeLevel: string; subjectId: string; subjectName: string;
+  weeklyPeriods: number; createdAt: string; updatedAt: string;
+}
+export interface TeacherLoadRegistration {
+  id: string; teacherId: string; teacherCode?: string | null; teacherName: string;
+  mainSubject?: string | null; semesterId: string; maxWeeklyPeriods: number;
+  assignedWeeklyPeriods: number; remainingWeeklyPeriods: number;
+  unavailableSlots: string[]; preferredGradeLevels: string[];
+  note?: string | null; reviewNote?: string | null; status: string;
+  submittedAt?: string | null; reviewedAt?: string | null; reviewedBy?: string | null;
+  createdAt: string; updatedAt: string;
+}
+export interface AutoAssignmentItem {
+  classId: string; classCode: string; gradeLevel: string; subjectId: string; subjectName: string;
+  weeklyPeriods: number; teacherId?: string | null; teacherName?: string | null;
+  projectedTeacherPeriods: number; status: 'EXISTING' | 'PROPOSED' | 'UNASSIGNED'; message: string;
+}
+export interface AutoAssignmentPlan {
+  semesterId: string; requirementCount: number; existingCount: number; proposedCount: number;
+  unassignedCount: number; applied: boolean; items: AutoAssignmentItem[]; warnings: string[];
+}
+export interface AutoTimetableItem {
+  classId: string; classCode: string; studyShift: string; subjectId: string; subjectName: string;
+  teacherId: string; teacherName: string; roomCode?: string | null; dayOfWeek?: string | null;
+  periodNo: number; startTime?: string | null; endTime?: string | null;
+  status: 'PROPOSED' | 'UNSCHEDULED'; message: string;
+}
+export interface AutoTimetablePlan {
+  semesterId: string; existingSlots: number; proposedSlots: number; unscheduledSlots: number;
+  applied: boolean; items: AutoTimetableItem[]; warnings: string[];
 }
 export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
 export interface ExamPeriod {
@@ -390,4 +442,50 @@ export interface DashboardChart {
 export interface DashboardResponse {
   metrics: DashboardMetric[];
   charts: DashboardChart[];
+}
+
+export interface IntakePlacementCandidate {
+  id: string;
+  studentCode?: string | null;
+  fullName?: string | null;
+  gender?: string | null;
+  previousClassId?: string | null;
+  locked: boolean;
+}
+
+export interface IntakePlacementClassPlan {
+  classId: string;
+  classCode: string;
+  newClass: boolean;
+  capacity: number;
+  existingStudents: number;
+  assignedStudents: number;
+  maleCount: number;
+  femaleCount: number;
+  otherCount: number;
+  students: IntakePlacementCandidate[];
+}
+
+export interface IntakePlacementPreview {
+  academicYearId: string;
+  gradeLevel: string;
+  candidateCount: number;
+  requiredClassCount: number;
+  existingClassCount: number;
+  newClassCount: number;
+  assignedCount: number;
+  unassignedCount: number;
+  classes: IntakePlacementClassPlan[];
+  unassignedStudents: IntakePlacementCandidate[];
+  warnings: string[];
+}
+
+export interface IntakePlacementRun {
+  id: string;
+  academicYearId: string;
+  gradeLevel: string;
+  status: string;
+  assignedCount: number;
+  createdAt: string;
+  createdBy: string;
 }

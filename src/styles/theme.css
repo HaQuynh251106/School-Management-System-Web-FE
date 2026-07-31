@@ -1516,7 +1516,10 @@ body {
 
 /* Dark theme compatibility for complex existing feature cards. */
 [data-theme="dark"] .role-dashboard-hero,
-[data-theme="dark"] .portal-hero { --portal-soft: color-mix(in srgb, var(--portal-accent) 12%, var(--surface)); --portal-border: color-mix(in srgb, var(--portal-accent) 32%, var(--border)); }
+[data-theme="dark"] .portal-hero,
+[data-theme="dark"] .role-workspace-intro { --portal-soft: color-mix(in srgb, var(--portal-accent) 12%, var(--surface)); --portal-border: color-mix(in srgb, var(--portal-accent) 32%, var(--border)); }
+[data-theme="dark"] .operations-role-guide { border-color: var(--border); background: var(--surface); }
+[data-theme="dark"] .operations-role-guide > span { background: #142d50; color: #8cc8ff; }
 
 [data-theme="dark"] .logout-btn:hover { background: #321d23; }
 [data-theme="dark"] .profile-popup-actions .profile-popup-logout:hover,

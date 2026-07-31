@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
 import { NotificationsLive } from './SharedLive';
 import { useHashString } from '../../api/urlState';
+import { TeacherLoadRegistrationLive } from './WorkloadPlanningLive';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -56,6 +57,8 @@ export function TeacherClassesLive() {
   const profileClass = profileTarget ? classMap[profileTarget.classId] : undefined;
 
   return (
+    <>
+    <TeacherLoadRegistrationLive />
     <Section title="Lớp giảng dạy và chủ nhiệm" subtitle="Theo dõi lớp phụ trách, danh sách học sinh và hồ sơ lớp chủ nhiệm" wide>
       {homeroomClasses.length > 0 && (
         <div className="homeroom-overview">
@@ -138,6 +141,7 @@ export function TeacherClassesLive() {
         </Modal>
       )}
     </Section>
+    </>
   );
 }
 

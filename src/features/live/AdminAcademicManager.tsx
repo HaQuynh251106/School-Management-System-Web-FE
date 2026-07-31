@@ -9,6 +9,7 @@ import { Async, fmtDate, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { YearEndManager } from './AdminLive';
 import { useHashString } from '../../api/urlState';
+import { IntakeClassPlacementLive } from './IntakeClassPlacementLive';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
 type EditorState = { kind: EditorKind; id: string; data: Record<string, string | number> };
@@ -38,7 +39,6 @@ export function AdminAcademicLive() {
   const toast = useToast();
 
   const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
-  const [sf, setSf] = useState({ academicYearId: '', code: '', name: '', sequence: 1, startDate: '', endDate: '' });
   const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', studyShift: 'MORNING', academicYearId: '', roomId: '', homeroomTeacherId: '', capacity: 45 });
   const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
   const [rm, setRm] = useState({ code: '', name: '', capacity: 45, shiftMode: 'BOTH' });
@@ -57,7 +57,6 @@ export function AdminAcademicLive() {
 
   const activeYears = (years.data ?? []).filter((year) => year.status !== 'CLOSED');
   const yearName = (id?: string) => (years.data ?? []).find((year) => year.id === id)?.code || '—';
-  const selectedSemesterYear = (years.data ?? []).find((year) => year.id === sf.academicYearId);
   const roomSupportsShift = (room: Room, shift: string) => shift === 'AFTERNOON'
     ? room.supportsAfternoon !== false
     : room.supportsMorning !== false;
@@ -66,6 +65,10 @@ export function AdminAcademicLive() {
       && item.roomId === roomId
       && item.academicYearId === academicYearId
       && (item.studyShift || 'MORNING') === studyShift);
+  const homeroomAssignment = (teacherId: string, academicYearId?: string, excludeClassId = '') =>
+    (classes.data ?? []).find((item) => item.id !== excludeClassId
+      && item.academicYearId === academicYearId
+      && item.homeroomTeacherId === teacherId);
 
   const run = async (task: () => Promise<unknown>, success: string, reloads: Array<() => void>) => {
     setBusy(true);
@@ -84,15 +87,8 @@ export function AdminAcademicLive() {
 
   const addYear = async () => {
     if (!yf.code || !yf.startDate || !yf.endDate) return toast.show('err', 'Nhập mã và đầy đủ thời gian năm học');
-    if (await run(() => api.post('/academicYears', { ...yf, name: yf.name || yf.code }), 'Đã tạo năm học ở trạng thái dự kiến', [years.reload])) {
+    if (await run(() => api.post('/academicYears', { ...yf, name: yf.name || yf.code }), 'Đã tạo năm học và tự động thiết lập 2 học kỳ', [years.reload, semesters.reload])) {
       setYf({ code: '', name: '', startDate: '', endDate: '' });
-    }
-  };
-
-  const addSemester = async () => {
-    if (!sf.academicYearId || !sf.code || !sf.startDate || !sf.endDate) return toast.show('err', 'Chọn năm học và nhập đầy đủ thông tin học kỳ');
-    if (await run(() => api.post('/semesters', { ...sf, name: sf.name || sf.code }), 'Đã tạo học kỳ ở trạng thái dự kiến', [semesters.reload])) {
-      setSf({ academicYearId: sf.academicYearId, code: '', name: '', sequence: sf.sequence + 1, startDate: '', endDate: '' });
     }
   };
 
@@ -192,9 +188,9 @@ export function AdminAcademicLive() {
   return (
     <>
       {toast.node}
-      <div className="academic-lifecycle-note"><CalendarDays size={20} /><div><strong>Quy trình năm học an toàn</strong><span>Năm học đầu tiên được tạo và kích hoạt thủ công. Từ các năm tiếp theo, dùng mục Tổng kết năm để hệ thống tự tổng kết, tạo cơ cấu mới, xếp lớp và khóa dữ liệu cũ trong một quy trình.</span></div></div>
+      <div className="academic-lifecycle-note"><CalendarDays size={20} /><div><strong>Quy trình năm học tự động</strong><span>Khi tạo năm học, hệ thống tự thiết lập Học kỳ 1 và Học kỳ 2 theo thời gian đã chọn. Giáo vụ kiểm tra, điều chỉnh ngày rồi kích hoạt. Từ các năm tiếp theo, dùng mục Tổng kết năm để tự tổng kết, tạo cơ cấu mới, xếp lớp và khóa dữ liệu cũ.</span></div></div>
       <FunctionTabs tabs={[
-        { id: 'years', label: 'Năm học', Icon: CalendarDays, content: (
+        { id: 'years', label: 'Năm học', description: 'Tạo khung thời gian', Icon: CalendarDays, content: (
           <Section title="Năm học" subtitle="Quản lý thời gian và vòng đời năm học" wide>
             <div className="live-toolbar academic-create-bar">
               <input className="live-input" placeholder="Mã (2026-2027)" value={yf.code} onChange={(e) => setYf({ ...yf, code: e.target.value })} />
@@ -212,17 +208,9 @@ export function AdminAcademicLive() {
             )}</Async>
           </Section>
         ) },
-        { id: 'sem', label: 'Học kỳ', Icon: CalendarDays, content: (
-          <Section title="Học kỳ" subtitle="Học kỳ phải nằm trong thời gian của năm học" wide>
-            <div className="live-toolbar academic-create-bar">
-              <select className="live-select" value={sf.academicYearId} onChange={(e) => setSf({ ...sf, academicYearId: e.target.value })}><option value="">— Năm học —</option>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}</select>
-              <input className="live-input" placeholder="Mã (HK1)" value={sf.code} onChange={(e) => setSf({ ...sf, code: e.target.value })} />
-              <input className="live-input grow" placeholder="Tên học kỳ" value={sf.name} onChange={(e) => setSf({ ...sf, name: e.target.value })} />
-              <input className="live-input" type="number" min="1" max="4" title="Thứ tự" value={sf.sequence} onChange={(e) => setSf({ ...sf, sequence: Number(e.target.value) })} />
-              <input className="live-input" type="date" min={selectedSemesterYear?.startDate} max={selectedSemesterYear?.endDate} value={sf.startDate} onChange={(e) => setSf({ ...sf, startDate: e.target.value })} />
-              <input className="live-input" type="date" min={selectedSemesterYear?.startDate} max={selectedSemesterYear?.endDate} value={sf.endDate} onChange={(e) => setSf({ ...sf, endDate: e.target.value })} />
-              <button className="live-btn" disabled={busy} onClick={addSemester}><Plus size={15} /> Tạo học kỳ</button>
-            </div>
+        { id: 'sem', label: 'Học kỳ', description: 'Kiểm tra hai học kỳ tự sinh', Icon: CalendarDays, content: (
+          <Section title="Học kỳ" subtitle="HK1 và HK2 được tự động tạo cùng năm học; Giáo vụ chỉ cần kiểm tra hoặc điều chỉnh thời gian" wide>
+            <div className="homeroom-policy-note"><CalendarDays size={17} /><span>Không cần tạo thủ công. Hai học kỳ được chia liên tục trong thời gian năm học và bắt đầu ở trạng thái <strong>Dự kiến</strong>.</span></div>
             <div className="academic-filter-bar"><SearchBox value={query.semesters} onChange={setSemesterQuery} placeholder="Tìm học kỳ" /><select className="live-select" value={semesterYear} onChange={(e) => setSemesterYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
             <Async paginate resetKey={`${query.semesters}-${semesterYear}`} state={{ ...semesters, data: semesters.data ? filteredSemesters : null }} itemLabel="học kỳ">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Năm học</th><th>Học kỳ</th><th>Thứ tự</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((semester) => <tr key={semester.id}>
@@ -232,7 +220,8 @@ export function AdminAcademicLive() {
             )}</Async>
           </Section>
         ) },
-        { id: 'rooms', label: 'Phòng', Icon: DoorOpen, content: (
+        { id: 'intake-placement', label: 'Phân lớp đầu cấp', description: 'Xếp học sinh mới theo sĩ số', Icon: GraduationCap, content: <IntakeClassPlacementLive /> },
+        { id: 'rooms', label: 'Phòng', description: 'Chuẩn bị phòng và ca học', Icon: DoorOpen, content: (
           <Section title="Phòng học" subtitle="Cấu hình ca phục vụ và theo dõi phòng đã được giao cho từng lớp" wide>
             <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã phòng" value={rm.code} onChange={(e) => setRm({ ...rm, code: e.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={rm.name} onChange={(e) => setRm({ ...rm, name: e.target.value })} /><select className="live-select" aria-label="Ca phục vụ của phòng" value={rm.shiftMode} onChange={(e) => setRm({ ...rm, shiftMode: e.target.value })}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select><input className="live-input" type="number" min="1" max="1000" value={rm.capacity} onChange={(e) => setRm({ ...rm, capacity: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addRoom}><Plus size={15} /> Thêm phòng</button></div>
             <div className="academic-filter-bar"><SearchBox value={query.rooms} onChange={setRoomQuery} placeholder="Tìm mã hoặc tên phòng" /></div>
@@ -243,13 +232,13 @@ export function AdminAcademicLive() {
             })}</tbody></table>}</Async>
           </Section>
         ) },
-        { id: 'classes', label: 'Lớp', Icon: School, content: (
+        { id: 'classes', label: 'Lớp', description: 'Tạo lớp và phân công GVCN', Icon: School, content: (
           <Section title="Lớp học" subtitle="Quản lý lớp, sức chứa và giáo viên chủ nhiệm" wide>
             <div className="live-toolbar academic-create-bar">
               <input className="live-input" placeholder="Mã lớp (10A1)" value={cf.code} onChange={(e) => setCf({ ...cf, code: e.target.value })} /><input className="live-input grow" placeholder="Tên lớp" value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} />
               <select className="live-select" value={cf.gradeLevel} onChange={(e) => setCf({ ...cf, gradeLevel: e.target.value })}>{[6,7,8,9,10,11,12].map((grade) => <option key={grade} value={`K${grade}`}>Khối {grade}</option>)}</select>
               <select className="live-select class-shift-select" value={cf.studyShift} onChange={(e) => setCf({ ...cf, studyShift: e.target.value, roomId: '' })}><option value="MORNING">Ca sáng</option><option value="AFTERNOON">Ca chiều</option></select>
-              <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value, roomId: '' })}><option value="">— Năm học —</option>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
+              <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value, roomId: '', homeroomTeacherId: '' })}><option value="">— Năm học —</option>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
               <select className="live-select class-room-select" value={cf.roomId} onChange={(e) => setCf({ ...cf, roomId: e.target.value })}>
                 <option value="">— Phòng học tùy chọn —</option>
                 {(rooms.data ?? []).filter((room) => roomSupportsShift(room, cf.studyShift)).map((room) => {
@@ -258,27 +247,37 @@ export function AdminAcademicLive() {
                 })}
               </select>
               <input className="live-input" type="number" min="1" max="100" title="Sĩ số tối đa" value={cf.capacity} onChange={(e) => setCf({ ...cf, capacity: Number(e.target.value) })} />
-              <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}><option value="">— GVCN tùy chọn —</option>{(teachers.data ?? []).filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}</select>
+              <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}>
+                <option value="">— GVCN tùy chọn —</option>
+                {(teachers.data ?? []).filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => {
+                  const assigned = homeroomAssignment(teacher.id, cf.academicYearId);
+                  return <option key={teacher.id} value={teacher.id} disabled={Boolean(assigned)}>{teacher.fullName}{assigned ? ` · Đang chủ nhiệm ${assigned.code}` : ''}</option>;
+                })}
+              </select>
               <button className="live-btn" disabled={busy} onClick={addClass}><Plus size={15} /> Tạo lớp</button>
             </div>
+            <div className="homeroom-policy-note"><School size={17} /><span>Mỗi giáo viên chỉ chủ nhiệm <strong>một lớp trong một năm học</strong>. Giáo viên đã có lớp được ghi rõ và không thể chọn trùng.</span></div>
             <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
             <Async paginate resetKey={`${query.classes}-${classYear}`} state={{ ...classes, data: classes.data ? filteredClasses : null }} itemLabel="lớp học">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Ca học</th><th>Phòng học</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => <tr key={schoolClass.id}>
                 <td><strong>{schoolClass.code}</strong><small className="academic-cell-note">{schoolClass.name}</small></td><td>{yearName(schoolClass.academicYearId)}</td><td><Badge tone="violet">{schoolClass.gradeLevel}</Badge></td><td><span className={`class-shift-badge ${(schoolClass.studyShift || 'MORNING').toLowerCase()}`}>{schoolClass.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</span></td><td>{schoolClass.roomCode ? <span className="class-room-badge"><DoorOpen size={14} />{schoolClass.roomCode}</span> : <span className="academic-cell-note">Chưa phân phòng</span>}</td><td>{schoolClass.studentCount}/{schoolClass.capacity || 45}</td>
-                <td><select className="live-select homeroom-teacher-select" value={schoolClass.homeroomTeacherId || ''} disabled={assigningClassId === schoolClass.id || teachers.loading} onChange={(event) => assignHomeroomTeacher(schoolClass.id, event.target.value)}><option value="">— Chưa phân công —</option>{(teachers.data ?? []).map((teacher) => <option key={teacher.id} value={teacher.id} disabled={teacher.status !== 'ACTIVE'}>{teacher.fullName} · {teacher.mainSubject || 'Chưa có chuyên ngành'}</option>)}</select></td>
+                <td><select className="live-select homeroom-teacher-select" value={schoolClass.homeroomTeacherId || ''} disabled={assigningClassId === schoolClass.id || teachers.loading} onChange={(event) => assignHomeroomTeacher(schoolClass.id, event.target.value)}><option value="">— Chưa phân công —</option>{(teachers.data ?? []).map((teacher) => {
+                  const assigned = homeroomAssignment(teacher.id, schoolClass.academicYearId, schoolClass.id);
+                  return <option key={teacher.id} value={teacher.id} disabled={teacher.status !== 'ACTIVE' || Boolean(assigned)}>{teacher.fullName} · {assigned ? `Đang chủ nhiệm ${assigned.code}` : teacher.mainSubject || 'Chưa có chuyên ngành'}</option>;
+                })}</select></td>
                 <td>{tableActions('class', schoolClass)}</td>
               </tr>)}</tbody></table>
             )}</Async>
           </Section>
         ) },
-        { id: 'subjects', label: 'Môn', Icon: BookOpen, content: (
+        { id: 'subjects', label: 'Môn', description: 'Hoàn thiện danh mục môn', Icon: BookOpen, content: (
           <Section title="Môn học" subtitle="Quản lý danh mục và hệ số tổng kết" wide>
             <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã môn" value={sj.code} onChange={(e) => setSj({ ...sj, code: e.target.value })} /><input className="live-input grow" placeholder="Tên môn" value={sj.name} onChange={(e) => setSj({ ...sj, name: e.target.value })} /><input className="live-input" type="number" min="0.5" max="10" step="0.5" value={sj.coefficient} onChange={(e) => setSj({ ...sj, coefficient: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addSubject}><Plus size={15} /> Thêm môn</button></div>
             <div className="academic-filter-bar"><SearchBox value={query.subjects} onChange={setSubjectQuery} placeholder="Tìm mã hoặc tên môn" /></div>
             <Async paginate resetKey={query.subjects} state={{ ...subjects, data: subjects.data ? filteredSubjects : null }} itemLabel="môn học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên môn</th><th>Hệ số tổng kết</th><th>Thao tác</th></tr></thead><tbody>{list.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{subject.coefficient || 1}</td><td>{tableActions('subject', subject)}</td></tr>)}</tbody></table>}</Async>
           </Section>
         ) },
-        { id: 'year-end', label: 'Tổng kết & chuyển năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={() => { years.reload(); semesters.reload(); classes.reload(); }} /> },
+        { id: 'year-end', label: 'Tổng kết & chuyển năm', description: 'Khóa dữ liệu và tạo năm kế tiếp', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={() => { years.reload(); semesters.reload(); classes.reload(); }} /> },
       ]} />
 
       {editor && <Modal title="Chỉnh sửa cơ cấu đào tạo" onClose={() => setEditor(null)} footer={<><button className="live-btn ghost" disabled={busy} onClick={() => setEditor(null)}>Hủy</button><button className="live-btn" disabled={busy} onClick={saveEditor}><Save size={16} /> Lưu thay đổi</button></>}>

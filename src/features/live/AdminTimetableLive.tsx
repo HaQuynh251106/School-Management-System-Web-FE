@@ -13,6 +13,7 @@ import { FunctionTabs, Section } from '../../components/ui';
 import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { useHashNumber, useHashString } from '../../api/urlState';
+import { AdminAutoTimetableLive, AdminWorkloadPlanningLive } from './WorkloadPlanningLive';
 
 const PERIODS = [1, 2, 3, 4, 5, 6];
 const PERIOD_TIME: Record<'MORNING' | 'AFTERNOON', Record<number, [string, string]>> = {
@@ -611,6 +612,20 @@ function TimetableEditor() {
   const toast = useToast();
   const [classId, setClassId] = useHashString('tt_class', '');
   const [semesterId, setSemesterId] = useHashString('tt_semester', '');
+  useEffect(() => {
+    if (!classes.data?.length) return;
+    if (!classes.data.some((item) => item.id === classId)) {
+      setClassId(classes.data[0].id);
+    }
+  }, [classId, classes.data, setClassId]);
+  useEffect(() => {
+    if (!semesters.data?.length) return;
+    if (semesters.data.some((item) => item.id === semesterId)) return;
+    const preferred = semesters.data.find((item) => item.status === 'ACTIVE')
+      ?? semesters.data.find((item) => item.status === 'PLANNED')
+      ?? semesters.data[0];
+    setSemesterId(preferred.id);
+  }, [semesterId, semesters.data, setSemesterId]);
   const slots = useApi<TimetableSlot[]>(classId && semesterId ? `/timetableSlots?classId=${classId}&semesterId=${semesterId}` : null);
   const assignmentSummary = useApi<TeachingAssignment[]>(classId && semesterId ? assignmentQuery(classId, semesterId) : null);
   const [show, setShow] = useState(false);
@@ -732,7 +747,7 @@ function TimetableEditor() {
         </select>
         <select className="live-select grow" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
           <option value="">— Chọn học kỳ —</option>
-          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'ACTIVE' ? ' · Đang hoạt động' : item.status === 'PLANNED' ? ' · Sắp diễn ra' : ''}</option>)}
         </select>
       </div>
 
@@ -802,7 +817,7 @@ function TimetableEditor() {
               ))}
             </select>
             {availability.loading && <small className="field-help">Đang kiểm tra lịch giáo viên…</small>}
-            {!availability.loading && availability.data?.length === 0 && <small className="field-help error">Chưa có phân công nào. Admin cần phân công giáo viên bộ môn trước.</small>}
+            {!availability.loading && availability.data?.length === 0 && <small className="field-help error">Chưa có phân công nào. Giáo vụ cần hoàn thành bước phân công giáo viên bộ môn trước.</small>}
           </Field>
           <div className="assignment-availability-list">
             {(availability.data ?? []).map((item) => (
@@ -837,7 +852,9 @@ function TimetableEditor() {
 
 export function AdminTimetableLive() {
   return <FunctionTabs tabs={[
-    { id: 'assignments', label: 'Phân công bộ môn', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
-    { id: 'timetable', label: 'Xếp thời khóa biểu', Icon: CalendarDays, content: <TimetableEditor /> },
+    { id: 'planning', label: '1. Phân công giáo viên tự động', Icon: BookOpenCheck, content: <AdminWorkloadPlanningLive /> },
+    { id: 'automatic', label: '2. Tạo thời khóa biểu tự động', Icon: CalendarDays, content: <AdminAutoTimetableLive /> },
+    { id: 'assignments', label: '3. Điều chỉnh phân công thủ công', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
+    { id: 'timetable', label: '4. Điều chỉnh thời khóa biểu thủ công', Icon: CalendarDays, content: <TimetableEditor /> },
   ]} />;
 }

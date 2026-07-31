@@ -44,9 +44,9 @@ describe('semantic website routes', () => {
   });
 
   it('keeps old page-code links working for existing bookmarks', () => {
-    expect(resolvePageRoute('A7')).toEqual({
-      roleId: 'admin',
-      pageId: 'A7',
+    expect(resolvePageRoute('F1')).toEqual({
+      roleId: 'accountant',
+      pageId: 'F1',
       legacy: true,
     });
     expect(resolvePageRoute('B3')).toEqual({
@@ -57,9 +57,9 @@ describe('semantic website routes', () => {
   });
 
   it('preserves filters and pagination in a semantic URL', () => {
-    expect(pageHash('admin', 'A7', new URLSearchParams({
+    expect(pageHash('accountant', 'F1', new URLSearchParams({
       page: '2',
       status: 'OVERDUE',
-    }))).toBe('#/quan-tri/tai-chinh-noi-bo?page=2&status=OVERDUE');
+    }))).toBe('#/ke-toan/tai-chinh-noi-bo?page=2&status=OVERDUE');
   });
 });

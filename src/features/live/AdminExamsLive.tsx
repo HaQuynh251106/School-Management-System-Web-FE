@@ -297,7 +297,7 @@ export function AdminExamsLive() {
     </section>
     {contextBar}
     <FunctionTabs tabs={[
-      { id: 'periods', label: 'Kỳ thi', Icon: CalendarClock, content: <Section title="Kỳ thi và trạng thái" subtitle="Tạo kỳ thi, kiểm soát nhập điểm và xác nhận kết quả" wide>
+      { id: 'periods', label: 'Kỳ thi', description: 'Tạo và kiểm tra điều kiện kỳ thi', Icon: CalendarClock, content: <Section title="Kỳ thi và trạng thái" subtitle="Tạo kỳ thi, kiểm soát nhập điểm và xác nhận kết quả" wide>
         <div className="exam-form-grid period">
           <input className="live-input" placeholder="Mã kỳ thi" value={periodForm.code} onChange={(e) => setPeriodForm({ ...periodForm, code: e.target.value })} />
           <input className="live-input" placeholder="Tên kỳ thi" value={periodForm.name} onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })} />
@@ -319,7 +319,7 @@ export function AdminExamsLive() {
           <button className="live-btn" disabled={busy || !selectedPeriod.scoreEntryLocked || selectedPeriod.status === 'CONFIRMED'} onClick={confirmPeriod}><ShieldCheck size={15} /> Xác nhận kỳ thi</button>
         </div>}
       </Section> },
-      { id: 'schedule', label: 'Lịch & phòng', Icon: DoorOpen, content: <Section title="Lịch thi, phòng thi và giám thị" subtitle="Chọn rõ lớp áp dụng; hệ thống ngăn trùng giờ, phòng và giám thị" wide>
+      { id: 'schedule', label: 'Lịch & phòng', description: 'Xếp môn, phòng, giám thị và giáo viên chấm', Icon: DoorOpen, content: <Section title="Lịch thi, phòng thi và giám thị" subtitle="Chọn rõ lớp áp dụng; hệ thống ngăn trùng giờ, phòng và giám thị" wide>
         {!periodId ? <div className="empty-state"><strong>Chọn kỳ thi để lập lịch</strong></div> : <>
           <div className={`exam-schedule-editor ${editingScheduleId ? 'editing' : ''}`}>
             <div className="exam-editor-heading"><div><strong>{editingScheduleId ? 'Chỉnh sửa ca thi' : 'Tạo ca thi mới'}</strong><span>{editingScheduleId ? 'Thay đổi được kiểm tra xung đột trước khi lưu' : 'Mỗi ca thi phải chọn ít nhất một lớp áp dụng'}</span></div>{editingScheduleId && <button className="icon-action" title="Hủy chỉnh sửa" onClick={resetScheduleForm}><X size={17} /></button>}</div>
@@ -465,7 +465,7 @@ export function AdminExamsLive() {
           </div>
         </>}
       </Section> },
-      { id: 'categories', label: 'Cấu hình đầu điểm', Icon: BookOpenCheck, content: <AdminExamCategoriesLive /> },
+      { id: 'categories', label: 'Cấu hình đầu điểm', description: 'Kiểm tra quy tắc trước khi nhập điểm', Icon: BookOpenCheck, content: <AdminExamCategoriesLive /> },
     ]} />
   </div>;
 }

@@ -22,7 +22,7 @@ const BLANK_USER = {
   guardianName: '', guardianPhone: '',
 };
 
-type ManagedUserRole = 'STUDENT' | 'TEACHER' | 'PARENT';
+type ManagedUserRole = 'STUDENT' | 'TEACHER' | 'PARENT' | 'ACADEMIC_STAFF' | 'ACCOUNTANT';
 
 const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: string; createLabel: string; itemLabel: string; empty: string }> = {
   STUDENT: {
@@ -45,6 +45,20 @@ const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: strin
     createLabel: 'Thêm phụ huynh',
     itemLabel: 'phụ huynh',
     empty: 'Chưa có phụ huynh',
+  },
+  ACADEMIC_STAFF: {
+    title: 'Tài khoản Giáo vụ',
+    subtitle: 'Nhân sự phụ trách cơ cấu đào tạo, thời khóa biểu và kỳ thi',
+    createLabel: 'Thêm Giáo vụ',
+    itemLabel: 'nhân sự Giáo vụ',
+    empty: 'Chưa có tài khoản Giáo vụ',
+  },
+  ACCOUNTANT: {
+    title: 'Tài khoản Kế toán',
+    subtitle: 'Nhân sự phụ trách đợt thu, hóa đơn, công nợ và thanh toán',
+    createLabel: 'Thêm Kế toán',
+    itemLabel: 'nhân sự Kế toán',
+    empty: 'Chưa có tài khoản Kế toán',
   },
 };
 
@@ -305,6 +319,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
         {!fixedRole && <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="">Tất cả vai trò</option>
           <option value="ADMIN">Quản trị viên</option><option value="TEACHER">Giáo viên</option>
+          <option value="ACADEMIC_STAFF">Giáo vụ</option><option value="ACCOUNTANT">Kế toán</option>
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
         </select>}
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -536,6 +551,19 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       )}
     </Section>
   );
+}
+
+export function AdminOperationsUsersLive() {
+  return <div className="operations-users-page">
+    <div className="operations-role-guide">
+      <span><ShieldCheck size={22} /></span>
+      <div><strong>Phân quyền theo đúng bộ phận</strong><small>Admin chỉ tạo và quản lý tài khoản. Giáo vụ phụ trách đào tạo, thời khóa biểu và kỳ thi; Kế toán phụ trách toàn bộ tài chính nội bộ.</small></div>
+    </div>
+    <FunctionTabs tabs={[
+      { id: 'academic-staff', label: 'Tài khoản Giáo vụ', Icon: School, content: <AdminUsersLive fixedRole="ACADEMIC_STAFF" /> },
+      { id: 'accountant', label: 'Tài khoản Kế toán', Icon: CircleDollarSign, content: <AdminUsersLive fixedRole="ACCOUNTANT" /> },
+    ]} />
+  </div>;
 }
 
 /* ============ A2 — Cơ cấu đào tạo (thêm tạo phòng học) ============ */
@@ -1131,7 +1159,7 @@ export function AdminFinanceLive() {
       </section>
 
       <FunctionTabs tabs={[
-        { id: 'overview', label: 'Tổng quan', Icon: TrendingUp, content: (
+        { id: 'overview', label: 'Tổng quan', description: 'Nắm nhanh thu, nợ và việc cần xử lý', Icon: TrendingUp, content: (
           <div className="finance-overview-grid">
             <Section title="Tiến độ thu học phí" subtitle="Tỷ lệ thu trên tổng giá trị hóa đơn đã phát hành" wide>
               <div className="finance-progress-summary">
@@ -1159,7 +1187,7 @@ export function AdminFinanceLive() {
             </Section>
           </div>
         ) },
-        { id: 'periods', label: 'Đợt thu', Icon: CircleDollarSign, content: (
+        { id: 'periods', label: 'Đợt thu', description: 'Tạo khoản, mở đợt và phát hành hóa đơn', Icon: CircleDollarSign, content: (
           <Section title="Quản lý đợt thu" subtitle="Tạo định mức, kiểm tra phạm vi và phát hành hóa đơn theo quy trình" wide
             action={<button className="live-btn" type="button" onClick={openCreatePeriod}><Plus size={15} /> Tạo đợt thu</button>}>
             <div className="finance-filterbar">
@@ -1204,7 +1232,7 @@ export function AdminFinanceLive() {
             </div>}
           </Section>
         ) },
-        { id: 'vietqr', label: `Đối soát VietQR${pendingVietQr.data?.length ? ` (${pendingVietQr.data.length})` : ''}`, Icon: Landmark, content: (
+        { id: 'vietqr', label: `Đối soát VietQR${pendingVietQr.data?.length ? ` (${pendingVietQr.data.length})` : ''}`, description: 'Xác minh tiền về trước khi ghi nhận', Icon: Landmark, content: (
           <Section title="Đối soát thanh toán VietQR" subtitle="Chỉ xác nhận sau khi giao dịch đã xuất hiện trong tài khoản ngân hàng của nhà trường" wide
             action={<button className="live-btn ghost" type="button" onClick={() => pendingVietQr.reload()}><RefreshCw size={15} /> Làm mới</button>}>
             <div className="finance-delegation-note"><ShieldCheck size={20} /><div><strong>Không ghi nhận thanh toán chỉ dựa trên ảnh chụp hoặc thao tác của phụ huynh</strong><small>Kiểm tra đúng số tiền và nội dung chuyển khoản trên sao kê ngân hàng trước khi xác nhận. Hệ thống sẽ gửi biên nhận cho phụ huynh sau bước này.</small></div></div>
@@ -1224,10 +1252,10 @@ export function AdminFinanceLive() {
             </Async>
           </Section>
         ) },
-        { id: 'invoices', label: 'Công nợ theo lớp', Icon: FileText, content: (
+        { id: 'invoices', label: 'Công nợ theo lớp', description: 'Theo dõi và giao GVCN nhắc hạn', Icon: FileText, content: (
           <Section title="Tổng thu và công nợ toàn trường" subtitle="Theo dõi tiến độ từng lớp và giao nhiệm vụ nhắc hạn cho giáo viên chủ nhiệm" wide
             action={<div className="finance-section-actions"><button className="live-btn ghost" type="button" onClick={() => downloadClassFinanceCsv(filteredClassSummaries)}><Download size={15} /> Xuất báo cáo lớp</button><button className="live-btn" type="button" disabled={sendingVisible || remindableClasses.length === 0} onClick={remindVisibleHomerooms}><BellRing size={15} /> {sendingVisible ? 'Đang gửi…' : `Nhắc GVCN (${remindableClasses.length})`}</button></div>}>
-            <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Admin điều hành tổng thể, GVCN chịu trách nhiệm theo sát phụ huynh</strong><small>Admin chỉ theo dõi tổng thu và công nợ theo lớp. Các lớp chưa hoàn thành sẽ được giao lại cho giáo viên chủ nhiệm kiểm tra và nhắc phụ huynh.</small></div></div>
+            <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Kế toán điều hành tổng thể, GVCN chịu trách nhiệm theo sát phụ huynh</strong><small>Kế toán theo dõi tổng thu và công nợ theo lớp. Các lớp chưa hoàn thành sẽ được giao lại cho giáo viên chủ nhiệm kiểm tra và nhắc phụ huynh.</small></div></div>
             <div className="finance-filterbar class-debt-filters">
               <label className="finance-search"><Search size={16} /><input placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" value={classQuery} onChange={(event) => setClassQuery(event.target.value)} /></label>
               <select className="live-input" value={invoicePeriod} onChange={(event) => { setInvoicePeriod(event.target.value); setInvoiceClass('ALL'); }} aria-label="Lọc khoản thu">

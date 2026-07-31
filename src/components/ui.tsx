@@ -7,27 +7,40 @@ import { useHashString } from '../api/urlState';
 export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
   const [activeTab, setActiveTab] = useHashString('tab', tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  const workflow = tabs.some((tab) => Boolean(tab.description));
+  const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === active.id));
 
   return (
     <div className="tabbed-feature">
-      <div className="tab-list" role="tablist">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            id={`tab-${tab.id}`}
-            className={active.id === tab.id ? 'active' : ''}
-            onClick={() => setActiveTab(tab.id, 'push')}
-            type="button"
-            role="tab"
-            aria-selected={active.id === tab.id}
-            aria-controls={`panel-${tab.id}`}
-            tabIndex={active.id === tab.id ? 0 : -1}
-          >
-            <tab.Icon size={17} />
-            <span>{tab.label}</span>
-          </button>
-        ))}
+      <div className={`tab-navigation ${workflow ? 'workflow-navigation' : ''}`}>
+        <div className="tab-navigation-heading">
+          <small>{workflow ? `Bước ${activeIndex + 1} / ${tabs.length}` : 'Khu vực làm việc'}</small>
+          <strong>{active.label}</strong>
+          {workflow && active.description && <p>{active.description}</p>}
+        </div>
+        <select className="tab-mobile-select" aria-label="Chọn khu vực làm việc" value={active.id} onChange={(event) => setActiveTab(event.target.value, 'push')}>
+          {tabs.map((tab, index) => <option key={tab.id} value={tab.id}>{workflow ? `Bước ${index + 1}: ` : ''}{tab.label}</option>)}
+        </select>
+        <div className="tab-list" role="tablist">
+          {tabs.map((tab, index) => (
+            <button
+              key={tab.id}
+              id={`tab-${tab.id}`}
+              className={active.id === tab.id ? 'active' : ''}
+              onClick={() => setActiveTab(tab.id, 'push')}
+              type="button"
+              role="tab"
+              aria-selected={active.id === tab.id}
+              aria-controls={`panel-${tab.id}`}
+              tabIndex={active.id === tab.id ? 0 : -1}
+            >
+              {workflow ? <span className="workflow-step-number">{index + 1}</span> : <tab.Icon size={17} />}
+              <span className="tab-label-copy"><strong>{tab.label}</strong>{workflow && tab.description && <small>{tab.description}</small>}</span>
+            </button>
+          ))}
+        </div>
       </div>
+      {workflow && <div className="workflow-progress" aria-label={`Tiến độ ${activeIndex + 1} trên ${tabs.length} bước`}><span style={{ width: `${((activeIndex + 1) / tabs.length) * 100}%` }} /></div>}
       <div
         className="tab-panel"
         id={`panel-${active.id}`}
@@ -37,6 +50,11 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
       >
         {active.content}
       </div>
+      {workflow && <footer className="workflow-navigation-footer">
+        <button type="button" disabled={activeIndex === 0} onClick={() => setActiveTab(tabs[activeIndex - 1].id, 'push')}>← Bước trước</button>
+        <span><strong>Bước {activeIndex + 1}</strong><small>{active.label}</small></span>
+        <button className="primary" type="button" disabled={activeIndex === tabs.length - 1} onClick={() => setActiveTab(tabs[activeIndex + 1].id, 'push')}>Bước tiếp theo →</button>
+      </footer>}
     </div>
   );
 }
@@ -152,7 +170,7 @@ const VI_LABELS: Record<string, string> = {
   SENT: 'Đã gửi', RETRYING: 'Đang gửi lại', MAINTENANCE: 'Đang bảo trì',
   READ: 'Đã đọc', UNREAD: 'Chưa đọc',
   PRESENT: 'Có mặt', ABSENT: 'Vắng mặt', ABSENT_EXCUSED: 'Vắng có phép', ABSENT_UNEXCUSED: 'Vắng không phép',
-  ADMIN: 'Quản trị viên', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
+  ADMIN: 'Quản trị viên', ACADEMIC_STAFF: 'Giáo vụ', ACCOUNTANT: 'Kế toán', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
   LOGIN: 'Đăng nhập', LOGIN_FAILED: 'Đăng nhập thất bại', CREATE: 'Tạo mới', UPDATE: 'Cập nhật', DELETE: 'Xóa', EXPORT: 'Xuất dữ liệu', PAYMENT: 'Thanh toán',
   ATTENDANCE_REMINDER: 'Nhắc điểm danh', ATTENDANCE_UNLOCK: 'Mở khóa điểm danh', ATTENDANCE_SESSION: 'Phiên điểm danh',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',

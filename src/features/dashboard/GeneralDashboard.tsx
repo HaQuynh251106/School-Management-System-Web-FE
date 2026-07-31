@@ -38,10 +38,26 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
   admin: {
     eyebrow: 'Trung tâm điều hành thời gian thực',
     title: 'Điều hành nhà trường bằng dữ liệu',
-    description: 'Nắm bắt quy mô, chuyên cần, tài chính và các vấn đề cần xử lý trên một màn hình thống nhất, cập nhật trực tiếp từ hệ thống.',
-    facts: ['Dữ liệu PostgreSQL đồng bộ', 'Cảnh báo ưu tiên theo thời gian thực'],
+    description: 'Theo dõi toàn cảnh hoạt động, quản lý người dùng và xử lý các vấn đề cấp hệ thống; nghiệp vụ học vụ và tài chính đã được giao đúng bộ phận.',
+    facts: ['Phân quyền đúng trách nhiệm', 'Dữ liệu PostgreSQL đồng bộ'],
     imageAlt: 'Quản trị viên theo dõi dữ liệu vận hành nhà trường',
     Icon: ShieldCheck,
+  },
+  academic_staff: {
+    eyebrow: 'Trung tâm điều hành học vụ',
+    title: 'Tổ chức đào tạo chủ động và nhất quán',
+    description: 'Quản lý cơ cấu đào tạo, phân công, thời khóa biểu và kỳ thi trong một không gian chuyên trách.',
+    facts: ['Tập trung nghiệp vụ giáo vụ', 'Theo dõi tiến độ theo năm học'],
+    imageAlt: 'Nhân viên giáo vụ điều phối hoạt động đào tạo',
+    Icon: School,
+  },
+  accountant: {
+    eyebrow: 'Trung tâm tài chính nhà trường',
+    title: 'Kiểm soát khoản thu và công nợ rõ ràng',
+    description: 'Theo dõi đợt thu, hóa đơn, giao dịch và tiến độ công nợ theo khối lớp với dữ liệu tập trung.',
+    facts: ['Đối soát minh bạch', 'Theo dõi công nợ theo lớp'],
+    imageAlt: 'Nhân viên kế toán theo dõi tài chính nhà trường',
+    Icon: WalletCards,
   },
   teacher: {
     eyebrow: 'Không gian giáo viên',
@@ -71,10 +87,21 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
 
 const quickLinks: Record<RoleId, DashboardLink[]> = {
   admin: [
-    { code: 'A1S', title: 'Quản lý học sinh', description: 'Hồ sơ và phân lớp', Icon: GraduationCap },
-    { code: 'A3', title: 'Thời khóa biểu', description: 'Phân công và xếp lịch', Icon: CalendarDays },
-    { code: 'A7', title: 'Tài chính', description: 'Khoản thu và công nợ', Icon: WalletCards },
+    { code: 'A1S', title: 'Quản lý học sinh', description: 'Hồ sơ và tài khoản học sinh', Icon: GraduationCap },
+    { code: 'A1O', title: 'Nhân sự vận hành', description: 'Tài khoản Giáo vụ và Kế toán', Icon: Users },
+    { code: 'A8', title: 'Báo cáo điều hành', description: 'Giám sát hoạt động toàn trường', Icon: BarChart3 },
     { code: 'A9', title: 'Gửi thông báo', description: 'Kết nối toàn trường', Icon: Bell },
+  ],
+  academic_staff: [
+    { code: 'E1', title: 'Cơ cấu đào tạo', description: 'Năm học, lớp, môn và phòng', Icon: School },
+    { code: 'E2', title: 'Xếp thời khóa biểu', description: 'Phân công và tối ưu lịch học', Icon: CalendarDays },
+    { code: 'E3', title: 'Tạo kỳ thi', description: 'Lịch thi, phòng và phân công', Icon: CalendarCheck2 },
+  ],
+  accountant: [
+    { code: 'F1', title: 'Tổng quan tài chính', description: 'Theo dõi thu và công nợ', Icon: WalletCards },
+    { code: 'F1', title: 'Quản lý đợt thu', description: 'Tạo, mở và phát hành khoản thu', Icon: CalendarCheck2 },
+    { code: 'F1', title: 'Công nợ theo lớp', description: 'Lọc và nhắc các khoản còn thiếu', Icon: BarChart3 },
+    { code: 'F1', title: 'Giao dịch', description: 'Đối soát trạng thái thanh toán', Icon: CheckCircle2 },
   ],
   teacher: [
     { code: 'B2', title: 'Lịch dạy', description: 'Xem thời khóa biểu tuần', Icon: CalendarDays },
@@ -103,7 +130,7 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
 const metricIcons: Record<string, LucideIcon> = {
   users: Users, classes: School, attendance: CalendarDays, alerts: Activity, grades: BarChart3,
   assignments: BookOpenCheck, calendar: CalendarDays, children: Users, invoices: WalletCards,
-  notifications: Bell,
+  notifications: Bell, payments: WalletCards, overdue: Activity,
 };
 
 const validTones = new Set<Metric['tone']>(['blue', 'green', 'orange', 'red', 'violet']);
@@ -115,8 +142,9 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     ? `/dashboard?childId=${encodeURIComponent(childId)}` : '/dashboard');
   const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
   const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
-  const notifications = useApi<Notification[]>('/notifications');
-  const examAgenda = useApi<ExamAgendaItem[]>(roleId === 'admin' ? null : '/me/exam-agenda');
+  const notifications = useApi<Notification[]>(['admin', 'teacher', 'student', 'parent'].includes(roleId) ? '/notifications' : null);
+  const examAgendaEnabled = ['teacher', 'student', 'parent'].includes(roleId);
+  const examAgenda = useApi<ExamAgendaItem[]>(examAgendaEnabled ? '/me/exam-agenda' : null);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
@@ -216,7 +244,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         />
       )}
 
-      {roleId !== 'admin' && (
+      {examAgendaEnabled && (
         <ExamAgendaSpotlight roleId={roleId} items={examAgenda.data ?? []} loading={examAgenda.loading} onOpen={() => navigate(examPage(roleId))} />
       )}
 
@@ -296,7 +324,7 @@ function ExamAgendaSpotlight({ roleId, items, loading, onOpen }: {
 }
 
 function examPage(roleId: RoleId): PageId {
-  return ({ teacher: 'B12', student: 'C10', parent: 'D9', admin: 'A4' } as Record<RoleId, PageId>)[roleId];
+  return ({ teacher: 'B12', student: 'C10', parent: 'D9', admin: 'A4', academic_staff: 'E3', accountant: 'dashboard' } as Record<RoleId, PageId>)[roleId];
 }
 
 function TeacherAnnouncementSpotlight({ items, loading, markingId, onMarkRead, onOpenInbox }: {
@@ -439,8 +467,18 @@ function buildFocusItems(roleId: RoleId, metrics: DashboardMetric[], notificatio
 
   const defaults: Record<RoleId, FocusItem[]> = {
     admin: [
-      { ...links[1], title: 'Rà soát lịch và phân công', description: 'Kiểm tra lớp hoặc giáo viên còn thiếu lịch', tone: 'blue' },
+      { ...links[1], title: 'Quản lý nhân sự vận hành', description: 'Cấp tài khoản cho Giáo vụ và Kế toán', tone: 'blue' },
       { ...links[3], title: 'Cập nhật thông tin toàn trường', description: 'Gửi lịch sự kiện và thông báo chung', tone: 'violet' },
+    ],
+    academic_staff: [
+      { ...links[0], title: 'Kiểm tra cơ cấu năm học', description: 'Rà soát lớp, môn học và phòng học đang hoạt động', tone: 'blue' },
+      { ...links[1], title: 'Hoàn thiện thời khóa biểu', description: 'Xử lý phân công và các tiết còn xung đột', tone: 'green' },
+      { ...links[2], title: 'Chuẩn bị kỳ thi', description: 'Thiết lập lịch, phòng và nhiệm vụ khảo thí', tone: 'violet' },
+    ],
+    accountant: [
+      { ...links[0], title: 'Theo dõi tổng thu và công nợ', description: 'Nắm nhanh tiến độ tài chính toàn trường', tone: 'blue' },
+      { ...links[2], title: 'Rà soát lớp còn công nợ', description: 'Lọc các khoản chưa hoàn tất để nhắc hạn', tone: 'orange' },
+      { ...links[3], title: 'Đối soát giao dịch', description: 'Kiểm tra các khoản thanh toán mới nhất', tone: 'green' },
     ],
     teacher: [
       { ...links[0], title: 'Xem tiết dạy tiếp theo', description: 'Chuẩn bị lớp, môn và phòng học', tone: 'blue' },
@@ -465,6 +503,8 @@ function buildFocusItems(roleId: RoleId, metrics: DashboardMetric[], notificatio
 function notificationLink(roleId: RoleId): FocusItem {
   const map: Record<RoleId, FocusItem> = {
     admin: { ...quickLinks.admin[3], tone: 'blue' },
+    academic_staff: { ...quickLinks.academic_staff[0], tone: 'blue' },
+    accountant: { ...quickLinks.accountant[0], tone: 'blue' },
     teacher: { code: 'B7', title: 'Thông báo', description: 'Xem cập nhật', Icon: Bell, tone: 'blue' },
     student: { ...quickLinks.student[2], tone: 'blue' },
     parent: { code: 'D5', title: 'Thông báo', description: 'Xem cập nhật mới nhất', Icon: Bell, tone: 'blue' },
@@ -474,7 +514,7 @@ function notificationLink(roleId: RoleId): FocusItem {
 
 function heroInsight(roleId: RoleId, metrics: DashboardMetric[]) {
   if (metrics.length === 0) return 'Sẵn sàng cho ngày mới';
-  const preferredKey = { admin: 'attendance', teacher: 'calendar', student: 'assignments', parent: 'notifications' }[roleId];
+  const preferredKey = { admin: 'attendance', academic_staff: 'calendar', accountant: 'invoices', teacher: 'calendar', student: 'assignments', parent: 'notifications' }[roleId];
   const metric = metrics.find((item) => item.key === preferredKey) ?? metrics[0];
   return `${metric.label}: ${formatMetricValue(metric.value, metric.format)}`;
 }
@@ -525,5 +565,5 @@ function notificationCategoryLabel(type: string) {
 }
 
 function roleLabel(role: RoleId) {
-  return { admin: 'Quản trị viên', teacher: 'Giáo viên', student: 'Học sinh', parent: 'Phụ huynh' }[role];
+  return { admin: 'Quản trị viên', academic_staff: 'Giáo vụ', accountant: 'Kế toán', teacher: 'Giáo viên', student: 'Học sinh', parent: 'Phụ huynh' }[role];
 }

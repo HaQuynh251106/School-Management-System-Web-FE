@@ -41,9 +41,9 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
-  const notificationBadgeEnabled = Boolean(user && user.role !== 'ADMIN');
+  const notificationBadgeEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
   const { data: notificationUnread, reload: reloadNotifications } = useApi<UnreadCount>(notificationBadgeEnabled ? '/notifications/unread-count' : null);
-  const chatEnabled = Boolean(user && user.role !== 'ADMIN');
+  const chatEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
   const { data: chatUnread, reload: reloadChatUnread } = useApi<UnreadCount>(chatEnabled ? '/chat/unread-count' : null);
 
   // Khôi phục deep-link nếu trang thuộc vai trò hiện tại; nếu không thì về Tổng quan.
@@ -157,7 +157,7 @@ export default function App() {
 
   const roleId = user.role.toLowerCase() as RoleId;
   const role = roles.find((item) => item.id === roleId) ?? roles[0];
-  const notificationPage: Record<RoleId, PageId> = { admin: 'A9', teacher: 'B7', student: 'C5', parent: 'D5' };
+  const notificationPage: Partial<Record<RoleId, PageId>> = { admin: 'A9', teacher: 'B7', student: 'C5', parent: 'D5' };
   const chatPage: Partial<Record<RoleId, PageId>> = { teacher: 'B6', student: 'C7', parent: 'D3' };
   const unreadNotifications = notificationUnread?.count ?? 0;
   const unreadMessages = chatUnread?.count ?? 0;
@@ -207,7 +207,7 @@ export default function App() {
             role={role}
             activePage={activePage}
             onSelect={selectPage}
-            badges={{ [notificationPage[roleId]]: unreadNotifications, ...(chatPage[roleId] ? { [chatPage[roleId]!]: unreadMessages } : {}) }}
+            badges={{ ...(notificationPage[roleId] ? { [notificationPage[roleId]!]: unreadNotifications } : {}), ...(chatPage[roleId] ? { [chatPage[roleId]!]: unreadMessages } : {}) }}
           />
           <div className="sidebar-footer">
             <span>Hệ thống quản lý học đường</span>
@@ -230,10 +230,10 @@ export default function App() {
               <button className="theme-toggle" type="button" onClick={toggleTheme} title={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'} aria-label={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'}>
                 {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
               </button>
-              <button
+              {notificationPage[roleId] && <button
                 className={`topbar-notification ${unreadNotifications > 0 ? 'has-unread' : ''} ${activePage === notificationPage[roleId] ? 'active' : ''}`}
                 type="button"
-                onClick={() => selectPage(notificationPage[roleId])}
+                onClick={() => selectPage(notificationPage[roleId]!)}
                 title={unreadNotifications > 0 ? `${unreadNotifications} thông báo chưa đọc` : 'Không có thông báo mới'}
                 aria-label={unreadNotifications > 0 ? `Mở thông báo, có ${unreadNotifications} thông báo chưa đọc` : 'Mở thông báo'}
               >
@@ -242,7 +242,7 @@ export default function App() {
                   <span className="notification-pulse" aria-hidden="true" />
                   <strong>{unreadNotifications > 99 ? '99+' : unreadNotifications}</strong>
                 </>}
-              </button>
+              </button>}
               {chatPage[roleId] && <button
                 className={`topbar-chat ${unreadMessages > 0 ? 'has-unread' : ''} ${activePage === chatPage[roleId] ? 'active' : ''}`}
                 type="button"
