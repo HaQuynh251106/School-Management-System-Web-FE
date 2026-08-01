@@ -446,72 +446,9 @@ export interface DashboardChart {
   data: DashboardDatum[];
 }
 
-export interface DashboardWorkItem {
-  key: string;
-  title: string;
-  detail: string;
-  value: number;
-  unit: string;
-  severity: 'CRITICAL' | 'WARNING' | 'INFO' | 'SUCCESS' | string;
-  pageCode: string;
-}
-
-export interface DashboardCalendarItem {
-  id: string;
-  date: string;
-  title: string;
-  type: 'EXAM' | 'FEE' | 'SEMESTER' | 'HOLIDAY' | string;
-  detail: string;
-  pageCode: string;
-}
-
-export interface AdminDashboardOverview {
-  academicYear: string;
-  academicYearStatus: string;
-  semester: string;
-  semesterStatus: string;
-  updatedAt: string;
-  activeStudents: number;
-  activeTeachers: number;
-  activeParents: number;
-  unassignedStudents: number;
-  inactiveAccounts: number;
-  activeClasses: number;
-  classesWithoutHomeroom: number;
-  attendanceRecorded: number;
-  present: number;
-  excusedAbsences: number;
-  unexcusedAbsences: number;
-  late: number;
-  scheduledPeriods: number;
-  requiredPeriods: number;
-  timetableCoverage: number;
-  upcomingExams: number;
-  draftExams: number;
-  totalReceivables: number;
-  collectedAmount: number;
-  outstandingAmount: number;
-  overdueInvoices: number;
-  calendarItems: DashboardCalendarItem[];
-  workItems: DashboardWorkItem[];
-}
-
-export interface RoleDashboardOverview {
-  role: 'ACADEMIC_STAFF' | 'ACCOUNTANT' | 'TEACHER' | string;
-  academicYear: string;
-  academicYearStatus: string;
-  semester: string;
-  semesterStatus: string;
-  updatedAt: string;
-  calendarItems: DashboardCalendarItem[];
-  workItems: DashboardWorkItem[];
-}
-
 export interface DashboardResponse {
   metrics: DashboardMetric[];
   charts: DashboardChart[];
-  adminOverview?: AdminDashboardOverview | null;
-  roleOverview?: RoleDashboardOverview | null;
 }
 
 export interface IntakePlacementCandidate {
