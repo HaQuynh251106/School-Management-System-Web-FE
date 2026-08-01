@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpenCheck, CalendarCheck2, CheckCircle2, ClipboardCheck, Clock3,
-  LockKeyhole, Send, Sparkles, Trash2, UserRoundCheck,
+  History, LockKeyhole, Rocket, RotateCcw, Send, Sparkles, Trash2, UserRoundCheck,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { updateHashQuery, useHashString } from '../../api/urlState';
 import type {
-  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumRequirement, Semester, Subject, TeacherLoadRegistration, TeachingAssignment,
+  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumRequirement, Semester, Subject, TeacherLoadRegistration, TeachingAssignment, TimetableVersion,
 } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
@@ -307,9 +307,12 @@ export function AdminAutoTimetableLive() {
   const { semesters, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
   const assignments = useApi<TeachingAssignment[]>(semesterId
     ? `/teaching-assignments?semesterId=${encodeURIComponent(semesterId)}` : null);
+  const versions = useApi<TimetableVersion[]>(semesterId
+    ? `/timetable-versions?semesterId=${encodeURIComponent(semesterId)}` : null);
   const toast = useToast();
   const [plan, setPlan] = useState<AutoTimetablePlan | null>(null);
   const [busy, setBusy] = useState(false);
+  const [versionBusy, setVersionBusy] = useState('');
   const [selectedPreviewClass, setSelectedPreviewClass] = useState('');
 
   const classPreviews = useMemo(() => {
@@ -343,13 +346,57 @@ export function AdminAutoTimetableLive() {
     } finally { setBusy(false); }
   };
 
+  const saveDraft = async () => {
+    if (!semesterId || !plan || plan.unscheduledSlots > 0) return;
+    setBusy(true);
+    try {
+      const applied = await api.post<AutoTimetablePlan>('/timetableSlots/auto-plan', {
+        semesterId, apply: true, allowPartial: false,
+      });
+      const nextVersion = (versions.data?.[0]?.versionNo || 0) + 1;
+      await api.post<TimetableVersion>('/timetable-versions', {
+        semesterId, name: `Thời khóa biểu học kỳ · phiên bản ${nextVersion}`,
+      });
+      setPlan(applied);
+      await versions.reload();
+      toast.show('ok', 'Đã lưu bản nháp. Hãy kiểm tra và phát hành để giáo viên, học sinh, phụ huynh nhìn thấy.');
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể lưu phiên bản thời khóa biểu');
+    } finally { setBusy(false); }
+  };
+
+  const publishVersion = async (item: TimetableVersion) => {
+    setVersionBusy(item.id);
+    try {
+      await api.post(`/timetable-versions/${item.id}/publish`);
+      await versions.reload();
+      toast.show('ok', `Đã phát hành phiên bản ${item.versionNo}`);
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể phát hành phiên bản');
+    } finally { setVersionBusy(''); }
+  };
+
+  const restoreVersion = async (item: TimetableVersion) => {
+    setVersionBusy(item.id);
+    try {
+      await api.post(`/timetable-versions/${item.id}/restore`, {
+        name: `Khôi phục từ phiên bản ${item.versionNo}`,
+      });
+      await versions.reload();
+      toast.show('ok', 'Đã tạo bản nháp khôi phục. Lịch đang phát hành chưa bị thay đổi.');
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể khôi phục phiên bản');
+    } finally { setVersionBusy(''); }
+  };
+
   return (
     <Section title="Tạo thời khóa biểu tự động" subtitle="Sau khi đã phân công giáo viên, hệ thống sẽ chọn thứ, tiết và phòng học phù hợp" wide
-      action={<div className="row-actions"><button className="live-btn subtle" disabled={busy || !semesterId || !assignments.data?.length} onClick={() => generate(false)}><Sparkles size={16} /> {busy ? 'Đang tìm phương án…' : plan ? 'Tính lại lịch dự kiến' : '1. Xem lịch dự kiến'}</button><button className="live-btn primary" disabled={busy || !plan || plan.unscheduledSlots > 0 || plan.proposedSlots === 0} onClick={() => generate(true)}><CalendarCheck2 size={16} /> 2. Lưu thời khóa biểu</button></div>}>
+      action={<div className="row-actions"><button className="live-btn subtle" disabled={busy || !semesterId || !assignments.data?.length} onClick={() => generate(false)}><Sparkles size={16} /> {busy ? 'Đang xử lý…' : plan ? 'Tính lại lịch dự kiến' : '1. Xem lịch dự kiến'}</button><button className="live-btn primary" disabled={busy || !plan || plan.unscheduledSlots > 0} onClick={saveDraft}><CalendarCheck2 size={16} /> 2. Lưu bản nháp</button></div>}>
       <div className="timetable-simple-flow">
         <div className={assignments.data?.length ? 'done' : 'current'}><span>1</span><div><strong>Đã phân công giáo viên</strong><small>{assignments.loading ? 'Đang kiểm tra…' : assignments.data?.length ? `${assignments.data.length} môn–lớp đã sẵn sàng` : 'Chưa có phân công trong học kỳ này'}</small></div></div>
         <div className={plan ? 'done' : assignments.data?.length ? 'current' : ''}><span>2</span><div><strong>Xem lịch dự kiến</strong><small>Kiểm tra thứ, tiết, phòng và cảnh báo</small></div></div>
-        <div className={plan?.applied ? 'done' : plan && !plan.unscheduledSlots ? 'current' : ''}><span>3</span><div><strong>Lưu thời khóa biểu</strong><small>Chỉ lưu sau khi không còn xung đột</small></div></div>
+        <div className={versions.data?.some((item) => ['DRAFT', 'VALIDATED'].includes(item.status)) ? 'done' : plan && !plan.unscheduledSlots ? 'current' : ''}><span>3</span><div><strong>Lưu thành bản nháp</strong><small>Có thể kiểm tra mà chưa ảnh hưởng người dùng</small></div></div>
+        <div className={versions.data?.some((item) => item.status === 'PUBLISHED') ? 'done' : versions.data?.length ? 'current' : ''}><span>4</span><div><strong>Phát hành</strong><small>Chỉ lịch đã phát hành mới là phiên bản chính thức</small></div></div>
       </div>
       <div className="auto-timetable-toolbar">
         <label><span>Chọn học kỳ cần tạo thời khóa biểu</span><select value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setSelectedPreviewClass(''); }}>
@@ -390,6 +437,17 @@ export function AdminAutoTimetableLive() {
             </tbody></table></div>
           </details>
         </>}
+
+      <div className="timetable-version-panel">
+        <div className="timetable-version-heading"><div><History size={20} /><span><strong>Phiên bản và lịch sử phát hành</strong><small>Mỗi lần lưu tạo một bản độc lập; khôi phục không ghi đè lịch đang dùng.</small></span></div><Badge tone={versions.data?.some((item) => item.status === 'PUBLISHED') ? 'green' : 'red'}>{versions.data?.some((item) => item.status === 'PUBLISHED') ? 'Đã có lịch chính thức' : 'Chưa phát hành'}</Badge></div>
+        <Async state={versions} empty="Chưa có phiên bản. Hãy xem lịch dự kiến rồi lưu bản nháp.">
+          {(items) => <div className="timetable-version-list">{items.map((item) => <article key={item.id} className={`timetable-version-card ${item.status.toLowerCase()}`}>
+            <div className="version-number"><span>v{item.versionNo}</span><StatusPill value={item.status} /></div>
+            <div className="version-main"><strong>{item.name}</strong><span>{item.totalPeriods} tiết · chất lượng {item.qualityScore}% · {new Date(item.createdAt).toLocaleString('vi-VN')}</span>{item.sourcePlanId && <small>Được khôi phục từ một phiên bản trước</small>}{item.conflictSummary && <small className="version-conflict">{item.conflictSummary}</small>}</div>
+            <div className="row-actions">{['DRAFT', 'VALIDATED'].includes(item.status) && <button className="live-btn primary" disabled={Boolean(versionBusy)} onClick={() => publishVersion(item)}><Rocket size={15} /> {versionBusy === item.id ? 'Đang phát hành…' : 'Phát hành'}</button>}{['PUBLISHED', 'SUPERSEDED'].includes(item.status) && <button className="live-btn subtle" disabled={Boolean(versionBusy)} onClick={() => restoreVersion(item)}><RotateCcw size={15} /> Tạo bản khôi phục</button>}</div>
+          </article>)}</div>}
+        </Async>
+      </div>
     </Section>
   );
 }

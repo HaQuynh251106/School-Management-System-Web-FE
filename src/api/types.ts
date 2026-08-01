@@ -180,6 +180,13 @@ export interface AutoTimetablePlan {
   semesterId: string; existingSlots: number; proposedSlots: number; unscheduledSlots: number;
   applied: boolean; items: AutoTimetableItem[]; warnings: string[];
 }
+export interface TimetableVersion {
+  id: string; semesterId: string; name: string; status: 'DRAFT' | 'VALIDATED' | 'PUBLISHED' | 'SUPERSEDED';
+  versionNo: number; qualityScore: number; totalPeriods: number; scheduledPeriods: number;
+  unscheduledPeriods: number; conflictSummary?: string | null; sourcePlanId?: string | null;
+  createdBy?: string | null; createdAt: string; updatedAt: string;
+  publishedBy?: string | null; publishedAt?: string | null;
+}
 export interface ExamCategory { id: string; code: string; name: string; weight: number; requiredCount?: number; }
 export interface ExamPeriod {
   id: string; code: string; name: string; academicYearId: string; semesterId: string;
