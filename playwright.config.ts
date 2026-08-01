@@ -2,12 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: true,
+  // Các tài khoản vừa cấp có thể phải đổi mật khẩu ở lần đăng nhập đầu tiên;
+  // chạy tuần tự để hai kịch bản không cùng thay đổi một tài khoản.
+  fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  // Đăng nhập dùng BCrypt nên không dồn cả 6 vai trò vào CPU cùng lúc.
-  // Hai worker vẫn kiểm tra được truy cập đồng thời nhưng tránh timeout giả trên máy dev/CI nhỏ.
-  workers: 2,
+  workers: 1,
   reporter: process.env.CI ? [['html', { open: 'never' }], ['list']] : 'list',
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5173',

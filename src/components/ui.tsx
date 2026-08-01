@@ -176,7 +176,7 @@ const VI_LABELS: Record<string, string> = {
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
   FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
   FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
-  CASH: 'Tiền mặt', VIETQR: 'VietQR',
+  CASH: 'Tiền mặt', VIETQR: 'VietQR', OPENING_BALANCE: 'Số dư thanh toán đầu kỳ',
   PUSH: 'Thông báo đẩy', EMAIL: 'Email', IN_APP: 'Trong ứng dụng', ON: 'Đang bật', OFF: 'Đang tắt',
 };
 

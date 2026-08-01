@@ -1,9 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
+import { loginWithFirstPasswordChange } from './helpers/login';
 
 type UatRole = {
   label: string;
   username: string;
   password: string;
+  changedPassword?: string;
   landing: string;
   pages: string[];
 };
@@ -14,11 +16,11 @@ const roles: UatRole[] = [
     pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'cuu-hoc-sinh', 'nhan-su-van-hanh', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
   },
   {
-    label: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', landing: 'giao-vu',
+    label: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', changedPassword: process.env.E2E_ACADEMIC_STAFF_CHANGED_PASSWORD, landing: 'giao-vu',
     pages: ['tong-quan', 'co-cau-dao-tao', 'xep-thoi-khoa-bieu', 'tao-ky-thi', 'cuu-hoc-sinh'],
   },
   {
-    label: 'Kế toán', username: 'ketoan', password: process.env.E2E_ACCOUNTANT_PASSWORD ?? '', landing: 'ke-toan',
+    label: 'Kế toán', username: 'ketoan', password: process.env.E2E_ACCOUNTANT_PASSWORD ?? '', changedPassword: process.env.E2E_ACCOUNTANT_CHANGED_PASSWORD, landing: 'ke-toan',
     pages: ['tong-quan', 'tai-chinh-noi-bo'],
   },
   {
@@ -36,11 +38,7 @@ const roles: UatRole[] = [
 ];
 
 async function login(page: Page, role: UatRole) {
-  await page.goto('/#/dang-nhap');
-  await page.locator('input[autocomplete="username"]').fill(role.username);
-  await page.locator('input[autocomplete="current-password"]').fill(role.password);
-  await page.locator('button[type="submit"]').click();
-  await expect(page).toHaveURL(new RegExp(`#/${role.landing}/tong-quan$`));
+  await loginWithFirstPasswordChange(page, role);
 }
 
 test.beforeAll(async ({ request }) => {
