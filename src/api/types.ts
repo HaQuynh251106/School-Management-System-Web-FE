@@ -96,6 +96,31 @@ export interface Room {
   capacity?: number;
   supportsMorning?: boolean;
   supportsAfternoon?: boolean;
+  roomType?: 'GENERAL' | 'LAB' | 'COMPUTER' | 'LANGUAGE' | 'SPORT' | 'ART' | 'LIBRARY' | 'MULTIPURPOSE' | 'OTHER';
+  equipmentTags?: string;
+  status?: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
+  homeRoomEligible?: boolean;
+  notes?: string;
+}
+
+export interface RoomAllocationItem {
+  id: string; classId: string; classCode: string; studentCount: number; classCapacity: number;
+  previousShift?: string | null; previousRoomId?: string | null; previousRoomCode?: string | null;
+  proposedShift?: string | null; proposedRoomId?: string | null; proposedRoomCode?: string | null;
+  locked: boolean; status: string; message?: string | null;
+}
+export interface RoomAllocationPlan {
+  id: string; academicYearId: string; name: string; status: string;
+  totalClasses: number; assignedClasses: number; unassignedClasses: number;
+  morningClasses: number; afternoonClasses: number;
+  capacity: { totalRooms: number; mainRooms: number; functionalRooms: number; morningRoomSlots: number;
+    afternoonRoomSlots: number; totalClassSlots: number; totalClasses: number; targetMorningClasses: number;
+    targetAfternoonClasses: number; spareClassSlots: number; };
+  items: RoomAllocationItem[]; warnings: string[]; createdAt?: string; appliedAt?: string; undoneAt?: string;
+}
+export interface SubjectRoomRequirement {
+  id: string; subjectId: string; subjectCode: string; subjectName: string; roomType: string;
+  requiredEquipment?: string; weeklyPeriods: number; mandatory: boolean; priority: number;
 }
 
 export interface TimetableSlot {
@@ -210,6 +235,75 @@ export interface ExamRoom {
   proctorOneId?: string | null; proctorOneName?: string | null;
   proctorTwoId?: string | null; proctorTwoName?: string | null;
 }
+export interface ExamRoomAvailability {
+  roomId: string; roomCode: string; roomName?: string | null; capacity: number; roomType?: string | null;
+  available: boolean; selected: boolean; reason: string;
+  conflictingSubject?: string | null; conflictingStartTime?: string | null;
+}
+export interface ExamDayPolicy {
+  examDate: string; regularClassesSuspended: boolean; title: string; description: string;
+}
+export interface ExamOrganizationPlanRoom {
+  roomId: string; roomCode: string; physicalCapacity: number; effectiveCapacity: number; deskCount: number;
+  proctorOneId?: string | null; proctorOneName?: string | null;
+  proctorTwoId?: string | null; proctorTwoName?: string | null;
+  candidateCount: number; ready: boolean;
+}
+export interface ExamOrganizationPlanCandidate {
+  studentId: string; studentName: string; studentCode?: string | null; classId: string; classCode: string;
+  candidateNo: string; roomId: string; roomCode: string; seatNo: number; deskNo: number; seatPosition: number;
+}
+export interface ExamOrganizationPlan {
+  id: string; scheduleId: string; status: 'PREVIEW' | 'APPLIED' | 'SUPERSEDED' | 'UNDONE';
+  maxCandidatesPerRoom: number; studentsPerDesk: number; includeSecondProctor: boolean;
+  candidateCount: number; roomCount: number; effectiveCapacity: number; assignedCount: number;
+  missingAssignmentCount: number; warningSummary?: string | null; createdAt: string;
+  appliedAt?: string | null; undoneAt?: string | null;
+  rooms: ExamOrganizationPlanRoom[]; candidates: ExamOrganizationPlanCandidate[];
+}
+export interface ExamOrganizationReadiness {
+  candidateCount: number; allocatedCount: number; totalCapacity: number; proctoredCapacity: number;
+  roomCount: number; proctoredRoomCount: number; missingSeats: number; missingCandidates: number;
+  roomsReady: boolean; candidatesReady: boolean; warnings: string[];
+}
+export interface ExamSeatingPlanRoom {
+  roomId: string; roomCode: string; capacity: number; assignedCount: number;
+  remainingCapacity: number; hasMainProctor: boolean; classCodes: string[];
+}
+export interface ExamSeatingPlanClass {
+  classId: string; classCode: string; candidateCount: number; assignedCount: number;
+  roomCount: number; roomCodes: string[];
+}
+export interface ExamSeatingPlanCandidate {
+  studentId: string; studentName: string; studentCode?: string | null; classId: string; classCode: string;
+  candidateNo: string; roomId?: string | null; roomCode?: string | null; seatNo?: number | null; assigned: boolean;
+}
+export interface ExamSeatingPlan {
+  id: string; scheduleId: string; status: 'PREVIEW' | 'APPLIED' | 'SUPERSEDED' | 'UNDONE';
+  candidateCount: number; totalCapacity: number; assignedCount: number; unassignedCount: number;
+  warningSummary?: string | null; createdAt: string; appliedAt?: string | null; undoneAt?: string | null;
+  rooms: ExamSeatingPlanRoom[]; classes: ExamSeatingPlanClass[]; candidates: ExamSeatingPlanCandidate[];
+}
+export interface EligibleExamProctor {
+  teacherId: string; teacherCode?: string | null; teacherName: string;
+  currentDutyCount: number; teachesExamSubject: boolean; recommendation: string;
+}
+export interface ExamProctorPlanItem {
+  roomId: string; roomCode: string; locked: boolean;
+  previousProctorOneId?: string | null; previousProctorOneName?: string | null;
+  previousProctorTwoId?: string | null; previousProctorTwoName?: string | null;
+  proposedProctorOneId?: string | null; proposedProctorOneName?: string | null;
+  proposedProctorTwoId?: string | null; proposedProctorTwoName?: string | null;
+  status: string; message?: string | null;
+  proctorOneDutyCount?: number | null; proctorTwoDutyCount?: number | null;
+}
+export interface ExamProctorPlan {
+  id: string; scheduleId: string; status: 'PREVIEW' | 'APPLIED' | 'SUPERSEDED' | 'UNDONE';
+  includeSecondProctor: boolean; roomCount: number; readyRoomCount: number;
+  missingAssignmentCount: number; warningSummary?: string | null;
+  createdAt: string; appliedAt?: string | null; undoneAt?: string | null;
+  items: ExamProctorPlanItem[];
+}
 export interface ExamGradingAssignment {
   id: string; examPeriodId: string; scheduleId: string; classId: string; classCode: string;
   subjectId: string; subjectName: string; teacherId: string; teacherName: string;
@@ -221,7 +315,7 @@ export interface EligibleExamGrader {
 export interface ExamCandidate {
   id: string; examPeriodId: string; scheduleId: string; examRoomId: string;
   studentId: string; studentName: string; studentCode?: string | null; classId: string;
-  classCode: string; candidateNo: string; seatNo: number;
+  classCode: string; candidateNo: string; seatNo: number; deskNo?: number | null; seatPosition?: number | null;
 }
 export interface ExamResult {
   id: string; examPeriodId: string; scheduleId: string; studentId: string; subjectId: string;

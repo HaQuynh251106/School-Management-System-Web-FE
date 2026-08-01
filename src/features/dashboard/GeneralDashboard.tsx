@@ -1,7 +1,7 @@
 import {
   Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2,
   CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
-  GraduationCap, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
+  DoorOpen, GraduationCap, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
   UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -13,7 +13,7 @@ import { useActiveChild } from '../../api/activeChild';
 import { emitNotificationInboxChanged } from '../../api/liveEvents';
 import type {
   DashboardCalendarItem, DashboardChart, DashboardMetric, DashboardResponse, DashboardWorkItem,
-  ExamAgendaItem, Notification,
+  AcademicYear, ExamAgendaItem, Notification, Room, SchoolClass,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
 import { viLabel } from '../../components/ui';
@@ -145,6 +145,9 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const notifications = useApi<Notification[]>(['teacher', 'student', 'parent'].includes(roleId) ? '/notifications' : null);
   const examAgendaEnabled = ['teacher', 'student', 'parent'].includes(roleId);
   const examAgenda = useApi<ExamAgendaItem[]>(examAgendaEnabled ? '/me/exam-agenda' : null);
+  const academicRooms = useApi<Room[]>(roleId === 'academic_staff' ? '/rooms' : null);
+  const academicClasses = useApi<SchoolClass[]>(roleId === 'academic_staff' ? '/classes' : null);
+  const academicYears = useApi<AcademicYear[]>(roleId === 'academic_staff' ? '/academicYears' : null);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
@@ -170,6 +173,9 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     dashboard.reload();
     notifications.reload();
     examAgenda.reload();
+    academicRooms.reload();
+    academicClasses.reload();
+    academicYears.reload();
   };
   const markNotificationRead = async (id: string) => {
     setMarkingNotificationId(id);
@@ -212,6 +218,9 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         markingNotificationId={markingNotificationId}
         examAgenda={examAgenda.data ?? []}
         examAgendaLoading={examAgenda.loading}
+        rooms={academicRooms.data ?? []}
+        classes={academicClasses.data ?? []}
+        years={academicYears.data ?? []}
         onMarkNotificationRead={markNotificationRead}
         onReload={reloadAll}
         onNavigate={navigate}
@@ -364,6 +373,7 @@ const operationalDashboardConfig: Record<OperationalRole, {
 function OperationalRoleDashboard({
   roleId, firstName, today, data, loading, hasError, notifications, notificationsLoading,
   markingNotificationId, examAgenda, examAgendaLoading, onMarkNotificationRead, onReload, onNavigate,
+  rooms, classes, years,
 }: {
   roleId: OperationalRole;
   firstName: string;
@@ -376,6 +386,9 @@ function OperationalRoleDashboard({
   markingNotificationId: string | null;
   examAgenda: ExamAgendaItem[];
   examAgendaLoading: boolean;
+  rooms: Room[];
+  classes: SchoolClass[];
+  years: AcademicYear[];
   onMarkNotificationRead: (id: string) => Promise<void>;
   onReload: () => void;
   onNavigate: (page: PageId) => void;
@@ -425,6 +438,8 @@ function OperationalRoleDashboard({
         </section>
       )}
 
+      {roleId === 'academic_staff' && <AcademicRoomCapacity rooms={rooms} classes={classes} years={years} onOpen={() => onNavigate('E1')} />}
+
       <section className="role-command-workspace">
         <article className="role-command-worklist">
           <header><div><span>CẦN XỬ LÝ</span><h3>{config.workTitle}</h3><p>{config.workDescription}</p></div><strong className={openItems.length ? 'has-work' : 'is-clear'}>{openItems.length} nhóm việc</strong></header>
@@ -454,6 +469,28 @@ function OperationalRoleDashboard({
       </section>}
     </div>
   );
+}
+
+function AcademicRoomCapacity({ rooms, classes, years, onOpen }: {
+  rooms: Room[]; classes: SchoolClass[]; years: AcademicYear[]; onOpen: () => void;
+}) {
+  const currentYear = years.find((year) => year.status === 'ACTIVE') || years.find((year) => year.status === 'PLANNED');
+  const currentClasses = classes.filter((item) => item.academicYearId === currentYear?.id);
+  const mainRooms = rooms.filter((room) => room.status !== 'MAINTENANCE' && room.status !== 'INACTIVE'
+    && room.homeRoomEligible !== false && (room.roomType || 'GENERAL') === 'GENERAL');
+  const functionalRooms = rooms.filter((room) => room.homeRoomEligible === false || (room.roomType || 'GENERAL') !== 'GENERAL');
+  const slots = mainRooms.reduce((total, room) => total + (room.supportsMorning === false ? 0 : 1) + (room.supportsAfternoon === false ? 0 : 1), 0);
+  const spare = slots - currentClasses.length;
+  const assigned = currentClasses.filter((item) => item.roomId).length;
+  return <section className="academic-room-capacity">
+    <header><div><span>NĂNG LỰC PHÒNG HỌC</span><h3>{currentYear?.code || 'Năm học hiện tại'} · {currentClasses.length} lớp</h3><p>Theo dõi khả năng đáp ứng hai ca trước khi phân lớp và phát hành thời khóa biểu.</p></div><button type="button" onClick={onOpen}>Mở quy hoạch phòng <ArrowRight size={15} /></button></header>
+    <div>
+      <article><span><DoorOpen size={19} /></span><div><small>Phòng chính</small><strong>{mainRooms.length}</strong><em>{slots} lượt phòng cho hai ca</em></div></article>
+      <article><span><School size={19} /></span><div><small>Đã phân ca/phòng</small><strong>{assigned}/{currentClasses.length}</strong><em>{currentClasses.length - assigned} lớp chưa hoàn tất</em></div></article>
+      <article><span><Sparkles size={19} /></span><div><small>Phòng chức năng</small><strong>{functionalRooms.length}</strong><em>Được xếp riêng theo từng tiết</em></div></article>
+      <article className={spare >= 0 ? 'is-safe' : 'is-risk'}><span>{spare >= 0 ? <CheckCircle2 size={19} /> : <AlertTriangle size={19} />}</span><div><small>Dự phòng vận hành</small><strong>{spare >= 0 ? `Dư ${spare}` : `Thiếu ${Math.abs(spare)}`}</strong><em>lượt phòng so với số lớp</em></div></article>
+    </div>
+  </section>;
 }
 
 function AdminCommandDashboard({ firstName, today, data, loading, hasError, onReload, onNavigate }: {

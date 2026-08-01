@@ -1,22 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BookOpenCheck, CalendarClock, CheckCircle2, ClipboardPenLine, DoorOpen, Lock, Megaphone, Pencil,
-  Plus, RefreshCw, Save, ShieldCheck, Trash2, Unlock, UsersRound, X,
+  AlertTriangle, BookOpenCheck, CalendarClock, CheckCircle2, ClipboardPenLine, DoorOpen, Lock, Megaphone, Pencil,
+  Plus, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, Trash2, Unlock, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
-  AcademicYear, ApiUser, EligibleExamGrader, ExamCandidate, ExamGradingAssignment,
-  ExamPeriod, ExamPeriodSummary, ExamRoom, ExamSchedule, Room, SchoolClass, Semester, Subject,
+  AcademicYear, EligibleExamGrader, ExamGradingAssignment, ExamDayPolicy, ExamOrganizationPlan,
+  ExamOrganizationReadiness, ExamPeriod, ExamPeriodSummary, ExamSchedule,
+  SchoolClass, Semester, Subject,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, useToast } from './common';
 import { AdminExamCategoriesLive } from './AdminLive';
 import { useHashString } from '../../api/urlState';
+import { canApplyExamOrganizationPlan } from './examOrganizationPlanning';
 
 const today = new Date().toISOString().slice(0, 10);
 const blankSchedule = (date = today) => ({ subjectId: '', classIds: [] as string[], examDate: date, startTime: '07:30', durationMinutes: 90, notes: '' });
-type ExamSetupStep = 'rooms' | 'candidates' | 'graders';
+type ExamSetupStep = 'organization' | 'graders';
 
 function toMinutes(value: string) {
   const [hours, minutes] = value.split(':').map(Number);
@@ -30,23 +32,71 @@ function schedulesOverlap(first: Pick<ExamSchedule, 'examDate' | 'startTime' | '
   return firstStart < secondStart + second.durationMinutes && secondStart < firstStart + first.durationMinutes;
 }
 
+type OrganizationForm = { maxCandidatesPerRoom: number; studentsPerDesk: number; includeSecondProctor: boolean };
+
+function UnifiedOrganizationPanel({ plan, historyCount, form, setForm, busy, policy, onPreview, onApply, onUndo, onNext }: {
+  plan?: ExamOrganizationPlan; historyCount: number; form: OrganizationForm;
+  setForm: (value: OrganizationForm) => void; busy: boolean; policy?: ExamDayPolicy;
+  onPreview: () => void; onApply: () => void; onUndo: () => void; onNext: () => void;
+}) {
+  const ready = !!plan && plan.missingAssignmentCount === 0 && plan.assignedCount === plan.candidateCount;
+  const canApply = canApplyExamOrganizationPlan(plan);
+  return <section className="exam-operation-panel exam-unified-organization">
+    <header>
+      <div><span><Sparkles size={19} /></span><div><h4>Tổ chức ca thi tự động trong một lần</h4><p>Hệ thống tự chọn phòng, phân giám thị, chia thí sinh, cấp SBD 6 chữ số và vị trí bàn. Bản xem trước không thay đổi dữ liệu.</p></div></div>
+      <b className={ready ? 'is-ready' : 'needs-work'}>{ready ? 'Sẵn sàng áp dụng' : 'Cần tạo phương án'}</b>
+    </header>
+    {policy && <div className="exam-day-policy"><span><CalendarClock size={18} /></span><div><strong>{policy.title}</strong><p>{policy.description}</p></div><b>Áp dụng {fmtDate(policy.examDate)}</b></div>}
+
+    <div className="exam-unified-flow" aria-label="Quy trình tự động">
+      <span><b>1</b><small>Chọn đủ phòng</small></span><i>→</i>
+      <span><b>2</b><small>Phân giám thị</small></span><i>→</i>
+      <span><b>3</b><small>Xếp thí sinh</small></span><i>→</i>
+      <span><b>4</b><small>Cấp SBD & bàn</small></span>
+    </div>
+
+    <div className="exam-organization-config">
+      <label><span>Số thí sinh tối đa mỗi phòng</span><strong>Giới hạn sử dụng, không vượt sức chứa thật</strong><input className="live-input" type="number" min="1" max="1000" value={form.maxCandidatesPerRoom} onChange={(event) => setForm({ ...form, maxCandidatesPerRoom: Math.max(1, Number(event.target.value)) })} /></label>
+      <label><span>Số thí sinh mỗi bàn</span><strong>Chọn 1 để mỗi người ngồi một bàn riêng</strong><select className="live-select" value={form.studentsPerDesk} onChange={(event) => setForm({ ...form, studentsPerDesk: Number(event.target.value) })}><option value="1">1 người / bàn</option><option value="2">2 người / bàn</option><option value="3">3 người / bàn</option><option value="4">4 người / bàn</option></select></label>
+      <label className="exam-config-switch"><span>Giám thị hỗ trợ</span><strong>Ngoài một giám thị chính bắt buộc</strong><input type="checkbox" checked={form.includeSecondProctor} onChange={(event) => setForm({ ...form, includeSecondProctor: event.target.checked })} /><em>{form.includeSecondProctor ? 'Mỗi phòng có 2 giám thị' : 'Mỗi phòng có 1 giám thị'}</em></label>
+      <button className="live-btn exam-generate-plan" disabled={busy || form.maxCandidatesPerRoom < 1} onClick={onPreview}><Sparkles size={16} /> {plan ? 'Tạo lại phương án' : 'Tạo phương án tự động'}</button>
+    </div>
+
+    {plan ? <div className="exam-unified-preview">
+      <div className="exam-unified-summary">
+        <article><small>Phòng được chọn</small><strong>{plan.roomCount}</strong><span>Tự chọn vừa đủ nhu cầu</span></article>
+        <article><small>Thí sinh đã xếp</small><strong>{plan.assignedCount}/{plan.candidateCount}</strong><span>SBD gồm đúng 6 chữ số</span></article>
+        <article><small>Sức chứa sử dụng</small><strong>{plan.effectiveCapacity}</strong><span>Tối đa {plan.maxCandidatesPerRoom} em/phòng</span></article>
+        <article className={ready ? 'success' : 'danger'}><small>Cần xử lý</small><strong>{plan.missingAssignmentCount}</strong><span>{ready ? 'Phương án hợp lệ' : 'Xem cảnh báo phía dưới'}</span></article>
+      </div>
+      {!!plan.warningSummary && <div className="exam-plan-notice"><AlertTriangle size={16} /> {plan.warningSummary}</div>}
+      <div className="exam-unified-room-grid">{plan.rooms.map((room) => <article key={room.roomId} className={room.ready ? 'ready' : 'warning'}>
+        <header><span><DoorOpen size={17} /></span><div><strong>{room.roomCode}</strong><small>{room.candidateCount}/{room.effectiveCapacity} thí sinh · dùng {room.deskCount} bàn</small></div><b>{room.ready ? 'Sẵn sàng' : 'Thiếu giám thị'}</b></header>
+        <div><span><b>GT chính</b>{room.proctorOneName || 'Chưa xếp'}</span><span><b>GT hỗ trợ</b>{room.proctorTwoName || 'Không yêu cầu'}</span></div>
+        <footer>Sức chứa thật {room.physicalCapacity} · Dùng tối đa {room.effectiveCapacity}</footer>
+      </article>)}</div>
+      <details className="exam-candidate-details"><summary>Xem danh sách SBD, phòng và bàn ({plan.candidates.length})</summary><div className="live-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Lớp</th><th>Phòng</th><th>Bàn</th><th>Vị trí</th></tr></thead><tbody>{plan.candidates.map((item) => <tr key={item.studentId}><td className="candidate-number">{item.candidateNo}</td><td>{item.studentName}</td><td>{item.classCode}</td><td>{item.roomCode}</td><td>{item.deskNo}</td><td>{plan.studentsPerDesk === 1 ? 'Ngồi riêng' : `Vị trí ${item.seatPosition}`}</td></tr>)}</tbody></table></div></details>
+      <div className="exam-unified-actions"><span>{historyCount} phương án trong lịch sử · {plan.status === 'PREVIEW' ? 'Chưa thay đổi dữ liệu hiện tại' : plan.status === 'APPLIED' ? 'Đang được áp dụng' : 'Đã lưu lịch sử'}</span>{plan.status === 'PREVIEW' && <button className="live-btn" disabled={busy || !canApply} onClick={onApply}><CheckCircle2 size={16} /> Xác nhận và tổ chức ca thi</button>}{plan.status === 'APPLIED' && <button className="live-btn ghost" disabled={busy} onClick={onUndo}><RotateCcw size={16} /> Hoàn tác toàn bộ</button>}</div>
+      {plan.status === 'APPLIED' && ready && <button className="exam-next-step" type="button" onClick={onNext}>Tiếp tục phân công chấm thi <ClipboardPenLine size={15} /></button>}
+    </div> : <div className="exam-plan-empty"><Sparkles size={24} /><strong>Chưa có phương án tổ chức</strong><span>Điều chỉnh số người mỗi phòng và mỗi bàn, sau đó nhấn “Tạo phương án tự động”.</span></div>}
+  </section>;
+}
+
 export function AdminExamsLive() {
   const toast = useToast();
   const years = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
   const classes = useApi<SchoolClass[]>('/classes');
   const subjects = useApi<Subject[]>('/subjects');
-  const schoolRooms = useApi<Room[]>('/rooms');
-  const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const periods = useApi<ExamPeriodSummary[]>('/exam-periods');
   const [periodId, setPeriodId] = useHashString('exam_period', '');
   const [scheduleId, setScheduleId] = useState('');
   const schedules = useApi<ExamSchedule[]>(periodId ? `/exam-periods/${periodId}/schedules` : null);
-  const rooms = useApi<ExamRoom[]>(scheduleId ? `/exam-schedules/${scheduleId}/rooms` : null);
   const graders = useApi<ExamGradingAssignment[]>(scheduleId ? `/exam-schedules/${scheduleId}/graders` : null);
   const eligibleGraders = useApi<EligibleExamGrader[]>(scheduleId ? `/exam-schedules/${scheduleId}/eligible-graders` : null);
-  const candidates = useApi<ExamCandidate[]>(periodId
-    ? `/exam-periods/${periodId}/candidates${scheduleId ? `?scheduleId=${scheduleId}` : ''}` : null);
+  const readiness = useApi<ExamOrganizationReadiness>(scheduleId ? `/exam-schedules/${scheduleId}/organization-readiness` : null);
+  const organizationPlans = useApi<ExamOrganizationPlan[]>(scheduleId ? `/exam-schedules/${scheduleId}/organization-plans` : null);
+  const examDayPolicy = useApi<ExamDayPolicy>(scheduleId ? `/exam-schedules/${scheduleId}/day-policy` : null);
 
   const selectedSummary = periods.data?.find((item) => item.period.id === periodId);
   const selectedPeriod = selectedSummary?.period;
@@ -55,12 +105,9 @@ export function AdminExamsLive() {
   const [editingPeriodId, setEditingPeriodId] = useState('');
   const [scheduleForm, setScheduleForm] = useState(blankSchedule());
   const [editingScheduleId, setEditingScheduleId] = useState('');
-  const [roomForm, setRoomForm] = useState({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
-  const [editingRoomId, setEditingRoomId] = useState('');
-  const [allocationClassId, setAllocationClassId] = useState('');
-  const [allocationRoomId, setAllocationRoomId] = useState('');
+  const [organizationForm, setOrganizationForm] = useState({ maxCandidatesPerRoom: 20, studentsPerDesk: 1, includeSecondProctor: false });
   const [graderForm, setGraderForm] = useState({ classId: '', teacherId: '' });
-  const [setupStep, setSetupStep] = useState<ExamSetupStep>('rooms');
+  const [setupStep, setSetupStep] = useState<ExamSetupStep>('organization');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -70,12 +117,9 @@ export function AdminExamsLive() {
     if (scheduleId && !schedules.data?.some((item) => item.id === scheduleId)) setScheduleId('');
   }, [scheduleId, schedules.data]);
   useEffect(() => {
-    setEditingRoomId('');
-    setAllocationRoomId('');
-    setAllocationClassId('');
-    setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
+    setOrganizationForm({ maxCandidatesPerRoom: 20, studentsPerDesk: 1, includeSecondProctor: false });
     setGraderForm({ classId: '', teacherId: '' });
-    setSetupStep('rooms');
+    setSetupStep('organization');
   }, [scheduleId]);
   useEffect(() => {
     setEditingScheduleId('');
@@ -90,33 +134,16 @@ export function AdminExamsLive() {
     () => eligibleClasses.filter((item) => (selectedSchedule?.classIds || []).includes(item.id)),
     [eligibleClasses, selectedSchedule],
   );
-  const candidatesByClass = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const candidate of candidates.data || []) {
-      counts.set(candidate.classId, (counts.get(candidate.classId) || 0) + 1);
-    }
-    return counts;
-  }, [candidates.data]);
-  const candidateRoomsByClass = useMemo(() => {
-    const roomNames = new Map((rooms.data || []).map((room) => [room.id, room.roomCode]));
-    const grouped = new Map<string, Set<string>>();
-    for (const candidate of candidates.data || []) {
-      const roomCode = roomNames.get(candidate.examRoomId);
-      if (!roomCode) continue;
-      const current = grouped.get(candidate.classId) || new Set<string>();
-      current.add(roomCode);
-      grouped.set(candidate.classId, current);
-    }
-    return new Map([...grouped].map(([classId, values]) => [classId, [...values].join(', ')]));
-  }, [candidates.data, rooms.data]);
-  const allocatedClassCount = selectedScheduleClasses.filter((item) => (candidatesByClass.get(item.id) || 0) > 0).length;
   const assignedGraderCount = selectedScheduleClasses.filter((item) =>
     (graders.data || []).some((assignment) => assignment.classId === item.id)).length;
-  const readyRoomCount = (rooms.data || []).filter((room) => !!room.proctorOneId).length;
-  const roomsReady = !!rooms.data?.length && readyRoomCount === rooms.data.length;
-  const candidatesReady = !!selectedScheduleClasses.length && allocatedClassCount === selectedScheduleClasses.length;
+  const roomsReady = !!readiness.data?.roomsReady;
+  const candidatesReady = !!readiness.data?.candidatesReady;
+  const organizationReady = roomsReady && candidatesReady;
   const gradersReady = !!selectedScheduleClasses.length && assignedGraderCount === selectedScheduleClasses.length;
-  const completedSetupSteps = [roomsReady, candidatesReady, gradersReady].filter(Boolean).length;
+  const completedSetupSteps = [organizationReady, gradersReady].filter(Boolean).length;
+  const latestOrganizationPlan = organizationPlans.data?.[0];
+  const activeOrganizationPlan = latestOrganizationPlan && ['PREVIEW', 'APPLIED'].includes(latestOrganizationPlan.status)
+    ? latestOrganizationPlan : undefined;
   const scheduleConflicts = useMemo(() => (schedules.data || []).filter((item) => {
     if (item.id === editingScheduleId) return false;
     const sharedClass = (item.classIds || []).some((classId) => scheduleForm.classIds.includes(classId));
@@ -133,8 +160,8 @@ export function AdminExamsLive() {
   }, [schedules.data]);
 
   const refreshExam = () => {
-    periods.reload(); schedules.reload(); rooms.reload(); candidates.reload();
-    graders.reload(); eligibleGraders.reload();
+    periods.reload(); schedules.reload(); graders.reload(); eligibleGraders.reload(); readiness.reload();
+    organizationPlans.reload(); examDayPolicy.reload();
   };
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -205,35 +232,20 @@ export function AdminExamsLive() {
     classIds: current.classIds.includes(classId) ? current.classIds.filter((id) => id !== classId) : [...current.classIds, classId],
   }));
 
-  const saveRoom = () => scheduleId && run(async () => {
-    const created = await api.post<ExamRoom>(`/exam-schedules/${scheduleId}/rooms`, { ...roomForm, id: editingRoomId || undefined });
-    setAllocationRoomId(created.id);
-    setEditingRoomId('');
-    setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
-  }, editingRoomId ? 'Đã cập nhật phòng thi' : 'Đã phân phòng và giám thị');
-
-  const editRoom = (room: ExamRoom) => {
-    setEditingRoomId(room.id);
-    setAllocationRoomId(room.id);
-    setRoomForm({ roomCode: room.roomCode, capacity: room.capacity, proctorOneId: room.proctorOneId || '', proctorTwoId: room.proctorTwoId || '' });
-  };
-
-  const deleteRoom = (room: ExamRoom) => {
-    if (!window.confirm(`Xóa phòng thi ${room.roomCode}?`)) return;
-    run(async () => {
-      await api.del(`/exam-rooms/${room.id}`);
-      if (allocationRoomId === room.id) setAllocationRoomId('');
-      if (editingRoomId === room.id) {
-        setEditingRoomId('');
-        setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' });
-      }
-    }, 'Đã xóa phòng thi');
-  };
-
-  const allocate = () => allocationRoomId && allocationClassId && run(
-    () => api.post(`/exam-rooms/${allocationRoomId}/allocate`, { classId: allocationClassId }),
-    'Đã cấp số báo danh và xếp chỗ cho lớp',
+  const previewOrganization = () => scheduleId && run(
+    () => api.post(`/exam-schedules/${scheduleId}/organization-plans/preview`, organizationForm),
+    'Đã tạo phương án tổ chức ca thi hoàn chỉnh',
   );
+
+  const applyOrganization = () => activeOrganizationPlan?.status === 'PREVIEW'
+    && window.confirm('Áp dụng sẽ thay thế đồng thời phòng thi, giám thị, danh sách thí sinh, SBD và chỗ ngồi. Tiếp tục?')
+    && run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/apply`, {}),
+      'Đã tổ chức ca thi và lưu toàn bộ dữ liệu');
+
+  const undoOrganization = () => activeOrganizationPlan?.status === 'APPLIED'
+    && window.confirm('Hoàn tác sẽ phục hồi toàn bộ phòng, giám thị và danh sách thí sinh trước lần áp dụng. Tiếp tục?')
+    && run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/undo`, {}),
+      'Đã hoàn tác toàn bộ phương án tổ chức ca thi');
 
   const assignGrader = () => scheduleId && graderForm.classId && graderForm.teacherId && run(async () => {
     await api.put(`/exam-schedules/${scheduleId}/graders`, graderForm);
@@ -374,69 +386,114 @@ export function AdminExamsLive() {
                     <h3>{selectedSchedule.subjectName}</h3>
                     <p>{fmtDate(selectedSchedule.examDate)} · {selectedSchedule.startTime} · {selectedSchedule.durationMinutes} phút · {selectedScheduleClasses.map((item) => item.code).join(', ')}</p>
                   </div>
-                  <strong className={completedSetupSteps === 3 ? 'complete' : ''}>
-                    {completedSetupSteps}/3 bước
+                  <strong className={completedSetupSteps === 2 ? 'complete' : ''}>
+                    {completedSetupSteps}/2 bước
                   </strong>
                 </header>
 
                 <nav className="exam-setup-steps" aria-label="Các bước tổ chức ca thi">
-                  <button type="button" className={`${setupStep === 'rooms' ? 'active' : ''} ${roomsReady ? 'done' : ''}`} onClick={() => setSetupStep('rooms')}>
-                    <span>{roomsReady ? <CheckCircle2 size={18} /> : <DoorOpen size={18} />}</span>
-                    <div><small>Bước 1</small><strong>Phòng & giám thị</strong><em>{rooms.data?.length || 0} phòng</em></div>
-                  </button>
-                  <button type="button" className={`${setupStep === 'candidates' ? 'active' : ''} ${candidatesReady ? 'done' : ''}`} onClick={() => setSetupStep('candidates')}>
-                    <span>{candidatesReady ? <CheckCircle2 size={18} /> : <UsersRound size={18} />}</span>
-                    <div><small>Bước 2</small><strong>Thí sinh & SBD</strong><em>{allocatedClassCount}/{selectedScheduleClasses.length} lớp</em></div>
+                  <button type="button" className={`${setupStep === 'organization' ? 'active' : ''} ${organizationReady ? 'done' : ''}`} onClick={() => setSetupStep('organization')}>
+                    <span>{organizationReady ? <CheckCircle2 size={18} /> : <DoorOpen size={18} />}</span>
+                    <div><small>Bước 1</small><strong>Tổ chức ca thi tự động</strong><em>{readiness.data?.allocatedCount || 0}/{readiness.data?.candidateCount || 0} thí sinh · phòng, giám thị, SBD và bàn</em></div>
                   </button>
                   <button type="button" className={`${setupStep === 'graders' ? 'active' : ''} ${gradersReady ? 'done' : ''}`} onClick={() => setSetupStep('graders')}>
                     <span>{gradersReady ? <CheckCircle2 size={18} /> : <ClipboardPenLine size={18} />}</span>
-                    <div><small>Bước 3</small><strong>Giáo viên chấm</strong><em>{assignedGraderCount}/{selectedScheduleClasses.length} lớp</em></div>
+                    <div><small>Bước 2</small><strong>Giáo viên chấm</strong><em>{assignedGraderCount}/{selectedScheduleClasses.length} lớp</em></div>
                   </button>
                 </nav>
 
-                {setupStep === 'rooms' && <section className="exam-operation-panel">
+                {setupStep === 'organization' && <UnifiedOrganizationPanel plan={activeOrganizationPlan}
+                  historyCount={organizationPlans.data?.length || 0} form={organizationForm} setForm={setOrganizationForm}
+                  busy={busy} policy={examDayPolicy.data || undefined} onPreview={previewOrganization}
+                  onApply={applyOrganization} onUndo={undoOrganization} onNext={() => setSetupStep('graders')} />}
+                {/* Giao diện tổ chức rời cũ được giữ tạm trong lịch sử nguồn để đối chiếu khi chuyển đổi.
+                {setupStep === 'organization' && <div className="exam-combined-organization">
+                <section className="exam-operation-panel">
                   <header>
-                    <div><span><DoorOpen size={18} /></span><div><h4>Phân phòng và giám thị</h4><p>Tạo từng phòng thi; giám thị 1 là bắt buộc, giám thị 2 có thể bổ sung sau.</p></div></div>
-                    <b>{readyRoomCount}/{rooms.data?.length || 0} phòng sẵn sàng</b>
+                    <div><span><DoorOpen size={18} /></span><div><h4>Chọn đủ phòng, sau đó phân công giám thị</h4><p>Mỗi phòng dùng đúng sức chứa thực tế. Bước này chỉ hoàn tất khi đủ chỗ và tất cả phòng có giám thị chính.</p></div></div>
+                    <b className={roomsReady ? 'is-ready' : 'needs-work'}>{roomsReady ? 'Đã đủ điều kiện' : 'Chưa hoàn tất'}</b>
                   </header>
-                  <div className="exam-room-editor">
-                    <label><span>Phòng thi</span><select className="live-select" value={roomForm.roomCode} onChange={(e) => setRoomForm({ ...roomForm, roomCode: e.target.value })}><option value="">Chọn phòng</option>{(schoolRooms.data || []).map((x) => <option key={x.id} value={x.code}>{x.code} · {x.capacity || 0} chỗ</option>)}</select></label>
-                    <label><span>Sức chứa sử dụng</span><input className="live-input" type="number" min="1" value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: Number(e.target.value) })} /></label>
-                    <label><span>Giám thị 1 <b>*</b></span><select className="live-select" value={roomForm.proctorOneId} onChange={(e) => setRoomForm({ ...roomForm, proctorOneId: e.target.value })}><option value="">Chọn giám thị chính</option>{(teachers.data || []).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select></label>
-                    <label><span>Giám thị 2</span><select className="live-select" value={roomForm.proctorTwoId} onChange={(e) => setRoomForm({ ...roomForm, proctorTwoId: e.target.value })}><option value="">Không bắt buộc</option>{(teachers.data || []).filter((x) => x.id !== roomForm.proctorOneId).map((x) => <option key={x.id} value={x.id}>{x.fullName}</option>)}</select></label>
-                    <div className="exam-editor-actions">
-                      {editingRoomId && <button className="live-btn ghost" onClick={() => { setEditingRoomId(''); setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' }); }}><X size={15} /> Hủy</button>}
-                      <button className="live-btn" disabled={busy || !!selectedPeriod?.scoreEntryLocked || !roomForm.roomCode || !roomForm.proctorOneId || roomForm.capacity < 1} onClick={saveRoom}>{editingRoomId ? <Save size={15} /> : <Plus size={15} />} {editingRoomId ? 'Lưu thay đổi' : 'Thêm phòng thi'}</button>
-                    </div>
+                  {examDayPolicy.data && <div className="exam-day-policy"><span><CalendarClock size={18} /></span><div><strong>{examDayPolicy.data.title}</strong><p>{examDayPolicy.data.description}</p></div><b>Áp dụng {fmtDate(examDayPolicy.data.examDate)}</b></div>}
+                  <div className="exam-capacity-overview">
+                    <article><small>Thí sinh cần chỗ</small><strong>{readiness.data?.candidateCount ?? '—'}</strong><span>học sinh thuộc {selectedScheduleClasses.length} lớp</span></article>
+                    <article><small>Sức chứa đã chọn</small><strong>{readiness.data?.totalCapacity ?? 0}</strong><span>{rooms.data?.length || 0} phòng thi</span></article>
+                    <article className={(readiness.data?.missingSeats || 0) > 0 ? 'danger' : 'success'}><small>Chỗ còn thiếu</small><strong>{readiness.data?.missingSeats ?? 0}</strong><span>{readiness.data?.missingSeats ? 'Cần chọn thêm phòng' : 'Đã đủ chỗ ngồi'}</span></article>
+                    <article className={readyRoomCount < (rooms.data?.length || 0) ? 'warning' : 'success'}><small>Đã có giám thị chính</small><strong>{readyRoomCount}/{rooms.data?.length || 0}</strong><span>{readyRoomCount < (rooms.data?.length || 0) ? 'Cần bổ sung giám thị' : 'Đã hoàn tất'}</span></article>
                   </div>
+                  {!editingRoomId && <div className="exam-batch-room-picker">
+                    <div className="exam-picker-heading"><div><strong>1. Chọn nhiều phòng cùng lúc</strong><span>Chọn các phòng muốn dùng, hệ thống tự lấy sức chứa thực tế.</span></div><button className="live-btn" disabled={busy || !selectedPhysicalRooms.length} onClick={addSelectedRooms}><Plus size={15} /> Thêm {selectedPhysicalRooms.length || ''} phòng</button></div>
+                    {availablePhysicalRooms.length ? <div className="exam-room-choice-grid">{availablePhysicalRooms.map((room) => {
+                      const checked = selectedPhysicalRooms.includes(room.roomCode);
+                      return <label key={room.roomId} className={checked ? 'selected' : ''}><input type="checkbox" checked={checked} onChange={() => setSelectedPhysicalRooms((current) => checked ? current.filter((code) => code !== room.roomCode) : [...current, room.roomCode])} /><span><strong>{room.roomCode}</strong><small>{room.capacity || 0} chỗ · {room.roomName || 'Phòng học'}</small><em>{room.reason}</em></span></label>;
+                    })}</div> : <div className="exam-inline-success"><CheckCircle2 size={16} /> Tất cả phòng khả dụng đã được thêm vào ca thi.</div>}
+                    {!!blockedPhysicalRooms.length && <details className="exam-blocked-rooms"><summary>{blockedPhysicalRooms.length} phòng không thể chọn do trùng ca thi</summary><div>{blockedPhysicalRooms.map((room) => <span key={room.roomId}><b>{room.roomCode}</b><small>{room.conflictingSubject} · {room.conflictingStartTime} · {room.reason}</small></span>)}</div></details>}
+                  </div>}
+                  {editingRoomId && <div className="exam-room-editor exam-room-editor-editing">
+                    <div className="exam-form-title"><strong>2. Phân công giám thị cho phòng {roomForm.roomCode}</strong><span>Có thể giảm sức chứa sử dụng, nhưng không được vượt sức chứa thật.</span></div>
+                    <label><span>Phòng thi</span><input className="live-input" value={roomForm.roomCode} disabled /></label>
+                    <label><span>Sức chứa sử dụng</span><input className="live-input" type="number" min="1" max={(schoolRooms.data || []).find((room) => room.code === roomForm.roomCode)?.capacity || 1000} value={roomForm.capacity} onChange={(e) => setRoomForm({ ...roomForm, capacity: Number(e.target.value) })} /></label>
+                    <label><span>Giám thị chính <b>*</b></span><select className="live-select" value={roomForm.proctorOneId} onChange={(e) => setRoomForm({ ...roomForm, proctorOneId: e.target.value })}><option value="">Chọn giáo viên đang rảnh</option>{manualProctorOptions.map((x) => <option key={x.teacherId} value={x.teacherId}>{x.teacherName} · {x.currentDutyCount} ca · {x.teachesExamSubject ? 'cùng môn' : 'khác môn'}</option>)}</select><small className="exam-field-help">Chỉ loại giáo viên đang coi một ca thi khác trùng giờ; lịch dạy thường được tạm dừng.</small></label>
+                    <label><span>Giám thị hỗ trợ</span><select className="live-select" value={roomForm.proctorTwoId} onChange={(e) => setRoomForm({ ...roomForm, proctorTwoId: e.target.value })}><option value="">Không bắt buộc</option>{manualProctorOptions.filter((x) => x.teacherId !== roomForm.proctorOneId).map((x) => <option key={x.teacherId} value={x.teacherId}>{x.teacherName} · {x.currentDutyCount} ca · {x.teachesExamSubject ? 'cùng môn' : 'khác môn'}</option>)}</select></label>
+                    <div className="exam-editor-actions"><button className="live-btn ghost" onClick={() => { setEditingRoomId(''); setRoomForm({ roomCode: '', capacity: 30, proctorOneId: '', proctorTwoId: '' }); }}><X size={15} /> Hủy</button><button className="live-btn" disabled={busy || !roomForm.proctorOneId || roomForm.capacity < 1} onClick={saveRoom}><Save size={15} /> Lưu giám thị</button></div>
+                  </div>}
                   <Async state={rooms} allowEmpty empty="Chưa có phòng thi. Hãy thêm phòng đầu tiên ở biểu mẫu phía trên.">
-                    {(rows) => <div className="exam-room-grid">{rows.map((room) => <article key={room.id} className={room.id === allocationRoomId ? 'active' : ''}>
+                    {(rows) => <div className="exam-room-grid">{rows.map((room) => <article key={room.id} className={room.proctorOneId ? 'ready' : 'missing-proctor'}>
                       <span className="exam-room-icon"><DoorOpen size={20} /></span>
-                      <div><strong>{room.roomCode}</strong><span>{room.capacity} chỗ</span><small><b>GT1:</b> {room.proctorOneName || 'Chưa phân công'}</small><small><b>GT2:</b> {room.proctorTwoName || 'Chưa phân công'}</small></div>
-                      <div className="exam-row-actions"><button title="Sửa phòng" onClick={() => editRoom(room)}><Pencil size={14} /></button><button className="danger" title="Xóa phòng" onClick={() => deleteRoom(room)}><Trash2 size={14} /></button></div>
+                      <div><strong>{room.roomCode} · {room.capacity} chỗ</strong><span className={room.proctorOneId ? 'room-status-ready' : 'room-status-missing'}>{room.proctorOneId ? 'Đã có giám thị' : 'Thiếu giám thị chính'}</span>{lockedProctorRoomIds.includes(room.id) && <span className="room-status-locked"><Lock size={11} /> Giữ nguyên khi tự động xếp</span>}<small><b>Chính:</b> {room.proctorOneName || 'Chưa phân công'}</small><small><b>Hỗ trợ:</b> {room.proctorTwoName || 'Không có'}</small></div>
+                      <div className="exam-row-actions"><button className={lockedProctorRoomIds.includes(room.id) ? 'is-locked' : ''} title={lockedProctorRoomIds.includes(room.id) ? 'Bỏ giữ nguyên phân công' : 'Giữ nguyên phân công hiện tại'} onClick={() => toggleLockedProctorRoom(room)}>{lockedProctorRoomIds.includes(room.id) ? <Lock size={14} /> : <Unlock size={14} />}</button><button title="Phân công hoặc sửa giám thị" onClick={() => editRoom(room)}><Pencil size={14} /></button><button className="danger" title="Xóa phòng" onClick={() => deleteRoom(room)}><Trash2 size={14} /></button></div>
                     </article>)}</div>}
                   </Async>
-                  {!!rooms.data?.length && <button className="exam-next-step" type="button" onClick={() => setSetupStep('candidates')}>Tiếp tục xếp thí sinh <UsersRound size={15} /></button>}
-                </section>}
-
-                {setupStep === 'candidates' && <section className="exam-operation-panel">
-                  <header>
-                    <div><span><UsersRound size={18} /></span><div><h4>Cấp số báo danh và xếp chỗ</h4><p>Chọn phòng tiếp nhận và lớp dự thi. Hệ thống tự sinh SBD 6 chữ số, xếp chỗ và kiểm tra sức chứa.</p></div></div>
-                    <b>{allocatedClassCount}/{selectedScheduleClasses.length} lớp hoàn tất</b>
-                  </header>
-                  {!rooms.data?.length ? <div className="exam-step-warning"><DoorOpen size={18} /><div><strong>Chưa có phòng thi</strong><span>Hoàn thành bước Phòng & giám thị trước khi xếp thí sinh.</span></div><button type="button" onClick={() => setSetupStep('rooms')}>Về bước 1</button></div> : <>
-                    <div className="exam-allocation-editor">
-                      <label><span>Phòng tiếp nhận</span><select className="live-select" value={allocationRoomId} onChange={(event) => setAllocationRoomId(event.target.value)}><option value="">Chọn phòng</option>{(rooms.data || []).map((room) => <option key={room.id} value={room.id}>{room.roomCode} · {room.capacity} chỗ</option>)}</select></label>
-                      <label><span>Lớp dự thi</span><select className="live-select" value={allocationClassId} onChange={(event) => setAllocationClassId(event.target.value)}><option value="">Chọn lớp</option>{selectedScheduleClasses.map((item) => <option key={item.id} value={item.id}>{item.code}{candidatesByClass.get(item.id) ? ` · Đã xếp ${candidatesByClass.get(item.id)} HS` : ''}</option>)}</select></label>
-                      <button className="live-btn" disabled={busy || !allocationRoomId || !allocationClassId} onClick={allocate}><UsersRound size={15} /> Cấp SBD & xếp chỗ</button>
+                  {!!rooms.data?.length && <section className="exam-proctor-automation">
+                    <header className="exam-proctor-heading">
+                      <div className="exam-proctor-title"><span><Sparkles size={19} /></span><div><small>PHÂN CÔNG NHANH</small><h5>Để hệ thống chọn giám thị phù hợp</h5><p>Bạn xem trước kết quả rồi mới áp dụng. Dữ liệu hiện tại chưa thay đổi ở bước xem trước.</p></div></div>
+                      <div className="exam-proctor-actions">
+                        <label className="exam-proctor-switch"><input type="checkbox" checked={includeSecondProctor} onChange={(event) => setIncludeSecondProctor(event.target.checked)} /><span><b>Thêm giám thị hỗ trợ</b><small>Mỗi phòng có 2 giáo viên</small></span></label>
+                        <button className="live-btn ghost" disabled={busy} onClick={previewProctors}><Sparkles size={15} /> {activeProctorPlan ? 'Tạo lại đề xuất' : 'Tạo đề xuất'}</button>
+                      </div>
+                    </header>
+                    <div className="exam-proctor-rules">
+                      <span><CheckCircle2 size={14} /><b>Không trùng ca thi</b><small>Lịch dạy thường không chặn phân công ngày thi</small></span>
+                      <span><ShieldCheck size={14} /><b>Ưu tiên khác môn</b><small>Giảm xung đột chuyên môn môn thi</small></span>
+                      <span><UsersRound size={14} /><b>Cân bằng nhiệm vụ</b><small>Ưu tiên người đang có ít ca hơn</small></span>
                     </div>
-                    <div className="exam-class-progress-grid">{selectedScheduleClasses.map((item) => {
-                      const count = candidatesByClass.get(item.id) || 0;
-                      return <article key={item.id} className={count ? 'done' : ''}><span>{count ? <CheckCircle2 size={18} /> : <UsersRound size={18} />}</span><div><strong>Lớp {item.code}</strong><small>{count ? `${count} thí sinh · Phòng ${candidateRoomsByClass.get(item.id) || '—'}` : 'Chưa cấp SBD và xếp chỗ'}</small></div><b>{count ? 'Hoàn tất' : 'Chờ xếp'}</b></article>;
-                    })}</div>
+                    {activeProctorPlan ? <div className="exam-proctor-preview">
+                      <div className="exam-proctor-summary">
+                        <div><span className={`exam-proctor-state ${activeProctorPlan.status.toLowerCase()}`}>{activeProctorPlan.status === 'PREVIEW' ? 'Bản xem trước' : 'Đã áp dụng'}</span><strong>{activeProctorPlan.readyRoomCount}/{activeProctorPlan.roomCount} phòng sẵn sàng</strong><small>{activeProctorPlan.missingAssignmentCount ? `${activeProctorPlan.missingAssignmentCount} phòng cần chọn lại` : 'Không phát hiện trùng lịch'}</small></div>
+                        <div className="exam-proctor-confirm">{activeProctorPlan.status === 'PREVIEW' && <button className="live-btn" disabled={busy || activeProctorPlan.missingAssignmentCount > 0} onClick={applyProctors}><CheckCircle2 size={15} /> Xác nhận và áp dụng</button>}{activeProctorPlan.status === 'APPLIED' && <button className="live-btn ghost" disabled={busy} onClick={undoProctors}><RotateCcw size={15} /> Hoàn tác</button>}</div>
+                      </div>
+                      {!!activeProctorPlan.warningSummary && <div className="exam-proctor-warning"><AlertTriangle size={15} /> {activeProctorPlan.warningSummary}</div>}
+                      <div className="exam-proctor-plan-grid">{activeProctorPlan.items.map((item) => <article key={item.roomId} className={`${item.status === 'READY' ? 'ready' : 'warning'} ${item.locked ? 'locked' : ''}`}>
+                        <div className="exam-proctor-room"><span><DoorOpen size={15} /></span><strong>{item.roomCode}</strong>{item.locked && <em><Lock size={11} /> Đã khóa</em>}<b>{item.status === 'READY' ? 'Sẵn sàng' : 'Cần xử lý'}</b></div>
+                        <div className="exam-proctor-change"><div><small>Hiện tại</small><span>{item.previousProctorOneName || 'Chưa có giám thị'}</span>{item.previousProctorTwoName && <span>{item.previousProctorTwoName}</span>}</div><span className="exam-proctor-arrow">→</span><div><small>Hệ thống đề xuất</small><strong>{item.proposedProctorOneName || 'Chưa tìm được'}</strong>{item.proposedProctorOneName && <em>{item.proctorOneDutyCount || 0} ca đang phụ trách</em>}{item.proposedProctorTwoName && <><strong>{item.proposedProctorTwoName}</strong><em>{item.proctorTwoDutyCount || 0} ca đang phụ trách</em></>}</div></div>
+                        <p>{item.message}</p>
+                      </article>)}</div>
+                    </div> : <div className="exam-proctor-empty"><span><Sparkles size={18} /></span><div><strong>Chưa tạo đề xuất</strong><small>Nếu muốn giữ một giáo viên đã chọn, nhấn biểu tượng khóa tại phòng đó trước khi tạo đề xuất.</small></div></div>}
+                    {!!proctorPlans.data?.length && <details className="exam-proctor-history"><summary>Lịch sử phân công ({proctorPlans.data.length})</summary><div>{proctorPlans.data.map((plan) => <span key={plan.id}><b>{plan.status === 'PREVIEW' ? 'Xem trước' : plan.status === 'APPLIED' ? 'Đã áp dụng' : plan.status === 'UNDONE' ? 'Đã hoàn tác' : 'Đã thay thế'}</b><small>{new Date(plan.createdAt).toLocaleString('vi-VN')} · {plan.readyRoomCount}/{plan.roomCount} phòng</small></span>)}</div></details>}
+                  </section>}
+                  {!!readiness.data?.warnings.length && <div className="exam-readiness-warnings">{readiness.data.warnings.filter((warning) => !warning.includes('thí sinh chưa được xếp')).map((warning) => <span key={warning}><AlertTriangle size={14} /> {warning}</span>)}</div>}
+                </section>
+
+                <section className="exam-operation-panel exam-candidate-panel">
+                  <header>
+                    <div><span><UsersRound size={18} /></span><div><h4>Tự động xếp thí sinh và cấp SBD</h4><p>Hệ thống ưu tiên giữ học sinh cùng lớp trong một phòng; khi cần sẽ tự chia lớp sang nhiều phòng mà không vượt sức chứa.</p></div></div>
+                    <b className={candidatesReady ? 'is-ready' : 'needs-work'}>{readiness.data?.allocatedCount || 0}/{readiness.data?.candidateCount || 0} thí sinh</b>
+                  </header>
+                  {!roomsReady ? <div className="exam-step-warning"><AlertTriangle size={18} /><div><strong>Chưa thể xếp thí sinh</strong><span>{readiness.data?.warnings.filter((warning) => !warning.includes('chưa được xếp')).join(' · ') || 'Hãy chọn đủ phòng và phân công giám thị chính ở phần phía trên.'}</span></div></div> : <>
+                    <div className="exam-plan-toolbar"><div><strong>Phương án tự động</strong><span>Xem trước không thay đổi dữ liệu. Chỉ nút “Áp dụng” mới lưu danh sách phòng, SBD và số ghế.</span></div><button className="live-btn ghost" disabled={busy} onClick={previewSeating}><Sparkles size={15} /> {activeSeatingPlan ? 'Tạo lại xem trước' : 'Tạo bản xem trước'}</button>{activeSeatingPlan?.status === 'PREVIEW' && <button className="live-btn" disabled={busy || !canApplyExamPlan(readiness.data, activeSeatingPlan)} onClick={applySeating}><CheckCircle2 size={15} /> Áp dụng phương án</button>}{activeSeatingPlan?.status === 'APPLIED' && <button className="live-btn ghost" disabled={busy} onClick={undoSeating}><RotateCcw size={15} /> Hoàn tác</button>}</div>
+                    {activeSeatingPlan ? <div className="exam-plan-preview">
+                      <div className="exam-plan-summary"><article><small>Trạng thái</small><strong>{activeSeatingPlan.status === 'PREVIEW' ? 'Đang xem trước' : 'Đã áp dụng'}</strong></article><article><small>Đã xếp</small><strong>{activeSeatingPlan.assignedCount}/{activeSeatingPlan.candidateCount}</strong></article><article className={activeSeatingPlan.unassignedCount ? 'danger' : 'success'}><small>Chưa có chỗ</small><strong>{activeSeatingPlan.unassignedCount}</strong></article><article><small>Sức chứa còn trống</small><strong>{Math.max(0, activeSeatingPlan.totalCapacity - activeSeatingPlan.assignedCount)}</strong></article></div>
+                      {!!activeSeatingPlan.warningSummary && <div className="exam-plan-notice"><AlertTriangle size={16} /> {activeSeatingPlan.warningSummary}</div>}
+                      <div className="exam-plan-room-grid">{activeSeatingPlan.rooms.map((room) => <article key={room.roomId} className={!room.hasMainProctor ? 'warning' : ''}><div><strong>{room.roomCode}</strong><span>{room.assignedCount}/{room.capacity} chỗ</span></div><progress max={room.capacity} value={room.assignedCount} /><small>Lớp: {room.classCodes.join(', ') || 'Chưa có'} · Còn {room.remainingCapacity} chỗ</small></article>)}</div>
+                      <div className="exam-plan-class-list">{activeSeatingPlan.classes.map((item) => <article key={item.classId}><span className="exam-grader-class">{item.classCode}</span><div><strong>{item.assignedCount}/{item.candidateCount} thí sinh đã có chỗ</strong><small>{item.roomCount > 1 ? `Được chia hợp lệ qua ${item.roomCount} phòng: ${item.roomCodes.join(', ')}` : `Phòng ${item.roomCodes[0] || 'chưa xếp'}`}</small></div><b className={item.assignedCount === item.candidateCount ? 'complete' : ''}>{item.assignedCount === item.candidateCount ? 'Đủ' : 'Thiếu'}</b></article>)}</div>
+                      <details className="exam-candidate-details"><summary>Xem danh sách SBD và số ghế ({activeSeatingPlan.candidates.length})</summary><div className="live-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Lớp</th><th>Phòng</th><th>Ghế</th></tr></thead><tbody>{activeSeatingPlan.candidates.map((item) => <tr key={item.studentId}><td className="candidate-number">{item.candidateNo}</td><td>{item.studentName}</td><td>{item.classCode}</td><td>{item.roomCode || 'Chưa xếp'}</td><td>{item.seatNo || '—'}</td></tr>)}</tbody></table></div></details>
+                    </div> : <div className="exam-plan-empty"><Sparkles size={22} /><strong>Chưa có bản xem trước</strong><span>Nhấn “Tạo bản xem trước” để biết từng phòng nhận bao nhiêu học sinh và lớp nào cần chia phòng.</span></div>}
+                    <details className="exam-manual-allocation"><summary>Điều chỉnh thủ công một lớp (nâng cao)</summary><div className="exam-allocation-editor"><label><span>Phòng tiếp nhận</span><select className="live-select" value={allocationRoomId} onChange={(event) => setAllocationRoomId(event.target.value)}><option value="">Chọn phòng</option>{(rooms.data || []).map((room) => <option key={room.id} value={room.id}>{room.roomCode} · {room.capacity} chỗ</option>)}</select></label><label><span>Lớp dự thi</span><select className="live-select" value={allocationClassId} onChange={(event) => setAllocationClassId(event.target.value)}><option value="">Chọn lớp</option>{selectedScheduleClasses.map((item) => <option key={item.id} value={item.id}>{item.code}{candidatesByClass.get(item.id) ? ` · Đã xếp ${candidatesByClass.get(item.id)} HS` : ''}</option>)}</select></label><button className="live-btn" disabled={busy || !allocationRoomId || !allocationClassId} onClick={allocate}><UsersRound size={15} /> Xếp lại lớp</button></div></details>
+                    {!!seatingPlans.data?.length && <details className="exam-plan-history"><summary>Lịch sử phương án ({seatingPlans.data.length})</summary><div>{seatingPlans.data.map((plan, index) => <article key={plan.id}><span>{index + 1}</span><div><strong>{examPlanStatusLabel(plan.status)}</strong><small>{new Date(plan.createdAt).toLocaleString('vi-VN')} · {plan.assignedCount}/{plan.candidateCount} thí sinh</small></div></article>)}</div></details>}
                   </>}
                   {candidatesReady && <button className="exam-next-step" type="button" onClick={() => setSetupStep('graders')}>Tiếp tục phân công chấm thi <ClipboardPenLine size={15} /></button>}
-                </section>}
+                </section>
+                </div>}
+                */}
 
                 {setupStep === 'graders' && <section className="exam-operation-panel exam-grader-panel">
                   <header>

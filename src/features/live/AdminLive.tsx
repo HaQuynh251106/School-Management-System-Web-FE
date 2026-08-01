@@ -739,7 +739,7 @@ export function AdminAcademicLegacyLive() {
     </>
   );
 }
-export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; onChanged?: () => void }) {
+export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; onChanged?: (result?: YearRolloverResult) => void }) {
   const [yearId, setYearId] = useState('');
   const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
   const rolloverPreview = useApi<YearRolloverPreview>(yearId ? `/academic-years/${yearId}/rollover-preview` : null);
@@ -752,11 +752,14 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
   useEffect(() => {
     if (!selectedYear) return;
     const nextCode = suggestNextAcademicYearCode(selectedYear.code);
-    setRolloverForm({ nextYearCode: nextCode, nextYearName: `Năm học ${nextCode}`,
-      startDate: shiftIsoYear(selectedYear.startDate), endDate: shiftIsoYear(selectedYear.endDate),
-      createIntakeClasses: true, activateNextYear: true });
+    const preparedYear = years.find((year) => year.code.toLowerCase() === nextCode.toLowerCase());
+    const startDate = preparedYear?.startDate || shiftIsoYear(selectedYear.startDate);
+    const endDate = preparedYear?.endDate || shiftIsoYear(selectedYear.endDate);
+    const today = new Date().toISOString().slice(0, 10);
+    setRolloverForm({ nextYearCode: nextCode, nextYearName: preparedYear?.name || `Năm học ${nextCode}`,
+      startDate, endDate, createIntakeClasses: true, activateNextYear: startDate <= today });
     setRolloverResult(null);
-  }, [selectedYear]);
+  }, [selectedYear, years]);
 
   const rolloverYear = async () => {
     if (!yearId || !selectedYear || !rolloverPreview.data) return;
@@ -768,7 +771,7 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
       const result = await api.post<YearRolloverResult>(`/academic-years/${yearId}/rollover`, rolloverForm);
       setRolloverResult(result);
       toast.show('ok', `Đã chuyển sang năm học ${result.nextYearCode}`);
-      onChanged?.(); preview.reload(); rolloverPreview.reload();
+      onChanged?.(result); preview.reload(); rolloverPreview.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setFinalizing(false); }
   };

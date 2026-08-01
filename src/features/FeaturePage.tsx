@@ -1,5 +1,5 @@
 import type { ModuleItem, RoleDefinition } from '../types';
-import { ArrowRight, CircleHelp, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ChevronDown, ListChecks, ShieldCheck } from 'lucide-react';
 import { GeneralDashboard } from './dashboard/GeneralDashboard';
 import { AdminReportsLive } from './live/AdminReportsLive';
 import { AdminAuditLive } from './live/AdminAuditLive';
@@ -45,20 +45,19 @@ const WORKSPACE_STEPS: Record<string, string[]> = {
 
 function RoleWorkspaceIntro({ module, role }: { module: ModuleItem; role: RoleDefinition }) {
   const steps = WORKSPACE_STEPS[module.code] ?? [];
-  return <section className="role-workspace-intro" aria-label={`Hướng dẫn ${module.title}`}>
-    <div className="role-workspace-main">
-      <span className="role-workspace-icon"><module.Icon size={24} /></span>
-      <div>
-        <small><ShieldCheck size={14} /> Không gian chuyên trách · {role.label}</small>
-        <h2>{module.title}</h2>
-        <p>{module.summary}</p>
-      </div>
-      <span className="role-workspace-help" title="Thực hiện lần lượt các bước bên dưới"><CircleHelp size={18} /> Quy trình đề xuất</span>
-    </div>
+  return <details className="role-workspace-intro" aria-label={`Hướng dẫn ${module.title}`}>
+    <summary className="role-workspace-summary">
+      <span className="role-workspace-icon"><ListChecks size={20} /></span>
+      <span className="role-workspace-summary-copy">
+        <small><ShieldCheck size={14} /> {role.label}</small>
+        <strong>Quy trình đề xuất cho {module.title}</strong>
+      </span>
+      <span className="role-workspace-help">Xem {steps.length} bước <ChevronDown size={17} /></span>
+    </summary>
     <ol className="role-workspace-steps">
       {steps.map((step, index) => <li key={step}><b>{index + 1}</b><span>{step}</span>{index < steps.length - 1 && <ArrowRight size={15} />}</li>)}
     </ol>
-  </section>;
+  </details>;
 }
 
 export function FeatureBody({ code }: { code: string }) {

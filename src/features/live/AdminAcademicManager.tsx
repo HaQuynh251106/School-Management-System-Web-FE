@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Archive, BookOpen, CalendarDays, DoorOpen, GraduationCap, Pencil, PlayCircle, Plus, Save, School, Search, Trash2 } from 'lucide-react';
+import { Archive, BookOpen, CalendarDays, ChevronDown, DoorOpen, GraduationCap, Pencil, PlayCircle, Plus, Save, School, Search, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { AcademicYear, ApiUser, Room, SchoolClass, Semester, Subject } from '../../api/types';
@@ -10,6 +10,8 @@ import { Field, Modal } from './Modal';
 import { YearEndManager } from './AdminLive';
 import { useHashString } from '../../api/urlState';
 import { IntakeClassPlacementLive } from './IntakeClassPlacementLive';
+import { RoomAllocationPlanner } from './RoomAllocationPlanner';
+import { SubjectRoomRequirements } from './SubjectRoomRequirements';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
 type EditorState = { kind: EditorKind; id: string; data: Record<string, string | number> };
@@ -41,7 +43,7 @@ export function AdminAcademicLive() {
   const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
   const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', studyShift: 'MORNING', academicYearId: '', roomId: '', homeroomTeacherId: '', capacity: 45 });
   const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
-  const [rm, setRm] = useState({ code: '', name: '', capacity: 45, shiftMode: 'BOTH' });
+  const [rm, setRm] = useState({ code: '', name: '', capacity: 45, shiftMode: 'BOTH', roomType: 'GENERAL', equipmentTags: '', status: 'ACTIVE', homeRoomEligible: true });
   const [yearQuery, setYearQuery] = useHashString('q_years', '');
   const [semesterQuery, setSemesterQuery] = useHashString('q_semesters', '');
   const [classQuery, setClassQuery] = useHashString('q_classes', '');
@@ -56,10 +58,23 @@ export function AdminAcademicLive() {
   const [editor, setEditor] = useState<EditorState | null>(null);
 
   const activeYears = (years.data ?? []).filter((year) => year.status !== 'CLOSED');
+  const preferredAcademicYear = [...activeYears].sort((left, right) => {
+    const statusOrder = (status: string) => status === 'ACTIVE' ? 0 : 1;
+    return statusOrder(left.status) - statusOrder(right.status)
+      || String(right.startDate || '').localeCompare(String(left.startDate || ''));
+  })[0];
+  const preferredAcademicYearId = preferredAcademicYear?.id;
+
+  useEffect(() => {
+    if (!preferredAcademicYearId) return;
+    if (!classYear) setClassYear(preferredAcademicYearId);
+    setCf((current) => current.academicYearId ? current : { ...current, academicYearId: preferredAcademicYearId });
+  }, [classYear, preferredAcademicYearId, setClassYear]);
+
   const yearName = (id?: string) => (years.data ?? []).find((year) => year.id === id)?.code || '—';
-  const roomSupportsShift = (room: Room, shift: string) => shift === 'AFTERNOON'
-    ? room.supportsAfternoon !== false
-    : room.supportsMorning !== false;
+  const roomSupportsShift = (room: Room, shift: string) => room.status !== 'MAINTENANCE'
+    && room.status !== 'INACTIVE' && room.homeRoomEligible !== false && (room.roomType || 'GENERAL') === 'GENERAL'
+    && (shift === 'AFTERNOON' ? room.supportsAfternoon !== false : room.supportsMorning !== false);
   const roomAssignment = (roomId: string, academicYearId: string, studyShift: string, excludeClassId = '') =>
     (classes.data ?? []).find((item) => item.id !== excludeClassId
       && item.roomId === roomId
@@ -106,9 +121,10 @@ export function AdminAcademicLive() {
 
   const addRoom = async () => {
     if (!rm.code || rm.capacity < 1) return toast.show('err', 'Nhập mã và sức chứa phòng');
-    const payload = { code: rm.code, name: rm.name, capacity: rm.capacity,
+    const payload = { code: rm.code, name: rm.name, capacity: rm.capacity, roomType: rm.roomType,
+      equipmentTags: rm.equipmentTags, status: rm.status, homeRoomEligible: rm.roomType === 'GENERAL' && rm.homeRoomEligible,
       supportsMorning: rm.shiftMode !== 'AFTERNOON', supportsAfternoon: rm.shiftMode !== 'MORNING' };
-    if (await run(() => api.post('/rooms', payload), 'Đã thêm phòng học', [rooms.reload])) setRm({ code: '', name: '', capacity: 45, shiftMode: rm.shiftMode });
+    if (await run(() => api.post('/rooms', payload), 'Đã thêm phòng học', [rooms.reload])) setRm({ code: '', name: '', capacity: 45, shiftMode: rm.shiftMode, roomType: 'GENERAL', equipmentTags: '', status: 'ACTIVE', homeRoomEligible: true });
   };
 
   const assignHomeroomTeacher = async (classId: string, teacherId: string) => {
@@ -153,7 +169,9 @@ export function AdminAcademicLive() {
     } else {
       const value = item as Room;
       setEditor({ kind, id: value.id, data: { code: value.code, name: value.name || '', capacity: value.capacity || 45,
-        shiftMode: value.supportsMorning !== false && value.supportsAfternoon !== false ? 'BOTH' : value.supportsAfternoon !== false ? 'AFTERNOON' : 'MORNING' } });
+        shiftMode: value.supportsMorning !== false && value.supportsAfternoon !== false ? 'BOTH' : value.supportsAfternoon !== false ? 'AFTERNOON' : 'MORNING',
+        roomType: value.roomType || 'GENERAL', equipmentTags: value.equipmentTags || '', status: value.status || 'ACTIVE',
+        homeRoomEligible: value.homeRoomEligible === false ? 0 : 1 } });
     }
   };
 
@@ -163,9 +181,9 @@ export function AdminAcademicLive() {
     const reloads: Record<EditorKind, Array<() => void>> = {
       year: [years.reload], semester: [semesters.reload], class: [classes.reload], subject: [subjects.reload], room: [rooms.reload],
     };
-    const { shiftMode, ...roomData } = editor.data;
+    const { shiftMode, homeRoomEligible, ...roomData } = editor.data;
     const payload = editor.kind === 'room'
-      ? { ...roomData, supportsMorning: shiftMode !== 'AFTERNOON', supportsAfternoon: shiftMode !== 'MORNING' }
+      ? { ...roomData, homeRoomEligible: roomData.roomType === 'GENERAL' && Boolean(homeRoomEligible), supportsMorning: shiftMode !== 'AFTERNOON', supportsAfternoon: shiftMode !== 'MORNING' }
       : editor.data;
     if (await run(() => api.put(`/${routes[editor.kind]}/${editor.id}`, payload), 'Đã lưu thay đổi', reloads[editor.kind])) setEditor(null);
   };
@@ -173,7 +191,7 @@ export function AdminAcademicLive() {
   const editField = (key: string, value: string | number) => setEditor((current) => current ? ({ ...current, data: { ...current.data, [key]: value } }) : current);
   const filteredYears = (years.data ?? []).filter((year) => (!yearStatus || year.status === yearStatus) && textMatches(query.years, year.code, year.name));
   const filteredSemesters = (semesters.data ?? []).filter((semester) => (!semesterYear || semester.academicYearId === semesterYear) && textMatches(query.semesters, semester.code, semester.name, yearName(semester.academicYearId)));
-  const filteredClasses = (classes.data ?? []).filter((schoolClass) => (!classYear || schoolClass.academicYearId === classYear) && textMatches(query.classes, schoolClass.code, schoolClass.name, schoolClass.gradeLevel, schoolClass.homeroomTeacherName));
+  const filteredClasses = (classes.data ?? []).filter((schoolClass) => (classYear === 'all' || schoolClass.academicYearId === classYear) && textMatches(query.classes, schoolClass.code, schoolClass.name, schoolClass.gradeLevel, schoolClass.homeroomTeacherName));
   const filteredSubjects = (subjects.data ?? []).filter((subject) => textMatches(query.subjects, subject.code, subject.name));
   const filteredRooms = (rooms.data ?? []).filter((room) => textMatches(query.rooms, room.code, room.name, room.capacity,
     room.supportsMorning !== false ? 'ca sáng' : '', room.supportsAfternoon !== false ? 'ca chiều' : ''));
@@ -188,7 +206,10 @@ export function AdminAcademicLive() {
   return (
     <>
       {toast.node}
-      <div className="academic-lifecycle-note"><CalendarDays size={20} /><div><strong>Quy trình năm học tự động</strong><span>Khi tạo năm học, hệ thống tự thiết lập Học kỳ 1 và Học kỳ 2 theo thời gian đã chọn. Giáo vụ kiểm tra, điều chỉnh ngày rồi kích hoạt. Từ các năm tiếp theo, dùng mục Tổng kết năm để tự tổng kết, tạo cơ cấu mới, xếp lớp và khóa dữ liệu cũ.</span></div></div>
+      <details className="academic-lifecycle-note">
+        <summary><CalendarDays size={19} /><span><strong>Tạo năm học sẽ tự sinh 2 học kỳ</strong><small>Xem cách hệ thống xử lý</small></span><ChevronDown size={17} /></summary>
+        <p>Khi tạo năm học, hệ thống tự thiết lập Học kỳ 1 và Học kỳ 2 theo thời gian đã chọn. Giáo vụ chỉ cần kiểm tra ngày rồi kích hoạt. Khi kết thúc năm, dùng bước Tổng kết &amp; chuyển năm để khóa dữ liệu cũ và chuẩn bị cơ cấu mới.</p>
+      </details>
       <FunctionTabs tabs={[
         { id: 'years', label: 'Năm học', description: 'Tạo khung thời gian', Icon: CalendarDays, content: (
           <Section title="Năm học" subtitle="Quản lý thời gian và vòng đời năm học" wide>
@@ -223,12 +244,19 @@ export function AdminAcademicLive() {
         { id: 'intake-placement', label: 'Phân lớp đầu cấp', description: 'Xếp học sinh mới theo sĩ số', Icon: GraduationCap, content: <IntakeClassPlacementLive /> },
         { id: 'rooms', label: 'Phòng', description: 'Chuẩn bị phòng và ca học', Icon: DoorOpen, content: (
           <Section title="Phòng học" subtitle="Cấu hình ca phục vụ và theo dõi phòng đã được giao cho từng lớp" wide>
+            <RoomAllocationPlanner years={years.data ?? []} classes={classes.data ?? []} rooms={rooms.data ?? []} onApplied={classes.reload} />
+            <div className="room-definition-guide">
+              <div><strong>1. Khai báo đúng loại phòng</strong><span>Phòng chính dùng làm phòng chủ nhiệm; phòng chức năng chỉ được xếp theo từng tiết.</span></div>
+              <label><span>Loại phòng mới</span><select className="live-select" value={rm.roomType} onChange={(e) => setRm({ ...rm, roomType: e.target.value, homeRoomEligible: e.target.value === 'GENERAL' })}><option value="GENERAL">Phòng học chính</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="LANGUAGE">Phòng ngoại ngữ</option><option value="SPORT">Phòng thể chất</option><option value="ART">Phòng nghệ thuật</option><option value="LIBRARY">Thư viện</option><option value="MULTIPURPOSE">Phòng đa năng</option><option value="OTHER">Khác</option></select></label>
+              <label><span>Thiết bị (cách nhau bằng dấu phẩy)</span><input className="live-input" value={rm.equipmentTags} onChange={(e) => setRm({ ...rm, equipmentTags: e.target.value })} placeholder="máy chiếu, máy tính, bộ thí nghiệm" /></label>
+            </div>
             <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã phòng" value={rm.code} onChange={(e) => setRm({ ...rm, code: e.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={rm.name} onChange={(e) => setRm({ ...rm, name: e.target.value })} /><select className="live-select" aria-label="Ca phục vụ của phòng" value={rm.shiftMode} onChange={(e) => setRm({ ...rm, shiftMode: e.target.value })}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select><input className="live-input" type="number" min="1" max="1000" value={rm.capacity} onChange={(e) => setRm({ ...rm, capacity: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addRoom}><Plus size={15} /> Thêm phòng</button></div>
             <div className="academic-filter-bar"><SearchBox value={query.rooms} onChange={setRoomQuery} placeholder="Tìm mã hoặc tên phòng" /></div>
-            <Async paginate resetKey={query.rooms} state={{ ...rooms, data: rooms.data ? filteredRooms : null }} itemLabel="phòng học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên phòng</th><th>Ca phục vụ</th><th>Lớp đang sử dụng</th><th>Sức chứa</th><th>Thao tác</th></tr></thead><tbody>{list.map((room) => {
-              const morningClasses = (classes.data ?? []).filter((item) => item.roomId === room.id && (item.studyShift || 'MORNING') === 'MORNING');
-              const afternoonClasses = (classes.data ?? []).filter((item) => item.roomId === room.id && item.studyShift === 'AFTERNOON');
-              return <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td><div className="room-shift-list">{room.supportsMorning !== false && <span className="class-shift-badge morning">Ca sáng</span>}{room.supportsAfternoon !== false && <span className="class-shift-badge afternoon">Ca chiều</span>}</div></td><td><div className="room-usage-list"><span><b>Sáng:</b> {morningClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span><span><b>Chiều:</b> {afternoonClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span></div></td><td>{room.capacity ?? '—'} người</td><td>{tableActions('room', room)}</td></tr>;
+            <Async paginate resetKey={query.rooms} state={{ ...rooms, data: rooms.data ? filteredRooms : null }} itemLabel="phòng học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên / loại phòng</th><th>Ca phục vụ</th><th>Lớp đang sử dụng</th><th>Sức chứa</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((room) => {
+              const currentYearIds = new Set(activeYears.map((year) => year.id));
+              const morningClasses = (classes.data ?? []).filter((item) => currentYearIds.has(item.academicYearId || '') && item.roomId === room.id && (item.studyShift || 'MORNING') === 'MORNING');
+              const afternoonClasses = (classes.data ?? []).filter((item) => currentYearIds.has(item.academicYearId || '') && item.roomId === room.id && item.studyShift === 'AFTERNOON');
+              return <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}<small className="academic-cell-note">{room.homeRoomEligible === false || room.roomType !== 'GENERAL' ? `Phòng chức năng · ${room.roomType || 'OTHER'}` : 'Phòng học chính'}</small></td><td><div className="room-shift-list">{room.supportsMorning !== false && <span className="class-shift-badge morning">Ca sáng</span>}{room.supportsAfternoon !== false && <span className="class-shift-badge afternoon">Ca chiều</span>}</div></td><td><div className="room-usage-list">{room.homeRoomEligible === false || room.roomType !== 'GENERAL' ? <span><b>Theo tiết:</b> Không giao cố định cho lớp</span> : <><span><b>Sáng:</b> {morningClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span><span><b>Chiều:</b> {afternoonClasses.map((item) => item.code).join(', ') || 'Còn trống'}</span></>}</div></td><td>{room.capacity ?? '—'} người</td><td><StatusPill value={room.status || 'ACTIVE'} /></td><td>{tableActions('room', room)}</td></tr>;
             })}</tbody></table>}</Async>
           </Section>
         ) },
@@ -257,27 +285,31 @@ export function AdminAcademicLive() {
               <button className="live-btn" disabled={busy} onClick={addClass}><Plus size={15} /> Tạo lớp</button>
             </div>
             <div className="homeroom-policy-note"><School size={17} /><span>Mỗi giáo viên chỉ chủ nhiệm <strong>một lớp trong một năm học</strong>. Giáo viên đã có lớp được ghi rõ và không thể chọn trùng.</span></div>
-            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="all">Tất cả (gồm lịch sử)</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}</select></div>
             <Async paginate resetKey={`${query.classes}-${classYear}`} state={{ ...classes, data: classes.data ? filteredClasses : null }} itemLabel="lớp học">{(list) => (
-              <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Ca học</th><th>Phòng học</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => <tr key={schoolClass.id}>
-                <td><strong>{schoolClass.code}</strong><small className="academic-cell-note">{schoolClass.name}</small></td><td>{yearName(schoolClass.academicYearId)}</td><td><Badge tone="violet">{schoolClass.gradeLevel}</Badge></td><td><span className={`class-shift-badge ${(schoolClass.studyShift || 'MORNING').toLowerCase()}`}>{schoolClass.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</span></td><td>{schoolClass.roomCode ? <span className="class-room-badge"><DoorOpen size={14} />{schoolClass.roomCode}</span> : <span className="academic-cell-note">Chưa phân phòng</span>}</td><td>{schoolClass.studentCount}/{schoolClass.capacity || 45}</td>
-                <td><select className="live-select homeroom-teacher-select" value={schoolClass.homeroomTeacherId || ''} disabled={assigningClassId === schoolClass.id || teachers.loading} onChange={(event) => assignHomeroomTeacher(schoolClass.id, event.target.value)}><option value="">— Chưa phân công —</option>{(teachers.data ?? []).map((teacher) => {
+              <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Ca học</th><th>Phòng học</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => {
+                const schoolYear = (years.data ?? []).find((year) => year.id === schoolClass.academicYearId);
+                const archived = schoolYear?.status === 'CLOSED';
+                return <tr key={schoolClass.id} className={archived ? 'academic-archived-row' : undefined}>
+                <td><strong>{schoolClass.code}</strong><small className="academic-cell-note">{schoolClass.name}</small></td><td>{yearName(schoolClass.academicYearId)}{archived && <small className="academic-cell-note">Đã lưu trữ</small>}</td><td><Badge tone="violet">{schoolClass.gradeLevel}</Badge></td><td><span className={`class-shift-badge ${(schoolClass.studyShift || 'MORNING').toLowerCase()}`}>{schoolClass.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</span></td><td>{schoolClass.roomCode ? <span className="class-room-badge"><DoorOpen size={14} />{schoolClass.roomCode}</span> : <span className="academic-cell-note">Chưa phân phòng</span>}</td><td>{schoolClass.studentCount}/{schoolClass.capacity || 45}</td>
+                <td><select className="live-select homeroom-teacher-select" value={schoolClass.homeroomTeacherId || ''} disabled={archived || assigningClassId === schoolClass.id || teachers.loading} onChange={(event) => assignHomeroomTeacher(schoolClass.id, event.target.value)}><option value="">— Chưa phân công —</option>{(teachers.data ?? []).map((teacher) => {
                   const assigned = homeroomAssignment(teacher.id, schoolClass.academicYearId, schoolClass.id);
                   return <option key={teacher.id} value={teacher.id} disabled={teacher.status !== 'ACTIVE' || Boolean(assigned)}>{teacher.fullName} · {assigned ? `Đang chủ nhiệm ${assigned.code}` : teacher.mainSubject || 'Chưa có chuyên ngành'}</option>;
                 })}</select></td>
-                <td>{tableActions('class', schoolClass)}</td>
-              </tr>)}</tbody></table>
+                <td>{archived ? <span className="academic-locked-note">Dữ liệu lịch sử</span> : tableActions('class', schoolClass)}</td>
+              </tr>})}</tbody></table>
             )}</Async>
           </Section>
         ) },
         { id: 'subjects', label: 'Môn', description: 'Hoàn thiện danh mục môn', Icon: BookOpen, content: (
           <Section title="Môn học" subtitle="Quản lý danh mục và hệ số tổng kết" wide>
+            <SubjectRoomRequirements subjects={subjects.data ?? []} />
             <div className="live-toolbar academic-create-bar"><input className="live-input" placeholder="Mã môn" value={sj.code} onChange={(e) => setSj({ ...sj, code: e.target.value })} /><input className="live-input grow" placeholder="Tên môn" value={sj.name} onChange={(e) => setSj({ ...sj, name: e.target.value })} /><input className="live-input" type="number" min="0.5" max="10" step="0.5" value={sj.coefficient} onChange={(e) => setSj({ ...sj, coefficient: Number(e.target.value) })} /><button className="live-btn" disabled={busy} onClick={addSubject}><Plus size={15} /> Thêm môn</button></div>
             <div className="academic-filter-bar"><SearchBox value={query.subjects} onChange={setSubjectQuery} placeholder="Tìm mã hoặc tên môn" /></div>
             <Async paginate resetKey={query.subjects} state={{ ...subjects, data: subjects.data ? filteredSubjects : null }} itemLabel="môn học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên môn</th><th>Hệ số tổng kết</th><th>Thao tác</th></tr></thead><tbody>{list.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{subject.coefficient || 1}</td><td>{tableActions('subject', subject)}</td></tr>)}</tbody></table>}</Async>
           </Section>
         ) },
-        { id: 'year-end', label: 'Tổng kết & chuyển năm', description: 'Khóa dữ liệu và tạo năm kế tiếp', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={() => { years.reload(); semesters.reload(); classes.reload(); }} /> },
+        { id: 'year-end', label: 'Tổng kết & chuyển năm', description: 'Khóa dữ liệu và tạo năm kế tiếp', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={(result) => { if (result?.nextYearId) setClassYear(result.nextYearId); years.reload(); semesters.reload(); classes.reload(); }} /> },
       ]} />
 
       {editor && <Modal title="Chỉnh sửa cơ cấu đào tạo" onClose={() => setEditor(null)} footer={<><button className="live-btn ghost" disabled={busy} onClick={() => setEditor(null)}>Hủy</button><button className="live-btn" disabled={busy} onClick={saveEditor}><Save size={16} /> Lưu thay đổi</button></>}>
@@ -288,7 +320,7 @@ export function AdminAcademicLive() {
           {editor.kind === 'semester' && <><Field label="Năm học"><select value={editor.data.academicYearId ?? ''} onChange={(e) => editField('academicYearId', e.target.value)}>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></Field><Field label="Thứ tự"><input type="number" min="1" max="4" value={editor.data.sequence ?? 1} onChange={(e) => editField('sequence', Number(e.target.value))} /></Field><Field label="Ngày bắt đầu"><input type="date" value={editor.data.startDate ?? ''} onChange={(e) => editField('startDate', e.target.value)} /></Field><Field label="Ngày kết thúc"><input type="date" value={editor.data.endDate ?? ''} onChange={(e) => editField('endDate', e.target.value)} /></Field></>}
           {editor.kind === 'class' && <><Field label="Năm học"><select value={editor.data.academicYearId ?? ''} onChange={(e) => { editField('academicYearId', e.target.value); editField('roomId', ''); }}>{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></Field><Field label="Khối"><select value={editor.data.gradeLevel ?? ''} onChange={(e) => editField('gradeLevel', e.target.value)}>{[6,7,8,9,10,11,12].map((grade) => <option key={grade} value={`K${grade}`}>Khối {grade}</option>)}</select></Field><Field label="Ca học"><select value={editor.data.studyShift ?? 'MORNING'} onChange={(e) => { editField('studyShift', e.target.value); editField('roomId', ''); }}><option value="MORNING">Ca sáng</option><option value="AFTERNOON">Ca chiều</option></select></Field><Field label="Phòng học"><select value={editor.data.roomId ?? ''} onChange={(e) => editField('roomId', e.target.value)}><option value="">— Chưa phân phòng —</option>{(rooms.data ?? []).filter((room) => roomSupportsShift(room, String(editor.data.studyShift || 'MORNING'))).map((room) => { const assigned = roomAssignment(room.id, String(editor.data.academicYearId || ''), String(editor.data.studyShift || 'MORNING'), editor.id); return <option key={room.id} value={room.id} disabled={Boolean(assigned)}>{room.code}{assigned ? ` · Đã giao lớp ${assigned.code}` : ` · ${room.name || 'Phòng học'}`}</option>; })}</select></Field><Field label="Sức chứa"><input type="number" min="1" max="100" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field></>}
           {editor.kind === 'subject' && <Field label="Hệ số tổng kết"><input type="number" min="0.5" max="10" step="0.5" value={editor.data.coefficient ?? 1} onChange={(e) => editField('coefficient', Number(e.target.value))} /></Field>}
-          {editor.kind === 'room' && <><Field label="Ca phục vụ"><select value={editor.data.shiftMode ?? 'BOTH'} onChange={(e) => editField('shiftMode', e.target.value)}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select></Field><Field label="Sức chứa"><input type="number" min="1" max="1000" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field></>}
+          {editor.kind === 'room' && <><Field label="Loại phòng"><select value={editor.data.roomType ?? 'GENERAL'} onChange={(e) => { editField('roomType', e.target.value); if (e.target.value !== 'GENERAL') editField('homeRoomEligible', 0); }}><option value="GENERAL">Phòng học chính</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="LANGUAGE">Phòng ngoại ngữ</option><option value="SPORT">Phòng thể chất</option><option value="ART">Phòng nghệ thuật</option><option value="LIBRARY">Thư viện</option><option value="MULTIPURPOSE">Phòng đa năng</option><option value="OTHER">Khác</option></select></Field><Field label="Trạng thái"><select value={editor.data.status ?? 'ACTIVE'} onChange={(e) => editField('status', e.target.value)}><option value="ACTIVE">Sẵn sàng</option><option value="MAINTENANCE">Đang bảo trì</option><option value="INACTIVE">Ngừng sử dụng</option></select></Field><Field label="Ca phục vụ"><select value={editor.data.shiftMode ?? 'BOTH'} onChange={(e) => editField('shiftMode', e.target.value)}><option value="BOTH">Cả ca sáng và chiều</option><option value="MORNING">Chỉ ca sáng</option><option value="AFTERNOON">Chỉ ca chiều</option></select></Field><Field label="Sức chứa"><input type="number" min="1" max="1000" value={editor.data.capacity ?? 45} onChange={(e) => editField('capacity', Number(e.target.value))} /></Field><Field label="Thiết bị"><input value={editor.data.equipmentTags ?? ''} onChange={(e) => editField('equipmentTags', e.target.value)} placeholder="máy chiếu, máy tính..." /></Field><Field label="Dùng làm phòng chủ nhiệm"><select disabled={editor.data.roomType !== 'GENERAL'} value={editor.data.homeRoomEligible ?? 1} onChange={(e) => editField('homeRoomEligible', Number(e.target.value))}><option value={1}>Có</option><option value={0}>Không</option></select></Field></>}
         </div>
       </Modal>}
     </>

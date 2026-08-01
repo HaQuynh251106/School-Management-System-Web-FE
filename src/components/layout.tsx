@@ -3,9 +3,9 @@ import { BarChart3, ChevronRight } from 'lucide-react';
 import { modules, roles } from '../data/mockData';
 import type { PageId, RoleDefinition, RoleId } from '../types';
 
-export function SessionCard({ role, name }: { role: RoleDefinition; name?: string }) {
+export function SessionCard({ role, name, collapsed = false }: { role: RoleDefinition; name?: string; collapsed?: boolean }) {
   return (
-    <div className="session-card" style={{ '--role-color': role.color } as React.CSSProperties}>
+    <div className="session-card" title={collapsed ? `${name ?? role.sessionName} · ${role.label}` : undefined} style={{ '--role-color': role.color } as React.CSSProperties}>
       <div className="session-avatar">
         <role.Icon size={20} />
       </div>
@@ -22,15 +22,17 @@ export function SidebarMenu({
   activePage,
   onSelect,
   badges = {},
+  collapsed = false,
 }: {
   role: RoleDefinition;
   activePage: PageId;
   onSelect: (page: PageId) => void;
   badges?: Partial<Record<PageId, number>>;
+  collapsed?: boolean;
 }) {
   return (
     <nav className="menu-nav" aria-label="Menu chức năng">
-      <button className={`menu-button ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => onSelect('dashboard')}>
+      <button title={collapsed ? 'Tổng quan' : undefined} aria-label={collapsed ? 'Tổng quan' : undefined} className={`menu-button ${activePage === 'dashboard' ? 'active' : ''}`} onClick={() => onSelect('dashboard')}>
         <BarChart3 size={19} />
         <span>
           <strong>Tổng quan</strong>
@@ -43,6 +45,8 @@ export function SidebarMenu({
         <button
           key={item.code}
           className={`menu-button ${activePage === item.code ? 'active' : ''}`}
+          title={collapsed ? item.title : undefined}
+          aria-label={collapsed ? item.title : undefined}
           onClick={() => onSelect(item.code)}
         >
           <item.Icon size={19} />

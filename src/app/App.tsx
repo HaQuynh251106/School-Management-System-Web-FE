@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
+import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, PanelLeftClose, PanelLeftOpen, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
 import { roles, modules } from '../data/mockData';
 import type { PageId, RoleId } from '../types';
 import { SessionCard, SidebarMenu } from '../components/layout';
@@ -39,6 +39,13 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const [activePage, setActivePage] = useState<PageId>(pageFromLocation);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('school.sidebar.collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const notificationBadgeEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
@@ -47,6 +54,14 @@ export default function App() {
   const { data: chatUnread, reload: reloadChatUnread } = useApi<UnreadCount>(chatEnabled ? '/chat/unread-count' : null);
 
   // Khôi phục deep-link nếu trang thuộc vai trò hiện tại; nếu không thì về Tổng quan.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('school.sidebar.collapsed', String(sidebarCollapsed));
+    } catch {
+      // Trình duyệt có thể chặn localStorage; trạng thái vẫn hoạt động trong phiên hiện tại.
+    }
+  }, [sidebarCollapsed]);
+
   useEffect(() => {
     if (!userRole) return;
     const roleId = userRole.toLowerCase() as RoleId;
@@ -184,7 +199,7 @@ export default function App() {
 
   return (
     <ActiveChildProvider scopeKey={user.id}>
-      <div className={`app-shell app-shell--${roleId}`}>
+      <div className={`app-shell app-shell--${roleId} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
         <a className="skip-link" href="#main-content">Bỏ qua menu, đến nội dung chính</a>
         <ConnectivityBanner />
         <button className={`sidebar-backdrop ${sidebarOpen ? 'show' : ''}`} aria-label="Đóng menu" onClick={() => setSidebarOpen(false)} />
@@ -199,14 +214,25 @@ export default function App() {
                 <span>Quản lý tập trung</span>
               </div>
             </div>
+            <button
+              className="sidebar-collapse-toggle"
+              type="button"
+              aria-label={sidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+              title={sidebarCollapsed ? 'Mở rộng thanh điều hướng' : 'Thu gọn thanh điều hướng'}
+              aria-expanded={!sidebarCollapsed}
+              onClick={() => setSidebarCollapsed((current) => !current)}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
             <button className="sidebar-close" type="button" aria-label="Đóng menu" onClick={() => setSidebarOpen(false)}><X size={19} /></button>
           </div>
 
-          <SessionCard role={role} name={user.fullName} />
+          <SessionCard role={role} name={user.fullName} collapsed={sidebarCollapsed} />
           <SidebarMenu
             role={role}
             activePage={activePage}
             onSelect={selectPage}
+            collapsed={sidebarCollapsed}
             badges={{ ...(notificationPage[roleId] ? { [notificationPage[roleId]!]: unreadNotifications } : {}), ...(chatPage[roleId] ? { [chatPage[roleId]!]: unreadMessages } : {}) }}
           />
           <div className="sidebar-footer">

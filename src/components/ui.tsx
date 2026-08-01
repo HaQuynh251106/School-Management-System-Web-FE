@@ -1,4 +1,5 @@
 import type React from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { permissionRows } from '../data/mockData';
 import type { TabItem } from '../types';
@@ -21,7 +22,16 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
         <select className="tab-mobile-select" aria-label="Chọn khu vực làm việc" value={active.id} onChange={(event) => setActiveTab(event.target.value, 'push')}>
           {tabs.map((tab, index) => <option key={tab.id} value={tab.id}>{workflow ? `Bước ${index + 1}: ` : ''}{tab.label}</option>)}
         </select>
-        <div className="tab-list" role="tablist">
+        {workflow ? <div className="workflow-compact-control" aria-label="Điều hướng quy trình">
+          <button type="button" disabled={activeIndex === 0} onClick={() => setActiveTab(tabs[activeIndex - 1].id, 'push')} aria-label="Bước trước"><ChevronLeft size={18} /></button>
+          <label>
+            <span>Chuyển đến bước</span>
+            <select aria-label="Chuyển đến bước" value={active.id} onChange={(event) => setActiveTab(event.target.value, 'push')}>
+              {tabs.map((tab, index) => <option key={tab.id} value={tab.id}>{index + 1}. {tab.label}</option>)}
+            </select>
+          </label>
+          <button className="next" type="button" disabled={activeIndex === tabs.length - 1} onClick={() => setActiveTab(tabs[activeIndex + 1].id, 'push')}>Bước tiếp theo <ChevronRight size={18} /></button>
+        </div> : <div className="tab-list" role="tablist">
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
@@ -38,23 +48,18 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
               <span className="tab-label-copy"><strong>{tab.label}</strong>{workflow && tab.description && <small>{tab.description}</small>}</span>
             </button>
           ))}
-        </div>
+        </div>}
       </div>
       {workflow && <div className="workflow-progress" aria-label={`Tiến độ ${activeIndex + 1} trên ${tabs.length} bước`}><span style={{ width: `${((activeIndex + 1) / tabs.length) * 100}%` }} /></div>}
       <div
         className="tab-panel"
         id={`panel-${active.id}`}
         role="tabpanel"
-        aria-labelledby={`tab-${active.id}`}
+        {...(!workflow ? { 'aria-labelledby': `tab-${active.id}` } : { 'aria-label': active.label })}
         tabIndex={0}
       >
         {active.content}
       </div>
-      {workflow && <footer className="workflow-navigation-footer">
-        <button type="button" disabled={activeIndex === 0} onClick={() => setActiveTab(tabs[activeIndex - 1].id, 'push')}>← Bước trước</button>
-        <span><strong>Bước {activeIndex + 1}</strong><small>{active.label}</small></span>
-        <button className="primary" type="button" disabled={activeIndex === tabs.length - 1} onClick={() => setActiveTab(tabs[activeIndex + 1].id, 'push')}>Bước tiếp theo →</button>
-      </footer>}
     </div>
   );
 }
