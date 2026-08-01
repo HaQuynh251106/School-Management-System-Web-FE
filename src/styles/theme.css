@@ -1382,6 +1382,437 @@ body {
 
 @keyframes loading-shimmer { to { background-position: -220% 0; } }
 
+/* Admin command dashboard: compact, operational and decision-oriented. */
+.admin-command-dashboard {
+  display: grid;
+  gap: 18px;
+  --admin-blue: #2563eb;
+  --admin-blue-soft: color-mix(in srgb, var(--admin-blue) 9%, var(--surface));
+  --admin-green: #07866b;
+  --admin-amber: #c36a08;
+  --admin-red: #c23942;
+}
+
+.admin-command-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  overflow: hidden;
+  padding: 24px 26px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 92% 12%, color-mix(in srgb, #70d6c7 22%, transparent), transparent 27%),
+    radial-gradient(circle at 74% 110%, color-mix(in srgb, #8ab4ff 18%, transparent), transparent 35%),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.admin-command-header::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: var(--admin-blue);
+  content: '';
+}
+
+.admin-command-heading { display: grid; max-width: 760px; gap: 7px; }
+.admin-command-heading > span,
+.admin-command-section-heading span,
+.admin-command-priorities header span,
+.admin-command-today header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--admin-blue);
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+}
+.admin-command-heading h2 { margin: 0; color: var(--text); font-size: clamp(1.35rem, 2vw, 1.85rem); letter-spacing: -.035em; line-height: 1.2; }
+.admin-command-heading p { max-width: 72ch; margin: 0; color: var(--text-soft); font-size: .76rem; line-height: 1.6; }
+
+.admin-command-context { display: grid; grid-template-columns: repeat(2, minmax(132px, auto)) auto; align-items: stretch; gap: 9px; }
+.admin-command-context > div { position: relative; display: grid; min-width: 138px; gap: 4px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-soft); }
+.admin-command-context small { color: var(--text-soft); font-size: .58rem; font-weight: 650; }
+.admin-command-context strong { color: var(--text); font-size: .77rem; }
+.admin-command-context div > span { position: absolute; top: 10px; right: 10px; padding: 3px 6px; border-radius: 999px; font-size: .5rem; font-weight: 800; }
+.admin-command-context .is-active { color: #08705b; background: #dff7ee; }
+.admin-command-context .is-neutral { color: var(--text-soft); background: var(--border); }
+.admin-command-context > button {
+  display: grid;
+  min-width: 74px;
+  padding: 8px;
+  place-items: center;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--admin-blue) 28%, var(--border));
+  border-radius: 13px;
+  color: var(--admin-blue);
+  background: var(--admin-blue-soft);
+  font: inherit;
+  font-size: .57rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+.admin-command-context > button:hover { border-color: var(--admin-blue); }
+.admin-command-context > button:disabled { cursor: wait; opacity: .65; }
+
+.admin-command-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.admin-command-kpi { position: relative; display: grid; min-width: 0; min-height: 146px; align-content: start; gap: 4px; padding: 17px 18px; overflow: hidden; border: 1px solid var(--border); border-radius: 17px; background: var(--surface); }
+.admin-command-kpi::after { position: absolute; inset: auto 0 0; height: 3px; background: currentColor; opacity: .78; content: ''; }
+.admin-command-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.admin-command-kpi-top > span { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 11px; background: color-mix(in srgb, currentColor 10%, var(--surface)); }
+.admin-command-kpi-top small { color: var(--text-soft); font-size: .57rem; font-weight: 750; letter-spacing: .08em; }
+.admin-command-kpi > strong { color: var(--text); font-size: clamp(1.45rem, 2.25vw, 1.85rem); letter-spacing: -.04em; }
+.admin-command-kpi h3 { margin: 0; color: var(--text); font-size: .75rem; }
+.admin-command-kpi p { margin: 2px 0 0; color: var(--text-soft); font-size: .61rem; line-height: 1.45; }
+.admin-command-kpi.tone-blue { color: #2563eb; background: color-mix(in srgb, #eaf2ff 72%, var(--surface)) !important; }
+.admin-command-kpi.tone-violet { color: #7752cc; background: color-mix(in srgb, #f0ebff 72%, var(--surface)) !important; }
+.admin-command-kpi.tone-green { color: #07866b; background: color-mix(in srgb, #e5f8f2 72%, var(--surface)) !important; }
+.admin-command-kpi.tone-orange { color: #c36a08; background: color-mix(in srgb, #fff2df 72%, var(--surface)) !important; }
+.admin-command-kpi.tone-red { color: #c23942; background: color-mix(in srgb, #ffe9ec 72%, var(--surface)) !important; }
+
+.admin-calendar-widget {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, #8b5cf6 8%, transparent), transparent 28%),
+    var(--surface);
+}
+
+.admin-calendar-header,
+.admin-calendar-title,
+.admin-calendar-toolbar,
+.admin-calendar-navigation,
+.admin-calendar-legend { display: flex; align-items: center; }
+.admin-calendar-header { justify-content: space-between; gap: 20px; }
+.admin-calendar-title { min-width: 0; gap: 11px; }
+.admin-calendar-title > span { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 13px; color: #fff; background: linear-gradient(135deg, #4f7df3, #7c5ce7); box-shadow: 0 9px 22px rgba(79, 125, 243, .2); }
+.admin-calendar-title > div { display: grid; min-width: 0; gap: 3px; }
+.admin-calendar-title small { color: #6d50ca; font-size: .62rem; font-weight: 850; letter-spacing: .075em; }
+.admin-calendar-title h3 { margin: 0; color: var(--text); font-size: 1rem; }
+.admin-calendar-title p { margin: 0; color: var(--text-soft); font-size: .62rem; }
+.admin-calendar-toolbar { flex-direction: column; align-items: flex-end; gap: 8px; }
+.admin-calendar-legend { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.admin-calendar-legend span { display: inline-flex; align-items: center; gap: 5px; color: var(--text-soft); font-size: .53rem; font-weight: 700; }
+.admin-calendar-legend span::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }
+.admin-calendar-legend .exam { color: #6851cf; }
+.admin-calendar-legend .fee { color: #db7a19; }
+.admin-calendar-legend .semester { color: #168a72; }
+.admin-calendar-legend .holiday { color: #db5263; }
+.admin-calendar-legend .lesson { color: #1579b8; }
+.admin-calendar-legend .assignment { color: #a856c7; }
+.admin-calendar-navigation { gap: 8px; }
+.admin-calendar-navigation button { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; border: 1px solid var(--border); border-radius: 9px; color: var(--text-soft); background: var(--surface-soft); cursor: pointer; }
+.admin-calendar-navigation button:hover { border-color: #6b63d9; color: #6b63d9; }
+.admin-calendar-navigation strong { min-width: 128px; color: var(--text); font-size: .68rem; text-align: center; text-transform: capitalize; }
+
+.admin-calendar-layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(290px, .62fr); gap: 14px; min-width: 0; }
+.admin-calendar-board { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface-soft); }
+.admin-calendar-weekdays,
+.admin-calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.admin-calendar-weekdays { border-bottom: 1px solid var(--border); background: color-mix(in srgb, #edf3ff 58%, var(--surface)); }
+.admin-calendar-weekdays span { padding: 9px 4px; color: var(--text-soft); font-size: .55rem; font-weight: 800; text-align: center; }
+.admin-calendar-grid > button { position: relative; display: grid; min-width: 0; min-height: 66px; align-content: space-between; justify-items: start; gap: 5px; padding: 8px; border: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--text); background: color-mix(in srgb, var(--surface) 90%, transparent); font: inherit; cursor: pointer; }
+.admin-calendar-grid > button:nth-child(7n) { border-right: 0; }
+.admin-calendar-grid > button:nth-last-child(-n + 7) { border-bottom: 0; }
+.admin-calendar-grid > button:hover { z-index: 1; background: color-mix(in srgb, #e8efff 72%, var(--surface)); box-shadow: inset 0 0 0 1px #8dacfa; }
+.admin-calendar-grid > button.outside { color: color-mix(in srgb, var(--text-soft) 52%, transparent); background: color-mix(in srgb, var(--surface-soft) 80%, transparent); }
+.admin-calendar-grid > button.selected { z-index: 1; background: color-mix(in srgb, #e8efff 76%, var(--surface)); box-shadow: inset 0 0 0 2px #648cf1; }
+.admin-calendar-grid > button > span { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 8px; font-size: .62rem; font-weight: 750; }
+.admin-calendar-grid > button.today > span { color: #fff; background: #3468e5; box-shadow: 0 5px 12px rgba(52, 104, 229, .25); }
+.admin-calendar-grid > button > i { display: flex; min-height: 7px; gap: 3px; }
+.admin-calendar-grid > button > i b { width: 7px; height: 7px; border-radius: 50%; background: #7a67dc; }
+.admin-calendar-grid > button > i b.fee { background: #e99332; }
+.admin-calendar-grid > button > i b.semester { background: #1f9a7f; }
+.admin-calendar-grid > button > i b.holiday { background: #e06070; }
+.admin-calendar-grid > button > i b.lesson { background: #218ac7; }
+.admin-calendar-grid > button > i b.assignment { background: #af63c9; }
+
+.admin-calendar-agenda { display: grid; min-width: 0; align-content: start; gap: 12px; padding: 15px; border: 1px solid var(--border); border-radius: 15px; background: linear-gradient(180deg, color-mix(in srgb, #f2efff 72%, var(--surface)), var(--surface)); }
+.admin-calendar-agenda > div:first-child { display: grid; gap: 3px; }
+.admin-calendar-agenda > div:first-child small { color: #6d50ca; font-size: .56rem; font-weight: 850; letter-spacing: .07em; }
+.admin-calendar-agenda h4 { margin: 0; color: var(--text); font-size: .83rem; }
+.admin-calendar-agenda-list { display: grid; gap: 8px; }
+.admin-calendar-agenda-list > button { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface); font: inherit; text-align: left; cursor: pointer; }
+.admin-calendar-agenda-list > button:hover { border-color: #8b7ee5; transform: translateY(-1px); }
+.admin-calendar-agenda-list time { display: grid; width: 38px; height: 42px; place-items: center; align-content: center; border-radius: 9px; color: #5e4bb8; background: #eee9ff; }
+.admin-calendar-agenda-list time strong { font-size: .75rem; line-height: 1; }
+.admin-calendar-agenda-list time span { font-size: .48rem; }
+.admin-calendar-agenda-list > button > span { display: grid; width: 29px; height: 29px; place-items: center; border-radius: 9px; color: #6d50ca; background: #f1edff; }
+.admin-calendar-agenda-list > button.event-fee > span { color: #b96612; background: #fff0db; }
+.admin-calendar-agenda-list > button.event-semester > span { color: #0e7a64; background: #ddf6ef; }
+.admin-calendar-agenda-list > button.event-holiday > span { color: #bb394c; background: #ffe7eb; }
+.admin-calendar-agenda-list > button.event-lesson > span { color: #116d9f; background: #e0f3ff; }
+.admin-calendar-agenda-list > button.event-assignment > span { color: #8b3ca7; background: #f5e6fb; }
+.admin-calendar-agenda-list > button > div { display: grid; min-width: 0; gap: 2px; }
+.admin-calendar-agenda-list > button > div small { color: var(--text-soft); font-size: .5rem; font-weight: 750; text-transform: uppercase; }
+.admin-calendar-agenda-list > button > div strong { overflow: hidden; font-size: .64rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-calendar-agenda-list > button > div p { overflow: hidden; margin: 0; color: var(--text-soft); font-size: .52rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-calendar-agenda-list > button > svg { color: var(--text-soft); }
+.admin-calendar-empty { display: grid; min-height: 210px; place-items: center; align-content: center; gap: 6px; padding: 18px; color: #168a72; text-align: center; }
+.admin-calendar-empty strong { color: var(--text); font-size: .67rem; }
+.admin-calendar-empty span { color: var(--text-soft); font-size: .55rem; line-height: 1.45; }
+
+.admin-command-core { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(310px, .65fr); gap: 14px; }
+.admin-command-priorities,
+.admin-command-today,
+.admin-command-departments,
+.admin-command-analysis {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.admin-command-priorities { padding: 20px; }
+.admin-command-priorities > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.admin-command-priorities header > div { display: grid; gap: 4px; }
+.admin-command-priorities h3,
+.admin-command-today h3,
+.admin-command-section-heading h3 { margin: 0; color: var(--text); font-size: 1rem; letter-spacing: -.02em; }
+.admin-command-priorities header p,
+.admin-command-section-heading p { margin: 0; color: var(--text-soft); font-size: .65rem; line-height: 1.5; }
+.admin-command-priorities header > strong { flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; font-size: .6rem; }
+.admin-command-priorities header > strong.has-work { color: #a94b12; background: #fff0df; }
+.admin-command-priorities header > strong.is-clear { color: #08705b; background: #dff7ee; }
+
+.admin-command-work-list { display: grid; gap: 8px; }
+.admin-work-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 11px; min-width: 0; min-height: 62px; padding: 10px 11px; border: 1px solid var(--border); border-radius: 13px; color: var(--text); background: var(--surface-soft); font: inherit; text-align: left; cursor: pointer; }
+.admin-work-item:hover { border-color: color-mix(in srgb, var(--admin-blue) 38%, var(--border)); background: var(--admin-blue-soft); }
+.admin-work-item > span { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; color: var(--admin-blue); background: color-mix(in srgb, var(--admin-blue) 10%, var(--surface)); }
+.admin-work-item.severity-critical > span { color: var(--admin-red); background: color-mix(in srgb, var(--admin-red) 10%, var(--surface)); }
+.admin-work-item.severity-warning > span { color: var(--admin-amber); background: color-mix(in srgb, var(--admin-amber) 11%, var(--surface)); }
+.admin-work-item.severity-success > span { color: var(--admin-green); background: color-mix(in srgb, var(--admin-green) 10%, var(--surface)); }
+.admin-work-item > div { display: grid; min-width: 0; gap: 3px; }
+.admin-work-item > div strong { overflow: hidden; font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-work-item > div small { overflow: hidden; color: var(--text-soft); font-size: .6rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-work-item > b { color: var(--text); font-size: .77rem; white-space: nowrap; }
+.admin-work-item > b small { color: var(--text-soft); font-size: .55rem; font-weight: 650; }
+.admin-work-item > svg { color: var(--text-soft); }
+
+.admin-command-today { display: grid; align-content: start; padding: 20px; }
+.admin-command-today > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-command-today header > div { display: grid; gap: 4px; }
+.admin-command-today header > svg { color: var(--admin-blue); }
+.admin-attendance-score { display: grid; gap: 2px; margin-top: 22px; }
+.admin-attendance-score strong { color: var(--text); font-size: 2.15rem; letter-spacing: -.05em; }
+.admin-attendance-score span { color: var(--text-soft); font-size: .62rem; }
+.admin-progress-track { height: 7px; margin: 13px 0 16px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.admin-progress-track i { display: block; height: 100%; border-radius: inherit; background: var(--admin-green); }
+.admin-attendance-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.admin-attendance-breakdown div { display: grid; gap: 2px; padding: 9px 10px; border-radius: 10px; background: var(--surface-soft); }
+.admin-attendance-breakdown dt { color: var(--text-soft); font-size: .55rem; }
+.admin-attendance-breakdown dd { margin: 0; color: var(--text); font-size: .77rem; font-weight: 800; }
+.admin-command-today > button,
+.admin-department-card > button,
+.admin-command-section-heading > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 0; color: var(--admin-blue); background: transparent; font: inherit; font-size: .62rem; font-weight: 800; cursor: pointer; }
+.admin-command-today > button { justify-self: start; margin-top: 15px; padding: 0; }
+
+.admin-command-departments,
+.admin-command-analysis { display: grid; gap: 15px; padding: 20px; }
+.admin-command-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 18px; }
+.admin-command-section-heading > div { display: grid; gap: 4px; }
+.admin-command-section-heading > p { max-width: 58ch; text-align: right; }
+.admin-department-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; }
+.admin-department-card { display: grid; min-width: 0; gap: 15px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface-soft); }
+.admin-department-card > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.admin-department-card > header > span { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 11px; color: var(--admin-blue); background: var(--admin-blue-soft); }
+.admin-department-card header > div { display: grid; min-width: 0; gap: 2px; }
+.admin-department-card h4 { margin: 0; color: var(--text); font-size: .76rem; }
+.admin-department-card header small { overflow: hidden; color: var(--text-soft); font-size: .56rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-department-card header > b { padding: 5px 7px; border-radius: 999px; font-size: .53rem; white-space: nowrap; }
+.admin-department-card header > b.healthy { color: #08705b; background: #dff7ee; }
+.admin-department-card header > b.attention { color: #a94b12; background: #fff0df; }
+.admin-department-progress { display: grid; gap: 7px; }
+.admin-department-progress > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-department-progress span { color: var(--text-soft); font-size: .58rem; }
+.admin-department-progress strong { color: var(--text); font-size: .65rem; }
+.admin-department-progress > i { display: block; height: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.admin-department-progress > i > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--admin-blue), #0aa48a); }
+.admin-department-card ul { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.admin-department-card li { display: flex; align-items: flex-start; gap: 7px; color: var(--text-soft); font-size: .59rem; line-height: 1.4; }
+.admin-department-card li svg { flex: 0 0 auto; margin-top: 1px; color: var(--admin-green); }
+.admin-department-card > button { justify-self: start; padding: 0; }
+
+.admin-command-analysis .dashboard-grid { margin: 0; }
+.admin-command-analysis .chart-card { min-height: 280px; box-shadow: none; }
+.admin-command-actions { display: grid; grid-template-columns: minmax(190px, .8fr) repeat(3, minmax(0, 1fr)); gap: 9px; }
+.admin-command-actions > div,
+.admin-command-actions > button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; min-height: 66px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 13px; color: var(--text); background: var(--surface); font: inherit; text-align: left; }
+.admin-command-actions > div { grid-template-columns: auto minmax(0, 1fr); }
+.admin-command-actions > div span { color: var(--text-soft); font-size: .57rem; }
+.admin-command-actions > div strong { font-size: .64rem; }
+.admin-command-actions > button { cursor: pointer; }
+.admin-command-actions > button:hover { border-color: color-mix(in srgb, var(--admin-blue) 38%, var(--border)); background: var(--admin-blue-soft); }
+.admin-command-actions > :is(div, button) > svg:first-child { color: var(--admin-blue); }
+.admin-command-actions button > span { display: grid; min-width: 0; gap: 2px; }
+.admin-command-actions button strong { font-size: .66rem; }
+.admin-command-actions button small { overflow: hidden; color: var(--text-soft); font-size: .56rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-command-actions button > svg:last-child { color: var(--text-soft); }
+
+.admin-command-list-skeleton { display: grid; gap: 8px; }
+.admin-command-list-skeleton i { display: block; height: 62px; border-radius: 13px; background: linear-gradient(90deg, var(--surface-soft), var(--border), var(--surface-soft)); background-size: 220% 100%; animation: loading-shimmer 1.4s infinite linear; }
+
+/* Role command dashboards: one visual system, different operational priorities. */
+.role-command-dashboard {
+  display: grid;
+  gap: 18px;
+  --role-accent: #2563eb;
+  --role-accent-2: #6f56d9;
+  --role-soft: color-mix(in srgb, var(--role-accent) 9%, var(--surface));
+  --admin-blue: var(--role-accent);
+  --admin-blue-soft: var(--role-soft);
+  --admin-green: #07866b;
+  --admin-amber: #c36a08;
+  --admin-red: #c23942;
+}
+.role-command-dashboard--academic_staff { --role-accent: #1967d2; --role-accent-2: #16a085; }
+.role-command-dashboard--accountant { --role-accent: #087e70; --role-accent-2: #2d6bc4; }
+.role-command-dashboard--teacher { --role-accent: #6750c7; --role-accent-2: #0e9b85; }
+
+.role-command-header {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 22px;
+  overflow: hidden;
+  padding: 24px 26px;
+  border: 1px solid var(--border);
+  border-radius: 21px;
+  background:
+    radial-gradient(circle at 91% 6%, color-mix(in srgb, var(--role-accent-2) 18%, transparent), transparent 27%),
+    radial-gradient(circle at 72% 115%, color-mix(in srgb, var(--role-accent) 14%, transparent), transparent 35%),
+    var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.role-command-header::before { position: absolute; inset: 0 auto 0 0; width: 5px; background: linear-gradient(180deg, var(--role-accent), var(--role-accent-2)); content: ''; }
+.role-command-heading { display: grid; max-width: 760px; gap: 6px; }
+.role-command-heading > span { display: inline-flex; align-items: center; gap: 6px; color: var(--role-accent); font-size: .63rem; font-weight: 850; letter-spacing: .08em; }
+.role-command-heading > p { margin: 3px 0 0; color: var(--text-soft); font-size: .68rem; font-weight: 700; }
+.role-command-heading h2 { margin: 0; color: var(--text); font-size: clamp(1.35rem, 2vw, 1.85rem); letter-spacing: -.035em; line-height: 1.2; }
+.role-command-heading > div { max-width: 72ch; color: var(--text-soft); font-size: .74rem; line-height: 1.55; }
+.role-command-context { display: grid; grid-template-columns: repeat(2, minmax(128px, 1fr)) 74px; align-self: center; gap: 9px; }
+.role-command-context > div { display: grid; min-width: 132px; gap: 4px; padding: 11px 13px; border: 1px solid var(--border); border-radius: 13px; background: color-mix(in srgb, var(--surface-soft) 88%, transparent); }
+.role-command-context small { color: var(--text-soft); font-size: .56rem; }
+.role-command-context strong { color: var(--text); font-size: .74rem; }
+.role-command-context div span { color: var(--role-accent); font-size: .5rem; font-weight: 800; }
+.role-command-context > button { display: grid; place-items: center; align-content: center; gap: 4px; border: 1px solid color-mix(in srgb, var(--role-accent) 28%, var(--border)); border-radius: 13px; color: var(--role-accent); background: var(--role-soft); font: inherit; font-size: .53rem; font-weight: 800; cursor: pointer; }
+.role-command-context > button:disabled { cursor: wait; opacity: .65; }
+.role-command-today { position: absolute; right: 27px; bottom: 9px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-soft); font-size: .5rem; }
+
+.role-command-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.role-command-kpi { position: relative; display: grid; min-width: 0; min-height: 145px; align-content: start; gap: 4px; padding: 17px 18px; overflow: hidden; border: 1px solid var(--border); border-radius: 17px; background: var(--surface); }
+.role-command-kpi::after { position: absolute; inset: auto 0 0; height: 3px; background: currentColor; opacity: .78; content: ''; }
+.role-command-kpi header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.role-command-kpi header > span { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 11px; background: color-mix(in srgb, currentColor 10%, var(--surface)); }
+.role-command-kpi header small { color: var(--text-soft); font-size: .56rem; font-weight: 800; letter-spacing: .08em; }
+.role-command-kpi > strong { color: var(--text); font-size: clamp(1.4rem, 2.2vw, 1.82rem); letter-spacing: -.04em; }
+.role-command-kpi h3 { margin: 0; color: var(--text); font-size: .73rem; }
+.role-command-kpi p { margin: 2px 0 0; color: var(--text-soft); font-size: .59rem; line-height: 1.45; }
+.role-command-kpi.tone-blue { color: #2563eb; background: color-mix(in srgb, #eaf2ff 72%, var(--surface)) !important; }
+.role-command-kpi.tone-violet { color: #7752cc; background: color-mix(in srgb, #f0ebff 72%, var(--surface)) !important; }
+.role-command-kpi.tone-green { color: #07866b; background: color-mix(in srgb, #e5f8f2 72%, var(--surface)) !important; }
+.role-command-kpi.tone-orange { color: #c36a08; background: color-mix(in srgb, #fff2df 72%, var(--surface)) !important; }
+.role-command-kpi.tone-red { color: #c23942; background: color-mix(in srgb, #ffe9ec 72%, var(--surface)) !important; }
+
+.role-command-workspace { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .62fr); gap: 14px; }
+.role-command-worklist,
+.role-command-shortcuts,
+.role-command-insights { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); }
+.role-command-worklist > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
+.role-command-worklist header > div,
+.role-command-shortcuts > header,
+.role-command-insights > header > div { display: grid; gap: 4px; }
+.role-command-worklist header span,
+.role-command-shortcuts header span,
+.role-command-insights header span { color: var(--role-accent); font-size: .59rem; font-weight: 850; letter-spacing: .075em; }
+.role-command-worklist h3,
+.role-command-shortcuts h3,
+.role-command-insights h3 { margin: 0; color: var(--text); font-size: .95rem; letter-spacing: -.02em; }
+.role-command-worklist header p { margin: 0; color: var(--text-soft); font-size: .61rem; line-height: 1.5; }
+.role-command-worklist header > strong { padding: 6px 9px; border-radius: 999px; font-size: .57rem; white-space: nowrap; }
+.role-command-worklist header > strong.has-work { color: #a94b12; background: #fff0df; }
+.role-command-worklist header > strong.is-clear { color: #08705b; background: #dff7ee; }
+.role-command-worklist > div,
+.role-command-shortcuts > div { display: grid; gap: 8px; }
+.role-command-shortcuts > header { margin-bottom: 14px; }
+.role-command-shortcuts button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; min-height: 58px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 12px; color: var(--text); background: var(--surface-soft); font: inherit; text-align: left; cursor: pointer; }
+.role-command-shortcuts button:hover { border-color: color-mix(in srgb, var(--role-accent) 38%, var(--border)); background: var(--role-soft); transform: translateY(-1px); }
+.role-command-shortcuts button > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: var(--role-accent); background: var(--role-soft); }
+.role-command-shortcuts button > div { display: grid; min-width: 0; gap: 2px; }
+.role-command-shortcuts button strong { overflow: hidden; font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
+.role-command-shortcuts button small { overflow: hidden; color: var(--text-soft); font-size: .53rem; text-overflow: ellipsis; white-space: nowrap; }
+.role-command-shortcuts button > svg { color: var(--text-soft); }
+.role-command-dashboard .admin-calendar-title > span { background: linear-gradient(135deg, var(--role-accent), var(--role-accent-2)); }
+.role-command-dashboard .admin-calendar-title small,
+.role-command-dashboard .admin-calendar-agenda > div:first-child small { color: var(--role-accent); }
+.role-command-insights { display: grid; gap: 15px; }
+.role-command-insights > header { display: flex; align-items: end; justify-content: space-between; gap: 15px; }
+.role-command-insights > header > small { color: var(--text-soft); font-size: .56rem; }
+.role-command-insights > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.role-command-insights .chart-card { min-height: 270px; box-shadow: none; }
+
+@media (max-width: 1180px) {
+  .admin-command-header { grid-template-columns: 1fr; }
+  .admin-command-context { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; }
+  .admin-command-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-department-grid { grid-template-columns: 1fr; }
+  .admin-calendar-layout { grid-template-columns: 1fr; }
+  .admin-command-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-command-header { grid-template-columns: 1fr; }
+  .role-command-context { grid-template-columns: repeat(2, minmax(0, 1fr)) 74px; }
+  .role-command-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .role-command-workspace { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 780px) {
+  .admin-command-header { padding: 20px; }
+  .admin-command-context { grid-template-columns: 1fr 1fr; }
+  .admin-command-context > button { grid-column: 1 / -1; grid-template-columns: auto auto; min-height: 42px; }
+  .admin-command-core { grid-template-columns: 1fr; }
+  .admin-calendar-header { align-items: flex-start; flex-direction: column; }
+  .admin-calendar-toolbar { width: 100%; align-items: stretch; }
+  .admin-calendar-legend { justify-content: flex-start; }
+  .admin-calendar-navigation { justify-content: space-between; }
+  .admin-command-section-heading { align-items: flex-start; flex-direction: column; }
+  .admin-command-section-heading > p { text-align: left; }
+  .role-command-context { grid-template-columns: 1fr 1fr; }
+  .role-command-context > button { grid-column: 1 / -1; grid-template-columns: auto auto; min-height: 42px; }
+  .role-command-insights > div { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .admin-command-dashboard { gap: 12px; }
+  .admin-command-kpis { grid-template-columns: 1fr; }
+  .admin-command-kpi { min-height: 130px; }
+  .admin-command-context { grid-template-columns: 1fr; }
+  .admin-command-context > button { grid-column: auto; }
+  .admin-command-priorities, .admin-command-today, .admin-command-departments, .admin-command-analysis { padding: 15px; border-radius: 15px; }
+  .admin-calendar-widget { padding: 15px; border-radius: 15px; }
+  .admin-calendar-title p { display: none; }
+  .admin-calendar-grid > button { min-height: 52px; padding: 5px; }
+  .admin-calendar-grid > button > span { width: 21px; height: 21px; font-size: .56rem; }
+  .admin-work-item { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .admin-work-item > b { grid-column: 2; }
+  .admin-work-item > svg { grid-column: 3; grid-row: 1 / span 2; }
+  .admin-command-actions { grid-template-columns: 1fr; }
+  .role-command-dashboard { gap: 12px; }
+  .role-command-header { padding: 20px; }
+  .role-command-context, .role-command-kpis { grid-template-columns: 1fr; }
+  .role-command-context > button { grid-column: auto; }
+  .role-command-today { position: static; grid-column: 1 / -1; }
+  .role-command-kpi { min-height: 130px; }
+  .role-command-worklist, .role-command-shortcuts, .role-command-insights { padding: 15px; border-radius: 15px; }
+  .role-command-worklist > header, .role-command-insights > header { align-items: flex-start; flex-direction: column; }
+}
+
 /* Consistent elevated cards, tables, forms and pagination. */
 .section-card,
 .chart-card,

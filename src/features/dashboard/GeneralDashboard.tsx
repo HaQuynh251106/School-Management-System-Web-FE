@@ -1,7 +1,8 @@
 import {
-  Activity, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2, CalendarDays,
-  Check, CheckCircle2, ClipboardCheck, GraduationCap, MessageSquareText, RefreshCw, School,
-  ShieldCheck, Sparkles, Upload, Users, WalletCards,
+  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2,
+  CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
+  GraduationCap, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
+  UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
@@ -11,12 +12,12 @@ import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
 import { emitNotificationInboxChanged } from '../../api/liveEvents';
 import type {
-  ApiUser, DashboardChart, DashboardMetric, DashboardResponse, ExamAgendaItem, Notification, SchoolClass,
+  DashboardCalendarItem, DashboardChart, DashboardMetric, DashboardResponse, DashboardWorkItem,
+  ExamAgendaItem, Notification,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
-import { Section, StatusPill, viLabel } from '../../components/ui';
+import { viLabel } from '../../components/ui';
 import type { Metric, PageId, RoleId } from '../../types';
-import { PaginatedData } from '../live/common';
 
 type RoleIntro = {
   eyebrow: string;
@@ -130,7 +131,8 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
 const metricIcons: Record<string, LucideIcon> = {
   users: Users, classes: School, attendance: CalendarDays, alerts: Activity, grades: BarChart3,
   assignments: BookOpenCheck, calendar: CalendarDays, children: Users, invoices: WalletCards,
-  notifications: Bell, payments: WalletCards, overdue: Activity,
+  notifications: Bell, payments: WalletCards, overdue: Activity, students: GraduationCap,
+  teachers: UserRoundCheck, tasks: AlertTriangle,
 };
 
 const validTones = new Set<Metric['tone']>(['blue', 'green', 'orange', 'red', 'violet']);
@@ -140,9 +142,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const { childId } = useActiveChild();
   const dashboard = useApi<DashboardResponse>(roleId === 'parent' && childId
     ? `/dashboard?childId=${encodeURIComponent(childId)}` : '/dashboard');
-  const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
-  const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
-  const notifications = useApi<Notification[]>(['admin', 'teacher', 'student', 'parent'].includes(roleId) ? '/notifications' : null);
+  const notifications = useApi<Notification[]>(['teacher', 'student', 'parent'].includes(roleId) ? '/notifications' : null);
   const examAgendaEnabled = ['teacher', 'student', 'parent'].includes(roleId);
   const examAgenda = useApi<ExamAgendaItem[]>(examAgendaEnabled ? '/me/exam-agenda' : null);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
@@ -154,7 +154,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const today = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   }).format(new Date());
-  const hasError = Boolean(dashboard.error || users.error || classes.error || notifications.error || examAgenda.error);
+  const hasError = Boolean(dashboard.error || notifications.error || examAgenda.error);
   const loading = dashboard.loading;
   const links = quickLinks[roleId];
   const primaryLink = roleId === 'admin'
@@ -168,8 +168,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const navigate = (page: PageId) => onNavigate?.(page);
   const reloadAll = () => {
     dashboard.reload();
-    users.reload();
-    classes.reload();
     notifications.reload();
     examAgenda.reload();
   };
@@ -185,6 +183,41 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
       setMarkingNotificationId(null);
     }
   };
+
+  if (roleId === 'admin') {
+    return (
+      <AdminCommandDashboard
+        firstName={firstName}
+        today={today}
+        data={dashboard.data}
+        loading={loading}
+        hasError={hasError}
+        onReload={reloadAll}
+        onNavigate={navigate}
+      />
+    );
+  }
+
+  if (roleId === 'academic_staff' || roleId === 'accountant' || roleId === 'teacher') {
+    return (
+      <OperationalRoleDashboard
+        roleId={roleId}
+        firstName={firstName}
+        today={today}
+        data={dashboard.data}
+        loading={loading}
+        hasError={hasError}
+        notifications={teacherAnnouncements}
+        notificationsLoading={notifications.loading}
+        markingNotificationId={markingNotificationId}
+        examAgenda={examAgenda.data ?? []}
+        examAgendaLoading={examAgenda.loading}
+        onMarkNotificationRead={markNotificationRead}
+        onReload={reloadAll}
+        onNavigate={navigate}
+      />
+    );
+  }
 
   return (
     <div className={`dashboard role-dashboard role-dashboard--${roleId}`}>
@@ -215,34 +248,13 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
             <strong><IntroIcon size={16} /> {today}</strong>
           </div>
         </div>
-        {roleId === 'admin' ? (
-          <div className="admin-hero-visual" role="img" aria-label={intro.imageAlt}>
-            <img src="/images/admin-dashboard-hero.png" alt="" width="1774" height="887" />
-            <div className="admin-hero-live-card">
-              <header><span><Activity size={14} /> Dữ liệu trực tiếp</span><i className={loading ? 'loading' : ''} /></header>
-              <strong>{loading ? 'Đang đồng bộ dữ liệu…' : heroInsight(roleId, dashboard.data?.metrics ?? [])}</strong>
-              <small>Tổng hợp tự động từ dữ liệu vận hành hiện tại</small>
-            </div>
+        <div className={`portal-hero-art role-art role-art--${roleId}`} role="img" aria-label={intro.imageAlt}>
+          <div className="dashboard-art-status">
+            <span><Activity size={14} /> Cập nhật trực tiếp</span>
+            <strong>{loading ? 'Đang đồng bộ…' : heroInsight(roleId, dashboard.data?.metrics ?? [])}</strong>
           </div>
-        ) : (
-          <div className={`portal-hero-art role-art role-art--${roleId}`} role="img" aria-label={intro.imageAlt}>
-            <div className="dashboard-art-status">
-              <span><Activity size={14} /> Cập nhật trực tiếp</span>
-              <strong>{loading ? 'Đang đồng bộ…' : heroInsight(roleId, dashboard.data?.metrics ?? [])}</strong>
-            </div>
-          </div>
-        )}
+        </div>
       </section>
-
-      {roleId === 'teacher' && (
-        <TeacherAnnouncementSpotlight
-          items={teacherAnnouncements}
-          loading={notifications.loading}
-          markingId={markingNotificationId}
-          onMarkRead={markNotificationRead}
-          onOpenInbox={() => navigate('B7')}
-        />
-      )}
 
       {examAgendaEnabled && (
         <ExamAgendaSpotlight roleId={roleId} items={examAgenda.data ?? []} loading={examAgenda.loading} onOpen={() => navigate(examPage(roleId))} />
@@ -301,11 +313,507 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         </section>
       )}
 
-      {roleId === 'admin' && (
-        <AdminDashboardTables users={users.data ?? []} classes={classes.data ?? []} notifications={notifications.data ?? []} />
-      )}
     </div>
   );
+}
+
+type OperationalRole = 'academic_staff' | 'accountant' | 'teacher';
+
+const operationalDashboardConfig: Record<OperationalRole, {
+  eyebrow: string;
+  title: string;
+  description: string;
+  calendarTitle: string;
+  calendarDescription: string;
+  workTitle: string;
+  workDescription: string;
+  Icon: LucideIcon;
+}> = {
+  academic_staff: {
+    eyebrow: 'TRUNG TÂM ĐIỀU PHỐI HỌC VỤ',
+    title: 'Tổ chức năm học chủ động, đúng tiến độ',
+    description: 'Nắm nhanh tình trạng phân lớp, chủ nhiệm, thời khóa biểu và kỳ thi trong một bảng điều hành thống nhất.',
+    calendarTitle: 'Lịch vận hành học vụ',
+    calendarDescription: 'Mốc học kỳ, kỳ thi và ngày nghỉ được đồng bộ theo kế hoạch năm học.',
+    workTitle: 'Nghiệp vụ cần hoàn tất',
+    workDescription: 'Sắp xếp theo mức độ ảnh hưởng đến tiến độ đào tạo.',
+    Icon: School,
+  },
+  accountant: {
+    eyebrow: 'BẢNG ĐIỀU HÀNH TÀI CHÍNH',
+    title: 'Kiểm soát dòng tiền và công nợ rõ ràng',
+    description: 'Theo dõi tổng phải thu, tiến độ thu tiền, hóa đơn quá hạn và các mốc cần nhắc trong cùng một màn hình.',
+    calendarTitle: 'Lịch khoản thu',
+    calendarDescription: 'Các hạn thanh toán đã phát hành được tổng hợp tự động theo tháng.',
+    workTitle: 'Công việc cần đối soát',
+    workDescription: 'Ưu tiên khoản quá hạn, giao dịch chờ và đợt thu chưa phát hành.',
+    Icon: WalletCards,
+  },
+  teacher: {
+    eyebrow: 'KHÔNG GIAN LÀM VIỆC GIÁO VIÊN',
+    title: 'Đúng lịch dạy, đúng việc cần làm hôm nay',
+    description: 'Lịch dạy, điểm danh, bài chờ chấm và thông báo quan trọng được đưa về một nhịp làm việc rõ ràng.',
+    calendarTitle: 'Lịch dạy và hạn công việc',
+    calendarDescription: 'Tiết dạy cùng hạn bài tập được hiển thị trực tiếp trên lịch tháng.',
+    workTitle: 'Việc ưu tiên trong ngày',
+    workDescription: 'Tập trung các tác vụ ảnh hưởng trực tiếp đến học sinh và lớp phụ trách.',
+    Icon: ClipboardCheck,
+  },
+};
+
+function OperationalRoleDashboard({
+  roleId, firstName, today, data, loading, hasError, notifications, notificationsLoading,
+  markingNotificationId, examAgenda, examAgendaLoading, onMarkNotificationRead, onReload, onNavigate,
+}: {
+  roleId: OperationalRole;
+  firstName: string;
+  today: string;
+  data?: DashboardResponse | null;
+  loading: boolean;
+  hasError: boolean;
+  notifications: Notification[];
+  notificationsLoading: boolean;
+  markingNotificationId: string | null;
+  examAgenda: ExamAgendaItem[];
+  examAgendaLoading: boolean;
+  onMarkNotificationRead: (id: string) => Promise<void>;
+  onReload: () => void;
+  onNavigate: (page: PageId) => void;
+}) {
+  const config = operationalDashboardConfig[roleId];
+  const overview = data?.roleOverview;
+  const metrics = (data?.metrics ?? []).map(toMetric);
+  const links = quickLinks[roleId];
+  const workItems = overview?.workItems ?? [];
+  const openItems = workItems.filter((item) => item.severity !== 'SUCCESS');
+  const HeroIcon = config.Icon;
+
+  return (
+    <div className={`dashboard role-command-dashboard role-command-dashboard--${roleId}`}>
+      {hasError && (
+        <div className="dashboard-data-notice" role="alert">
+          <Activity size={18} />
+          <div><strong>Chưa thể đồng bộ đầy đủ dữ liệu</strong><span>Hãy tải lại để kiểm tra các chỉ số trong phạm vi phụ trách.</span></div>
+          <button type="button" onClick={onReload}><RefreshCw size={15} /> Tải lại</button>
+        </div>
+      )}
+
+      <section className="role-command-header">
+        <div className="role-command-heading">
+          <span><HeroIcon size={15} /> {config.eyebrow}</span>
+          <p>Xin chào {firstName}</p>
+          <h2>{config.title}</h2>
+          <div>{config.description}</div>
+        </div>
+        <div className="role-command-context">
+          <div><small>Năm học</small><strong>{overview?.academicYear || 'Chưa thiết lập'}</strong><span>{statusLabel(overview?.academicYearStatus)}</span></div>
+          <div><small>Học kỳ</small><strong>{overview?.semester || 'Chưa thiết lập'}</strong><span>{statusLabel(overview?.semesterStatus)}</span></div>
+          <button type="button" onClick={onReload} disabled={loading}><RefreshCw size={17} className={loading ? 'is-spinning' : ''} /><span>Cập nhật</span></button>
+        </div>
+        <small className="role-command-today"><CalendarDays size={14} /> {today}</small>
+      </section>
+
+      {loading ? <DashboardSkeleton /> : (
+        <section className="role-command-kpis" aria-label="Chỉ số công việc trọng yếu">
+          {metrics.map((metric, index) => {
+            const Icon = metric.Icon;
+            return <article key={metric.label} className={`role-command-kpi tone-${metric.tone}`}>
+              <header><span><Icon size={19} /></span><small>0{index + 1}</small></header>
+              <strong>{metric.value}</strong><h3>{metric.label}</h3><p>{metric.hint}</p>
+            </article>;
+          })}
+        </section>
+      )}
+
+      <section className="role-command-workspace">
+        <article className="role-command-worklist">
+          <header><div><span>CẦN XỬ LÝ</span><h3>{config.workTitle}</h3><p>{config.workDescription}</p></div><strong className={openItems.length ? 'has-work' : 'is-clear'}>{openItems.length} nhóm việc</strong></header>
+          <div>{loading ? <AdminListSkeleton /> : workItems.map((item) => <AdminWorkItemRow key={item.key} item={item} onNavigate={onNavigate} />)}</div>
+        </article>
+        <aside className="role-command-shortcuts">
+          <header><span>TRUY CẬP NHANH</span><h3>Công cụ thường dùng</h3></header>
+          <div>{links.map(({ code, title, description, Icon }) => <button type="button" key={`${code}-${title}`} onClick={() => onNavigate(code)}><span><Icon size={18} /></span><div><strong>{title}</strong><small>{description}</small></div><ArrowRight size={15} /></button>)}</div>
+        </aside>
+      </section>
+
+      <AdminCalendarWidget
+        items={overview?.calendarItems ?? []}
+        loading={loading}
+        onNavigate={onNavigate}
+        eyebrow="LỊCH CÔNG VIỆC"
+        title={config.calendarTitle}
+        description={config.calendarDescription}
+      />
+
+      {roleId === 'teacher' && <TeacherAnnouncementSpotlight items={notifications} loading={notificationsLoading} markingId={markingNotificationId} onMarkRead={onMarkNotificationRead} onOpenInbox={() => onNavigate('B7')} />}
+      {roleId === 'teacher' && <ExamAgendaSpotlight roleId="teacher" items={examAgenda} loading={examAgendaLoading} onOpen={() => onNavigate('B12')} />}
+
+      {!loading && (data?.charts.length ?? 0) > 0 && <section className="role-command-insights">
+        <header><div><span>PHÂN TÍCH THEO PHẠM VI</span><h3>{roleId === 'accountant' ? 'Tình hình thu và công nợ' : roleId === 'teacher' ? 'Nhịp giảng dạy của tôi' : 'Tiến độ tổ chức đào tạo'}</h3></div><small>Dữ liệu được tổng hợp tự động</small></header>
+        <div>{data?.charts.map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}</div>
+      </section>}
+    </div>
+  );
+}
+
+function AdminCommandDashboard({ firstName, today, data, loading, hasError, onReload, onNavigate }: {
+  firstName: string;
+  today: string;
+  data?: DashboardResponse | null;
+  loading: boolean;
+  hasError: boolean;
+  onReload: () => void;
+  onNavigate: (page: PageId) => void;
+}) {
+  const overview = data?.adminOverview;
+  const metrics = (data?.metrics ?? []).map(toMetric);
+  const workItems = overview?.workItems ?? [];
+  const openWorkItems = workItems.filter((item) => item.severity !== 'SUCCESS');
+  const attendanceRate = overview && overview.attendanceRecorded > 0
+    ? (overview.present / overview.attendanceRecorded) * 100 : null;
+  const collectionRate = overview && overview.totalReceivables > 0
+    ? (overview.collectedAmount / overview.totalReceivables) * 100 : 0;
+
+  return (
+    <div className="dashboard admin-command-dashboard">
+      {hasError && (
+        <div className="dashboard-data-notice" role="alert">
+          <Activity size={18} />
+          <div><strong>Chưa thể đồng bộ đầy đủ dữ liệu điều hành</strong><span>Nhấn tải lại để kiểm tra kết nối với hệ thống.</span></div>
+          <button type="button" onClick={onReload}><RefreshCw size={15} /> Tải lại</button>
+        </div>
+      )}
+
+      <section className="admin-command-header">
+        <div className="admin-command-heading">
+          <span><ShieldCheck size={15} /> Trung tâm điều hành</span>
+          <h2>Chào {firstName}, đây là tình hình nhà trường hôm nay</h2>
+          <p>{today}. Các chỉ số bên dưới được tổng hợp theo đúng phạm vi quản trị và trách nhiệm của từng bộ phận.</p>
+        </div>
+        <div className="admin-command-context">
+          <div>
+            <small>Năm học hiện tại</small>
+            <strong>{overview?.academicYear || 'Chưa thiết lập'}</strong>
+            <span className={statusClass(overview?.academicYearStatus)}>{statusLabel(overview?.academicYearStatus)}</span>
+          </div>
+          <div>
+            <small>Học kỳ</small>
+            <strong>{overview?.semester || 'Chưa thiết lập'}</strong>
+            <span className={statusClass(overview?.semesterStatus)}>{statusLabel(overview?.semesterStatus)}</span>
+          </div>
+          <button type="button" onClick={onReload} disabled={loading} title="Cập nhật dữ liệu Dashboard">
+            <RefreshCw size={17} className={loading ? 'is-spinning' : ''} />
+            <span>{loading ? 'Đang cập nhật' : 'Cập nhật'}</span>
+          </button>
+        </div>
+      </section>
+
+      {loading ? <DashboardSkeleton /> : (
+        <section className="admin-command-kpis" aria-label="Chỉ số điều hành trọng yếu">
+          {metrics.map((metric, index) => {
+            const Icon = metric.Icon;
+            return (
+              <article key={metric.label} className={`admin-command-kpi tone-${metric.tone}`}>
+                <div className="admin-command-kpi-top"><span><Icon size={20} /></span><small>0{index + 1}</small></div>
+                <strong>{metric.value}</strong>
+                <h3>{metric.label}</h3>
+                <p>{metric.hint}</p>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      <AdminCalendarWidget
+        items={overview?.calendarItems ?? []}
+        loading={loading}
+        onNavigate={onNavigate}
+      />
+
+      <section className="admin-command-core">
+        <article className="admin-command-priorities">
+          <header>
+            <div><span>CẦN QUYẾT ĐỊNH</span><h3>Việc cần xử lý</h3><p>Chỉ hiển thị những việc còn tồn đọng và có người phụ trách rõ ràng.</p></div>
+            <strong className={openWorkItems.length > 0 ? 'has-work' : 'is-clear'}>{openWorkItems.length} nhóm việc</strong>
+          </header>
+          <div className="admin-command-work-list">
+            {loading ? <AdminListSkeleton /> : workItems.map((item) => (
+              <AdminWorkItemRow key={item.key} item={item} onNavigate={onNavigate} />
+            ))}
+          </div>
+        </article>
+
+        <aside className="admin-command-today">
+          <header><div><span>HÔM NAY</span><h3>Tình hình chuyên cần</h3></div><CalendarCheck2 size={20} /></header>
+          <div className="admin-attendance-score">
+            <strong>{attendanceRate == null ? '—' : `${formatNumber(attendanceRate, 1)}%`}</strong>
+            <span>{overview?.attendanceRecorded ?? 0} lượt đã ghi nhận</span>
+          </div>
+          <div className="admin-progress-track" aria-label="Tỷ lệ học sinh có mặt">
+            <i style={{ width: `${Math.min(100, attendanceRate ?? 0)}%` }} />
+          </div>
+          <dl className="admin-attendance-breakdown">
+            <div><dt>Có mặt</dt><dd>{formatCompact(overview?.present)}</dd></div>
+            <div><dt>Vắng có phép</dt><dd>{formatCompact(overview?.excusedAbsences)}</dd></div>
+            <div><dt>Vắng không phép</dt><dd>{formatCompact(overview?.unexcusedAbsences)}</dd></div>
+            <div><dt>Đi muộn</dt><dd>{formatCompact(overview?.late)}</dd></div>
+          </dl>
+          <button type="button" onClick={() => onNavigate('A8')}>Mở báo cáo chuyên cần <ArrowRight size={15} /></button>
+        </aside>
+      </section>
+
+      <section className="admin-command-departments">
+        <div className="admin-command-section-heading">
+          <div><span>GIÁM SÁT THEO BỘ PHẬN</span><h3>Sức khỏe vận hành</h3></div>
+          <p>Admin theo dõi kết quả; Giáo vụ và Kế toán chịu trách nhiệm xử lý nghiệp vụ.</p>
+        </div>
+        <div className="admin-department-grid">
+          <AdminDepartmentCard
+            icon={School}
+            title="Giáo vụ"
+            owner="Cơ cấu đào tạo & lịch học"
+            status={departmentStatus((overview?.timetableCoverage ?? 0) >= 100 && (overview?.classesWithoutHomeroom ?? 0) === 0)}
+            progress={overview?.timetableCoverage ?? 0}
+            progressLabel="Tiến độ thời khóa biểu"
+            facts={[
+              `${formatCompact(overview?.scheduledPeriods)}/${formatCompact(overview?.requiredPeriods)} tiết đã xếp`,
+              `${formatCompact(overview?.activeClasses)} lớp · ${formatCompact(overview?.classesWithoutHomeroom)} lớp thiếu chủ nhiệm`,
+              `${formatCompact(overview?.upcomingExams)} kỳ thi sắp tới · ${formatCompact(overview?.draftExams)} bản nháp`,
+            ]}
+            onOpen={() => onNavigate('A8')}
+          />
+          <AdminDepartmentCard
+            icon={WalletCards}
+            title="Kế toán"
+            owner="Khoản thu & công nợ"
+            status={departmentStatus((overview?.overdueInvoices ?? 0) === 0)}
+            progress={collectionRate}
+            progressLabel="Tỷ lệ đã thu"
+            facts={[
+              `${formatCurrency(overview?.collectedAmount)} đã thu`,
+              `${formatCurrency(overview?.outstandingAmount)} còn phải thu`,
+              `${formatCompact(overview?.overdueInvoices)} hóa đơn quá hạn`,
+            ]}
+            onOpen={() => onNavigate('A8')}
+          />
+          <AdminDepartmentCard
+            icon={ShieldCheck}
+            title="Quản trị hệ thống"
+            owner="Người dùng & quyền truy cập"
+            status={departmentStatus((overview?.inactiveAccounts ?? 0) === 0 && (overview?.unassignedStudents ?? 0) === 0)}
+            progress={overview && overview.activeStudents + overview.activeTeachers + overview.activeParents > 0
+              ? 100 * (overview.activeStudents + overview.activeTeachers + overview.activeParents)
+                / (overview.activeStudents + overview.activeTeachers + overview.activeParents + overview.inactiveAccounts)
+              : 0}
+            progressLabel="Tài khoản sẵn sàng"
+            facts={[
+              `${formatCompact(overview?.activeStudents)} học sinh · ${formatCompact(overview?.activeTeachers)} giáo viên`,
+              `${formatCompact(overview?.activeParents)} phụ huynh đang hoạt động`,
+              `${formatCompact(overview?.inactiveAccounts)} tài khoản cần rà soát`,
+            ]}
+            onOpen={() => onNavigate('A1O')}
+          />
+        </div>
+      </section>
+
+      {!loading && (data?.charts.length ?? 0) > 0 && (
+        <section className="admin-command-analysis">
+          <div className="admin-command-section-heading">
+            <div><span>PHÂN TÍCH CƠ CẤU</span><h3>Dữ liệu cần quan sát định kỳ</h3></div>
+            <button type="button" onClick={() => onNavigate('A8')}>Xem báo cáo đầy đủ <ArrowRight size={15} /></button>
+          </div>
+          <div className="dashboard-grid">
+            {data?.charts.map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}
+          </div>
+        </section>
+      )}
+
+      <section className="admin-command-actions" aria-label="Thao tác quản trị nhanh">
+        <div><Clock3 size={18} /><span>Cập nhật gần nhất</span><strong>{formatDashboardTime(overview?.updatedAt)}</strong></div>
+        <button type="button" onClick={() => onNavigate('A1S')}><GraduationCap size={18} /><span><strong>Quản lý học sinh</strong><small>Hồ sơ và xếp lớp</small></span><ArrowRight size={15} /></button>
+        <button type="button" onClick={() => onNavigate('A1O')}><Users size={18} /><span><strong>Nhân sự vận hành</strong><small>Giáo vụ và Kế toán</small></span><ArrowRight size={15} /></button>
+        <button type="button" onClick={() => onNavigate('A9')}><Bell size={18} /><span><strong>Gửi thông báo</strong><small>Thông tin toàn trường</small></span><ArrowRight size={15} /></button>
+      </section>
+    </div>
+  );
+}
+
+function AdminCalendarWidget({ items, loading, onNavigate, eyebrow = 'LỊCH ĐIỀU HÀNH', title = 'Kế hoạch trong tháng', description = 'Kỳ thi, học kỳ, hạn khoản thu và lịch nghỉ được đồng bộ tự động.' }: {
+  items: DashboardCalendarItem[];
+  loading: boolean;
+  onNavigate: (page: PageId) => void;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+}) {
+  const now = new Date();
+  const [visibleMonth, setVisibleMonth] = useState(() => new Date(now.getFullYear(), now.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(() => localDateKey(now));
+  const days = calendarDays(visibleMonth);
+  const selectedItems = items.filter((item) => item.date === selectedDate);
+  const monthItems = items.filter((item) => {
+    const date = parseLocalDate(item.date);
+    return date.getFullYear() === visibleMonth.getFullYear() && date.getMonth() === visibleMonth.getMonth();
+  });
+  const agendaItems = selectedItems.length > 0 ? selectedItems : monthItems.slice(0, 5);
+  const legendTypes = Array.from(new Set(items.map((item) => item.type))).slice(0, 5);
+  const selectedLabel = new Intl.DateTimeFormat('vi-VN', { weekday: 'long', day: '2-digit', month: 'long' })
+    .format(parseLocalDate(selectedDate));
+
+  const moveMonth = (amount: number) => {
+    setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
+  };
+
+  return (
+    <section className="admin-calendar-widget">
+      <header className="admin-calendar-header">
+        <div className="admin-calendar-title">
+          <span><CalendarDays size={20} /></span>
+          <div><small>{eyebrow}</small><h3>{title}</h3><p>{description}</p></div>
+        </div>
+        <div className="admin-calendar-toolbar">
+          <div className="admin-calendar-legend">
+            {legendTypes.map((type) => <span key={type} className={type.toLowerCase()}>{calendarEventLabel(type)}</span>)}
+          </div>
+          <div className="admin-calendar-navigation">
+            <button type="button" onClick={() => moveMonth(-1)} aria-label="Tháng trước"><ChevronLeft size={17} /></button>
+            <strong>{new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(visibleMonth)}</strong>
+            <button type="button" onClick={() => moveMonth(1)} aria-label="Tháng sau"><ChevronRight size={17} /></button>
+          </div>
+        </div>
+      </header>
+
+      <div className="admin-calendar-layout">
+        <div className="admin-calendar-board" aria-label={`Lịch ${new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric' }).format(visibleMonth)}`}>
+          <div className="admin-calendar-weekdays">{['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="admin-calendar-grid">
+            {days.map((date) => {
+              const dateKey = localDateKey(date);
+              const dayItems = items.filter((item) => item.date === dateKey);
+              const isCurrentMonth = date.getMonth() === visibleMonth.getMonth();
+              const isToday = dateKey === localDateKey(now);
+              return (
+                <button
+                  type="button"
+                  key={dateKey}
+                  className={`${isCurrentMonth ? '' : 'outside'} ${isToday ? 'today' : ''} ${selectedDate === dateKey ? 'selected' : ''}`.trim()}
+                  onClick={() => setSelectedDate(dateKey)}
+                  aria-label={`${date.toLocaleDateString('vi-VN')}${dayItems.length ? `, ${dayItems.length} sự kiện` : ''}`}
+                >
+                  <span>{date.getDate()}</span>
+                  <i>{dayItems.slice(0, 3).map((item) => <b key={item.id} className={item.type.toLowerCase()} />)}</i>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <aside className="admin-calendar-agenda">
+          <div><small>{selectedItems.length > 0 ? 'SỰ KIỆN ĐÃ CHỌN' : 'SỰ KIỆN TRONG THÁNG'}</small><h4>{selectedItems.length > 0 ? capitalize(selectedLabel) : `${monthItems.length} lịch cần lưu ý`}</h4></div>
+          {loading ? <AdminListSkeleton /> : agendaItems.length === 0 ? (
+            <div className="admin-calendar-empty"><CheckCircle2 size={22} /><strong>Tháng này chưa có lịch quan trọng</strong><span>Các mốc mới sẽ tự động xuất hiện sau khi được tạo.</span></div>
+          ) : (
+            <div className="admin-calendar-agenda-list">
+              {agendaItems.map((item) => {
+                const Icon = calendarEventIcon(item.type);
+                return <button type="button" key={item.id} className={`event-${item.type.toLowerCase()}`} onClick={() => onNavigate(item.pageCode)}>
+                  <time><strong>{parseLocalDate(item.date).getDate()}</strong><span>Thg {parseLocalDate(item.date).getMonth() + 1}</span></time>
+                  <span><Icon size={17} /></span>
+                  <div><small>{calendarEventLabel(item.type)}</small><strong>{item.title}</strong><p>{item.detail || 'Xem thông tin chi tiết'}</p></div>
+                  <ArrowRight size={15} />
+                </button>;
+              })}
+            </div>
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function AdminWorkItemRow({ item, onNavigate }: { item: DashboardWorkItem; onNavigate: (page: PageId) => void }) {
+  const Icon = item.severity === 'SUCCESS' ? CheckCircle2 : item.severity === 'CRITICAL' ? AlertTriangle : Activity;
+  return (
+    <button type="button" className={`admin-work-item severity-${item.severity.toLowerCase()}`} onClick={() => onNavigate(item.pageCode)}>
+      <span><Icon size={18} /></span>
+      <div><strong>{item.title}</strong><small>{item.detail}</small></div>
+      {item.value > 0 && <b>{formatCompact(item.value)} <small>{item.unit}</small></b>}
+      <ArrowRight size={16} />
+    </button>
+  );
+}
+
+function AdminDepartmentCard({ icon: Icon, title, owner, status, progress, progressLabel, facts, onOpen }: {
+  icon: LucideIcon;
+  title: string;
+  owner: string;
+  status: { label: string; tone: string };
+  progress: number;
+  progressLabel: string;
+  facts: string[];
+  onOpen: () => void;
+}) {
+  return (
+    <article className="admin-department-card">
+      <header><span><Icon size={20} /></span><div><h4>{title}</h4><small>{owner}</small></div><b className={status.tone}>{status.label}</b></header>
+      <div className="admin-department-progress"><div><span>{progressLabel}</span><strong>{formatNumber(progress, 1)}%</strong></div><i><span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></i></div>
+      <ul>{facts.map((fact) => <li key={fact}><Check size={14} /> {fact}</li>)}</ul>
+      <button type="button" onClick={onOpen}>Xem chi tiết <ArrowRight size={14} /></button>
+    </article>
+  );
+}
+
+function AdminListSkeleton() {
+  return <div className="admin-command-list-skeleton" aria-label="Đang tải danh sách"><i /><i /><i /></div>;
+}
+
+function departmentStatus(healthy: boolean) {
+  return healthy ? { label: 'Ổn định', tone: 'healthy' } : { label: 'Cần theo dõi', tone: 'attention' };
+}
+
+function statusLabel(status?: string) {
+  return ({ ACTIVE: 'Đang hoạt động', PLANNED: 'Sắp diễn ra', COMPLETED: 'Đã kết thúc' } as Record<string, string>)[status || ''] || 'Chưa xác định';
+}
+
+function statusClass(status?: string) {
+  return status === 'ACTIVE' ? 'is-active' : 'is-neutral';
+}
+
+function calendarDays(month: Date) {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const mondayOffset = (first.getDay() + 6) % 7;
+  const start = new Date(first.getFullYear(), first.getMonth(), 1 - mondayOffset);
+  return Array.from({ length: 42 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index));
+}
+
+function localDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function calendarEventLabel(type: string) {
+  return ({
+    EXAM: 'Kỳ thi', FEE: 'Hạn khoản thu', SEMESTER: 'Mốc học kỳ', HOLIDAY: 'Lịch nghỉ',
+    LESSON: 'Tiết dạy', ASSIGNMENT: 'Hạn bài tập',
+  } as Record<string, string>)[type] || 'Sự kiện';
+}
+
+function calendarEventIcon(type: string): LucideIcon {
+  return ({
+    EXAM: CalendarCheck2, FEE: WalletCards, SEMESTER: School, HOLIDAY: Bell,
+    LESSON: Clock3, ASSIGNMENT: BookOpenCheck,
+  } as Record<string, LucideIcon>)[type] || CalendarDays;
+}
+
+function capitalize(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 }
 
 function ExamAgendaSpotlight({ roleId, items, loading, onOpen }: {
@@ -400,58 +908,6 @@ function DashboardChartCard({ chart }: { chart: DashboardChart }) {
   );
 }
 
-function AdminDashboardTables({ users, classes, notifications }: {
-  users: ApiUser[];
-  classes: SchoolClass[];
-  notifications: Notification[];
-}) {
-  return (
-    <section className="dashboard-operations-section">
-      <div className="dashboard-section-title">
-        <div><span>Vận hành nhà trường</span><h3>Dữ liệu cần theo dõi</h3></div>
-        <small>Bảng dữ liệu thật, có phân trang</small>
-      </div>
-      <div className="admin-dashboard-table-grid">
-        <Section title="Tài khoản người dùng" subtitle="Tình trạng truy cập theo từng vai trò">
-          <PaginatedData items={users} pageSize={5} itemLabel="tài khoản">
-            {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
-              <thead><tr><th>Họ và tên</th><th>Vai trò</th><th>Tài khoản</th><th>Trạng thái</th></tr></thead>
-              <tbody>{items.map((item) => <tr key={item.id}>
-                <td><strong>{item.fullName}</strong><small>{item.email || 'Chưa cập nhật email'}</small></td>
-                <td>{viLabel(item.role)}</td><td>@{item.username}</td><td><StatusPill value={item.status} /></td>
-              </tr>)}</tbody>
-            </table></div>}
-          </PaginatedData>
-        </Section>
-
-        <Section title="Lớp học hiện tại" subtitle="Sĩ số và giáo viên chủ nhiệm">
-          <PaginatedData items={classes} pageSize={5} itemLabel="lớp học">
-            {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
-              <thead><tr><th>Lớp</th><th>Khối</th><th>Giáo viên chủ nhiệm</th><th>Sĩ số</th></tr></thead>
-              <tbody>{items.map((item) => <tr key={item.id}>
-                <td><strong>{item.code}</strong><small>{item.name}</small></td>
-                <td>{item.gradeLevel}</td><td>{item.homeroomTeacherName || 'Chưa phân công'}</td><td><strong>{item.studentCount}</strong> học sinh</td>
-              </tr>)}</tbody>
-            </table></div>}
-          </PaginatedData>
-        </Section>
-      </div>
-
-      <Section title="Thông báo mới nhất" subtitle="Sự kiện và cảnh báo trong hệ thống" wide>
-        <PaginatedData items={notifications} pageSize={5} itemLabel="thông báo">
-          {(items) => <div className="admin-table-scroll"><table className="live-table admin-data-table">
-            <thead><tr><th>Loại</th><th>Nội dung</th><th>Thời gian</th><th>Trạng thái</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.id}>
-              <td>{viLabel(item.type)}</td><td><strong>{item.title}</strong><small>{item.body}</small></td>
-              <td>{formatDashboardTime(item.createdAt)}</td><td><StatusPill value={item.read ? 'READ' : 'UNREAD'} /></td>
-            </tr>)}</tbody>
-          </table></div>}
-        </PaginatedData>
-      </Section>
-    </section>
-  );
-}
-
 type FocusItem = DashboardLink & { tone: 'blue' | 'green' | 'orange' | 'violet' };
 
 function buildFocusItems(roleId: RoleId, metrics: DashboardMetric[], notifications: Notification[]): FocusItem[] {
@@ -540,6 +996,10 @@ function formatMetricValue(value: number, format: string) {
 
 function formatCompact(value?: number) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value ?? 0);
+}
+
+function formatCurrency(value?: number) {
+  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value ?? 0)} ₫`;
 }
 
 function formatNumber(value: number, digits: number) {
