@@ -29,7 +29,8 @@ async function login(page: Page, account: Account) {
 
 test.beforeAll(async ({ request }) => {
   expect(accounts.every((account) => account.password.length > 0), 'Phải cấu hình đủ 6 biến E2E_*_PASSWORD').toBeTruthy();
-  const health = await request.get('http://127.0.0.1:4000/actuator/health');
+  const apiUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000';
+  const health = await request.get(`${apiUrl}/health`);
   expect(health.ok(), 'Backend phải chạy trước khi thực hiện E2E').toBeTruthy();
 });
 
