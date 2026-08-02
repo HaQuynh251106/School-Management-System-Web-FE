@@ -12,6 +12,7 @@ import { useHashString } from '../../api/urlState';
 import { IntakeClassPlacementLive } from './IntakeClassPlacementLive';
 import { RoomAllocationPlanner } from './RoomAllocationPlanner';
 import { SubjectRoomRequirements } from './SubjectRoomRequirements';
+import { closedAcademicYears, operationalAcademicYears } from './academicYearSelection';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
 type EditorState = { kind: EditorKind; id: string; data: Record<string, string | number> };
@@ -50,26 +51,24 @@ export function AdminAcademicLive() {
   const [subjectQuery, setSubjectQuery] = useHashString('q_subjects', '');
   const [roomQuery, setRoomQuery] = useHashString('q_rooms', '');
   const query = { years: yearQuery, semesters: semesterQuery, classes: classQuery, subjects: subjectQuery, rooms: roomQuery };
-  const [yearStatus, setYearStatus] = useHashString('year_status', '');
+  const [yearStatus, setYearStatus] = useHashString('year_status', 'OPEN');
   const [semesterYear, setSemesterYear] = useHashString('semester_year', '');
   const [classYear, setClassYear] = useHashString('class_year', '');
   const [assigningClassId, setAssigningClassId] = useState('');
   const [busy, setBusy] = useState(false);
   const [editor, setEditor] = useState<EditorState | null>(null);
 
-  const activeYears = (years.data ?? []).filter((year) => year.status !== 'CLOSED');
-  const preferredAcademicYear = [...activeYears].sort((left, right) => {
-    const statusOrder = (status: string) => status === 'ACTIVE' ? 0 : 1;
-    return statusOrder(left.status) - statusOrder(right.status)
-      || String(right.startDate || '').localeCompare(String(left.startDate || ''));
-  })[0];
+  const activeYears = operationalAcademicYears(years.data ?? []);
+  const archivedYears = closedAcademicYears(years.data ?? []);
+  const preferredAcademicYear = activeYears[0];
   const preferredAcademicYearId = preferredAcademicYear?.id;
 
   useEffect(() => {
     if (!preferredAcademicYearId) return;
     if (!classYear) setClassYear(preferredAcademicYearId);
+    if (!semesterYear) setSemesterYear(preferredAcademicYearId);
     setCf((current) => current.academicYearId ? current : { ...current, academicYearId: preferredAcademicYearId });
-  }, [classYear, preferredAcademicYearId, setClassYear]);
+  }, [classYear, preferredAcademicYearId, semesterYear, setClassYear, setSemesterYear]);
 
   const yearName = (id?: string) => (years.data ?? []).find((year) => year.id === id)?.code || '—';
   const roomSupportsShift = (room: Room, shift: string) => room.status !== 'MAINTENANCE'
@@ -189,7 +188,7 @@ export function AdminAcademicLive() {
   };
 
   const editField = (key: string, value: string | number) => setEditor((current) => current ? ({ ...current, data: { ...current.data, [key]: value } }) : current);
-  const filteredYears = (years.data ?? []).filter((year) => (!yearStatus || year.status === yearStatus) && textMatches(query.years, year.code, year.name));
+  const filteredYears = (years.data ?? []).filter((year) => (yearStatus === 'OPEN' ? year.status !== 'CLOSED' : !yearStatus || year.status === yearStatus) && textMatches(query.years, year.code, year.name));
   const filteredSemesters = (semesters.data ?? []).filter((semester) => (!semesterYear || semester.academicYearId === semesterYear) && textMatches(query.semesters, semester.code, semester.name, yearName(semester.academicYearId)));
   const filteredClasses = (classes.data ?? []).filter((schoolClass) => (classYear === 'all' || schoolClass.academicYearId === classYear) && textMatches(query.classes, schoolClass.code, schoolClass.name, schoolClass.gradeLevel, schoolClass.homeroomTeacherName));
   const filteredSubjects = (subjects.data ?? []).filter((subject) => textMatches(query.subjects, subject.code, subject.name));
@@ -213,6 +212,7 @@ export function AdminAcademicLive() {
       <FunctionTabs tabs={[
         { id: 'years', label: 'Năm học', description: 'Tạo khung thời gian', Icon: CalendarDays, content: (
           <Section title="Năm học" subtitle="Quản lý thời gian và vòng đời năm học" wide>
+            <div className="academic-year-mode-note"><CalendarDays size={18} /><div><strong>Chỉ năm học đang hoạt động hoặc sắp diễn ra mới được thao tác</strong><span>{archivedYears.length ? `${archivedYears.length} năm học đã đóng được tách sang bộ lọc “Lịch sử đã khóa”.` : 'Chưa có năm học nào được lưu trữ.'}</span></div></div>
             <div className="live-toolbar academic-create-bar">
               <input className="live-input" placeholder="Mã (2026-2027)" value={yf.code} onChange={(e) => setYf({ ...yf, code: e.target.value })} />
               <input className="live-input grow" placeholder="Tên năm học" value={yf.name} onChange={(e) => setYf({ ...yf, name: e.target.value })} />
@@ -220,11 +220,11 @@ export function AdminAcademicLive() {
               <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
               <button className="live-btn" disabled={busy} onClick={addYear}><Plus size={15} /> Tạo năm học</button>
             </div>
-            <div className="academic-filter-bar"><SearchBox value={query.years} onChange={setYearQuery} placeholder="Tìm mã hoặc tên năm học" /><select className="live-select" value={yearStatus} onChange={(e) => setYearStatus(e.target.value)}><option value="">Tất cả trạng thái</option><option value="PLANNED">Dự kiến</option><option value="ACTIVE">Đang hoạt động</option><option value="CLOSED">Đã đóng</option></select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.years} onChange={setYearQuery} placeholder="Tìm mã hoặc tên năm học" /><select className="live-select" aria-label="Phạm vi năm học" value={yearStatus} onChange={(e) => setYearStatus(e.target.value)}><option value="OPEN">Đang làm việc</option><option value="ACTIVE">Đang hoạt động</option><option value="PLANNED">Sắp diễn ra</option><option value="CLOSED">Lịch sử đã khóa</option><option value="">Tất cả năm học</option></select></div>
             <Async paginate resetKey={`${query.years}-${yearStatus}`} state={{ ...years, data: years.data ? filteredYears : null }} itemLabel="năm học">{(list) => (
-              <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((year) => <tr key={year.id}>
+              <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((year) => <tr key={year.id} className={year.status === 'CLOSED' ? 'academic-archived-row' : undefined}>
                 <td><strong>{year.code}</strong></td><td>{year.name}</td><td>{fmtDate(year.startDate)} → {fmtDate(year.endDate)}</td><td><StatusPill value={year.status} /></td>
-                <td><div className="academic-row-actions">{year.status === 'PLANNED' && <><ActionButton label="Sửa" disabled={busy} onClick={() => openEditor('year', year)}><Pencil size={15} /></ActionButton><ActionButton label="Kích hoạt" tone="success" disabled={busy} onClick={() => changeStatus('year', year, 'ACTIVE')}><PlayCircle size={15} /></ActionButton><ActionButton label="Xóa" tone="danger" disabled={busy} onClick={() => remove('year', year.id, year.name)}><Trash2 size={15} /></ActionButton></>}{year.status === 'ACTIVE' && <span className="academic-locked-note active">Chuyển năm tại mục Tổng kết</span>}{year.status === 'CLOSED' && <span className="academic-locked-note">Đã khóa dữ liệu</span>}</div></td>
+                <td><div className="academic-row-actions">{year.status === 'PLANNED' && <><ActionButton label="Sửa" disabled={busy} onClick={() => openEditor('year', year)}><Pencil size={15} /></ActionButton><ActionButton label="Kích hoạt" tone="success" disabled={busy} onClick={() => changeStatus('year', year, 'ACTIVE')}><PlayCircle size={15} /></ActionButton><ActionButton label="Xóa" tone="danger" disabled={busy} onClick={() => remove('year', year.id, year.name)}><Trash2 size={15} /></ActionButton></>}{year.status === 'ACTIVE' && <span className="academic-locked-note active">Chuyển năm tại mục Tổng kết</span>}{year.status === 'CLOSED' && <span className="academic-locked-note"><Archive size={14} /> Kho lưu trữ · Chỉ xem</span>}</div></td>
               </tr>)}</tbody></table>
             )}</Async>
           </Section>
@@ -232,7 +232,7 @@ export function AdminAcademicLive() {
         { id: 'sem', label: 'Học kỳ', description: 'Kiểm tra hai học kỳ tự sinh', Icon: CalendarDays, content: (
           <Section title="Học kỳ" subtitle="HK1 và HK2 được tự động tạo cùng năm học; Giáo vụ chỉ cần kiểm tra hoặc điều chỉnh thời gian" wide>
             <div className="homeroom-policy-note"><CalendarDays size={17} /><span>Không cần tạo thủ công. Hai học kỳ được chia liên tục trong thời gian năm học và bắt đầu ở trạng thái <strong>Dự kiến</strong>.</span></div>
-            <div className="academic-filter-bar"><SearchBox value={query.semesters} onChange={setSemesterQuery} placeholder="Tìm học kỳ" /><select className="live-select" value={semesterYear} onChange={(e) => setSemesterYear(e.target.value)}><option value="">Tất cả năm học</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.semesters} onChange={setSemesterQuery} placeholder="Tìm học kỳ" /><select className="live-select" aria-label="Năm học của học kỳ" value={semesterYear} onChange={(e) => setSemesterYear(e.target.value)}><option value="">Tất cả năm học</option><optgroup label="Năm học đang làm việc">{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}</optgroup>{archivedYears.length > 0 && <optgroup label="Lịch sử · Chỉ xem">{archivedYears.map((year) => <option key={year.id} value={year.id}>{year.code} · Đã khóa</option>)}</optgroup>}</select></div>
             <Async paginate resetKey={`${query.semesters}-${semesterYear}`} state={{ ...semesters, data: semesters.data ? filteredSemesters : null }} itemLabel="học kỳ">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Năm học</th><th>Học kỳ</th><th>Thứ tự</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{list.map((semester) => <tr key={semester.id}>
                 <td>{yearName(semester.academicYearId)}</td><td><strong>{semester.code}</strong><small className="academic-cell-note">{semester.name}</small></td><td>{semester.sequence}</td><td>{fmtDate(semester.startDate)} → {fmtDate(semester.endDate)}</td><td><StatusPill value={semester.status} /></td>
@@ -285,7 +285,7 @@ export function AdminAcademicLive() {
               <button className="live-btn" disabled={busy} onClick={addClass}><Plus size={15} /> Tạo lớp</button>
             </div>
             <div className="homeroom-policy-note"><School size={17} /><span>Mỗi giáo viên chỉ chủ nhiệm <strong>một lớp trong một năm học</strong>. Giáo viên đã có lớp được ghi rõ và không thể chọn trùng.</span></div>
-            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="all">Tất cả (gồm lịch sử)</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}</select></div>
+            <div className="academic-filter-bar"><SearchBox value={query.classes} onChange={setClassQuery} placeholder="Tìm lớp hoặc giáo viên chủ nhiệm" /><select className="live-select" aria-label="Năm học của lớp" value={classYear} onChange={(e) => setClassYear(e.target.value)}><option value="all">Tất cả năm học (tra cứu)</option><optgroup label="Năm học đang làm việc">{activeYears.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}</optgroup>{archivedYears.length > 0 && <optgroup label="Lịch sử · Chỉ xem">{archivedYears.map((year) => <option key={year.id} value={year.id}>{year.code} · Đã khóa</option>)}</optgroup>}</select></div>
             <Async paginate resetKey={`${query.classes}-${classYear}`} state={{ ...classes, data: classes.data ? filteredClasses : null }} itemLabel="lớp học">{(list) => (
               <table className="live-table academic-table"><thead><tr><th>Mã lớp</th><th>Năm học</th><th>Khối</th><th>Ca học</th><th>Phòng học</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th><th>Thao tác</th></tr></thead><tbody>{list.map((schoolClass) => {
                 const schoolYear = (years.data ?? []).find((year) => year.id === schoolClass.academicYearId);

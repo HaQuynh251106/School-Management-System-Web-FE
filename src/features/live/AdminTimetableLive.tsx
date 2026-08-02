@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, BookOpenCheck, CalendarDays, CheckCircle2,
+  AlertTriangle, ArrowRightLeft, BookOpenCheck, CalendarDays, CheckCircle2,
   ChevronLeft, ChevronRight, Clock3, Pencil, Plus, RotateCcw, Search,
   Trash2, UserRoundCheck, UsersRound, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
-  ApiUser, Room, SchoolClass, Semester, TeacherWorkload, TeachingAssignment, TimetableSlot, Subject,
+  AcademicYear, ApiUser, Room, SchoolClass, Semester, TeacherWorkload, TeachingAssignment, TimetableSlot, Subject,
+  TimetableChangeRequestView,
 } from '../../api/types';
-import { FunctionTabs, Section } from '../../components/ui';
+import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { useHashNumber, useHashString } from '../../api/urlState';
 import { AdminAutoTimetableLive, AdminWorkloadPlanningLive } from './WorkloadPlanningLive';
+import {
+  operationalAcademicYears, operationalYearLabel, resolveOperationalAcademicYearId,
+  sameAcademicYearSelection,
+} from './academicYearSelection';
 
 const PERIODS = [1, 2, 3, 4, 5, 6];
 const PERIOD_TIME: Record<'MORNING' | 'AFTERNOON', Record<number, [string, string]>> = {
@@ -105,10 +110,15 @@ const emptyAssignment: AssignmentForm = {
 };
 
 function TeachingAssignmentManager() {
-  const classes = useApi<SchoolClass[]>('/classes');
+  const years = useApi<AcademicYear[]>('/academicYears');
+  const [academicYearId, setAcademicYearId] = useHashString('ta_year', '');
+  const [gradeFilter, setGradeFilter] = useHashString('ta_grade', '');
+  const classes = useApi<SchoolClass[]>(academicYearId
+    ? `/classes?academicYearId=${encodeURIComponent(academicYearId)}` : null);
   const subjects = useApi<Subject[]>('/subjects');
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
-  const semesters = useApi<Semester[]>('/semesters');
+  const semesters = useApi<Semester[]>(academicYearId
+    ? `/semesters?academicYearId=${encodeURIComponent(academicYearId)}` : null);
   const toast = useToast();
   const [classFilter, setClassFilter] = useHashString('ta_class', '');
   const [semesterFilter, setSemesterFilter] = useHashString('ta_semester', '');
@@ -129,6 +139,30 @@ function TeachingAssignmentManager() {
   const [error, setError] = useState<string | null>(null);
   const [workloadPage, setWorkloadPage] = useHashNumber('ta_page', 1);
   const [workloadPageSize, setWorkloadPageSize] = useHashNumber('ta_size', 5);
+
+  const yearOptions = useMemo(() => operationalAcademicYears(years.data ?? []), [years.data]);
+  const classOptions = useMemo(() => (classes.data ?? [])
+    .filter((item) => !gradeFilter || item.gradeLevel === gradeFilter)
+    .slice().sort((left, right) => left.code.localeCompare(right.code, 'vi')), [classes.data, gradeFilter]);
+  const gradeOptions = useMemo(() => [...new Set((classes.data ?? [])
+    .map((item) => item.gradeLevel).filter(Boolean) as string[])].sort(), [classes.data]);
+  const semesterOptions = useMemo(() => (semesters.data ?? [])
+    .filter((item) => item.status !== 'CLOSED'), [semesters.data]);
+
+  useEffect(() => {
+    if (!years.data) return;
+    const next = resolveOperationalAcademicYearId(years.data, academicYearId);
+    if (next !== academicYearId) setAcademicYearId(next);
+  }, [academicYearId, setAcademicYearId, years.data]);
+
+  useEffect(() => {
+    if (gradeFilter && !gradeOptions.includes(gradeFilter)) setGradeFilter('');
+    if (classFilter && !classOptions.some((item) => item.id === classFilter)) setClassFilter('');
+  }, [classFilter, classOptions, gradeFilter, gradeOptions, setClassFilter, setGradeFilter]);
+
+  useEffect(() => {
+    if (semesterFilter && !semesterOptions.some((item) => item.id === semesterFilter)) setSemesterFilter('');
+  }, [semesterFilter, semesterOptions, setSemesterFilter]);
 
   const selectedSubject = subjects.data?.find((subject) => subject.id === form.subjectId);
   const selectedSemester = semesters.data?.find((semester) => semester.id === form.semesterId);
@@ -197,7 +231,7 @@ function TeachingAssignmentManager() {
   }, [workloadPage, workloadPageCount]);
   const workloadRangeStart = visibleWorkloads.length === 0 ? 0 : (workloadPage - 1) * workloadPageSize + 1;
   const workloadRangeEnd = Math.min(workloadPage * workloadPageSize, visibleWorkloads.length);
-  const hasAssignmentFilters = Boolean(teacherSearch || classFilter || semesterFilter);
+  const hasAssignmentFilters = Boolean(teacherSearch || gradeFilter || classFilter || semesterFilter);
   const editingHasSchedule = Boolean(editing && editing.scheduledPeriods > 0);
 
   useEffect(() => {
@@ -283,6 +317,7 @@ function TeachingAssignmentManager() {
 
   const resetAssignmentFilters = () => {
     setTeacherSearch('');
+    setGradeFilter('');
     setClassFilter('');
     setSemesterFilter('');
   };
@@ -390,13 +425,24 @@ function TeachingAssignmentManager() {
           {teacherSearch && <button type="button" onClick={() => setTeacherSearch('')} aria-label="Xóa nội dung tìm kiếm"><X size={16} /></button>}
         </div>
         <div className="assignment-filter-fields">
+          <label><span>Năm học</span><select className="live-select" value={academicYearId} onChange={(event) => {
+            setAcademicYearId(event.target.value); setGradeFilter(''); setClassFilter('');
+            setSemesterFilter(''); setForm({ ...emptyAssignment }); setShow(false);
+          }}>
+            <option value="">— Chọn năm học —</option>
+            {yearOptions.map((item) => <option key={item.id} value={item.id}>{operationalYearLabel(item)}</option>)}
+          </select></label>
+          <label><span>Khối</span><select className="live-select" value={gradeFilter} onChange={(event) => setGradeFilter(event.target.value)}>
+            <option value="">Tất cả khối</option>
+            {gradeOptions.map((grade) => <option key={grade} value={grade}>Khối {grade.replace(/^K/i, '')}</option>)}
+          </select></label>
           <label><span>Lớp học</span><select className="live-select" value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
             <option value="">Tất cả lớp</option>
-            {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
+            {classOptions.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
           </select></label>
           <label><span>Học kỳ</span><select className="live-select" value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
             <option value="">Tất cả học kỳ</option>
-            {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+            {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
           </select></label>
           <button type="button" className="assignment-reset-button" disabled={!hasAssignmentFilters} onClick={resetAssignmentFilters}><RotateCcw size={15} /> Đặt lại</button>
         </div>
@@ -502,13 +548,13 @@ function TeachingAssignmentManager() {
             {editing && <Field label="Lớp học">
               <select disabled={editingHasSchedule} value={form.classIds[0] ?? ''} onChange={(event) => setForm((current) => ({ ...current, classIds: event.target.value ? [event.target.value] : [] }))}>
                 <option value="">— Chọn lớp —</option>
-                {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
+                {classOptions.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
               </select>
             </Field>}
             <Field label="Học kỳ">
               <select disabled={editingHasSchedule} value={form.semesterId} onChange={(event) => setForm((current) => ({ ...current, semesterId: event.target.value }))}>
                 <option value="">— Chọn học kỳ —</option>
-                {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+                {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
               </select>
             </Field>
           </div>
@@ -606,34 +652,65 @@ function TeachingAssignmentManager() {
 }
 
 function TimetableEditor() {
-  const classes = useApi<SchoolClass[]>('/classes');
-  const rooms = useApi<Room[]>('/rooms');
-  const semesters = useApi<Semester[]>('/semesters');
-  const toast = useToast();
+  const years = useApi<AcademicYear[]>('/academicYears');
+  const [academicYearId, setAcademicYearId] = useHashString('tt_year', '');
+  const [gradeFilter, setGradeFilter] = useHashString('tt_grade', '');
   const [classId, setClassId] = useHashString('tt_class', '');
   const [semesterId, setSemesterId] = useHashString('tt_semester', '');
+  const classes = useApi<SchoolClass[]>(academicYearId
+    ? `/classes?academicYearId=${encodeURIComponent(academicYearId)}` : null);
+  const rooms = useApi<Room[]>('/rooms');
+  const semesters = useApi<Semester[]>(academicYearId
+    ? `/semesters?academicYearId=${encodeURIComponent(academicYearId)}` : null);
+  const toast = useToast();
+  const yearOptions = useMemo(() => operationalAcademicYears(years.data ?? []), [years.data]);
+  const gradeOptions = useMemo(() => [...new Set((classes.data ?? [])
+    .map((item) => item.gradeLevel).filter(Boolean) as string[])].sort(), [classes.data]);
+  const classOptions = useMemo(() => (classes.data ?? [])
+    .filter((item) => !gradeFilter || item.gradeLevel === gradeFilter)
+    .slice().sort((left, right) => left.code.localeCompare(right.code, 'vi')), [classes.data, gradeFilter]);
+  const semesterOptions = useMemo(() => (semesters.data ?? [])
+    .filter((item) => item.status !== 'CLOSED'), [semesters.data]);
+
   useEffect(() => {
-    if (!classes.data?.length) return;
-    if (!classes.data.some((item) => item.id === classId)) {
-      setClassId(classes.data[0].id);
+    if (!years.data) return;
+    const next = resolveOperationalAcademicYearId(years.data, academicYearId);
+    if (next !== academicYearId) setAcademicYearId(next);
+  }, [academicYearId, setAcademicYearId, years.data]);
+  useEffect(() => {
+    if (gradeFilter && !gradeOptions.includes(gradeFilter)) setGradeFilter('');
+  }, [gradeFilter, gradeOptions, setGradeFilter]);
+  useEffect(() => {
+    if (!classOptions.length) {
+      if (classId) setClassId('');
+      return;
     }
-  }, [classId, classes.data, setClassId]);
+    if (!classOptions.some((item) => item.id === classId)) {
+      setClassId(classOptions[0].id);
+    }
+  }, [classId, classOptions, setClassId]);
   useEffect(() => {
-    if (!semesters.data?.length) return;
-    if (semesters.data.some((item) => item.id === semesterId)) return;
-    const preferred = semesters.data.find((item) => item.status === 'ACTIVE')
-      ?? semesters.data.find((item) => item.status === 'PLANNED')
-      ?? semesters.data[0];
+    if (!semesterOptions.length) {
+      if (semesterId) setSemesterId('');
+      return;
+    }
+    if (semesterOptions.some((item) => item.id === semesterId)) return;
+    const preferred = semesterOptions.find((item) => item.status === 'ACTIVE')
+      ?? semesterOptions.find((item) => item.status === 'PLANNED')
+      ?? semesterOptions[0];
     setSemesterId(preferred.id);
-  }, [semesterId, semesters.data, setSemesterId]);
-  const slots = useApi<TimetableSlot[]>(classId && semesterId ? `/timetableSlots?classId=${classId}&semesterId=${semesterId}` : null);
-  const assignmentSummary = useApi<TeachingAssignment[]>(classId && semesterId ? assignmentQuery(classId, semesterId) : null);
+  }, [semesterId, semesterOptions, setSemesterId]);
+  const selectedClass = classOptions.find((item) => item.id === classId);
+  const selectedSemester = semesterOptions.find((item) => item.id === semesterId);
+  const scopeValid = sameAcademicYearSelection(selectedClass, selectedSemester)
+    && selectedClass?.academicYearId === academicYearId;
+  const slots = useApi<TimetableSlot[]>(scopeValid ? `/timetableSlots?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}` : null);
+  const assignmentSummary = useApi<TeachingAssignment[]>(scopeValid ? assignmentQuery(classId, semesterId) : null);
   const [show, setShow] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const blank = { assignmentId: '', dayOfWeek: 'MON', periodNo: 1, subjectId: '', teacherId: '', roomCode: '', startTime: '07:00', endTime: '07:45' };
   const [form, setForm] = useState({ ...blank });
-  const selectedClass = classes.data?.find((item) => item.id === classId);
   const studyShift = selectedClass?.studyShift || 'MORNING';
   const shiftLabel = studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng';
   const periodTimes = PERIOD_TIME[studyShift];
@@ -647,7 +724,7 @@ function TimetableEditor() {
       && (item.studyShift || 'MORNING') === studyShift);
     return { available: supportsShift && !assignedClass, assignedClass };
   };
-  const availability = useApi<TeachingAssignment[]>(show && classId && semesterId
+  const availability = useApi<TeachingAssignment[]>(show && scopeValid
     ? assignmentQuery(classId, semesterId, form.dayOfWeek, form.periodNo, form.startTime, form.endTime) : null);
   const selectedAssignment = availability.data?.find((item) => item.id === form.assignmentId);
 
@@ -741,15 +818,27 @@ function TimetableEditor() {
     <Section title="Xếp thời khóa biểu" subtitle="Chỉ xếp lịch từ các phân công giáo viên bộ môn đã được duyệt" wide>
       {toast.node}
       <div className="live-toolbar">
-        <select className="live-select grow" value={classId} onChange={(event) => setClassId(event.target.value)}>
-          <option value="">— Chọn lớp để xếp thời khóa biểu —</option>
-          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name} · {item.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</option>)}
+        <select className="live-select" aria-label="Năm học xếp thời khóa biểu" value={academicYearId} onChange={(event) => {
+          setAcademicYearId(event.target.value); setGradeFilter(''); setClassId(''); setSemesterId(''); setShow(false);
+        }}>
+          <option value="">— Chọn năm học —</option>
+          {yearOptions.map((item) => <option key={item.id} value={item.id}>{operationalYearLabel(item)}</option>)}
         </select>
-        <select className="live-select grow" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
+        <select className="live-select" aria-label="Khối xếp thời khóa biểu" value={gradeFilter} onChange={(event) => { setGradeFilter(event.target.value); setClassId(''); setShow(false); }}>
+          <option value="">Tất cả khối</option>
+          {gradeOptions.map((grade) => <option key={grade} value={grade}>Khối {grade.replace(/^K/i, '')}</option>)}
+        </select>
+        <select className="live-select grow" aria-label="Lớp xếp thời khóa biểu" value={classId} onChange={(event) => setClassId(event.target.value)}>
+          <option value="">— Chọn lớp để xếp thời khóa biểu —</option>
+          {classOptions.map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name} · {item.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</option>)}
+        </select>
+        <select className="live-select grow" aria-label="Học kỳ xếp thời khóa biểu" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
           <option value="">— Chọn học kỳ —</option>
-          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'ACTIVE' ? ' · Đang hoạt động' : item.status === 'PLANNED' ? ' · Sắp diễn ra' : ''}</option>)}
+          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'ACTIVE' ? ' · Đang hoạt động' : item.status === 'PLANNED' ? ' · Sắp diễn ra' : ''}</option>)}
         </select>
       </div>
+
+      {classId && semesterId && !scopeValid && <div className="live-msg err">Lớp và học kỳ phải thuộc cùng một năm học đang vận hành.</div>}
 
       {classId && semesterId && (
         <><div className={`schedule-shift-callout ${studyShift.toLowerCase()}`}>
@@ -763,7 +852,7 @@ function TimetableEditor() {
         </div></>
       )}
 
-      {!classId || !semesterId ? (
+      {!scopeValid ? (
         <div className="live-loading">Chọn lớp và học kỳ để bắt đầu xếp thời khóa biểu.</div>
       ) : (
         <Async state={slots} allowEmpty>
@@ -850,11 +939,74 @@ function TimetableEditor() {
   );
 }
 
+function TimetableChangeApprovalPanel() {
+  const requests = useApi<TimetableChangeRequestView[]>('/academic/timetable-change-requests');
+  const toast = useToast();
+  const [query, setQuery] = useHashString('change_q', '');
+  const [selected, setSelected] = useState<TimetableChangeRequestView | null>(null);
+  const [decision, setDecision] = useState<'APPROVE' | 'REJECT'>('APPROVE');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const filtered = useMemo(() => {
+    const normalized = normalizeSearch(query.trim());
+    return (requests.data || []).filter((item) => !normalized || normalizeSearch([
+      item.classCode, item.subjectName, item.originalTeacherName, item.substituteTeacherName,
+      item.reason, item.requestType,
+    ].filter(Boolean).join(' ')).includes(normalized));
+  }, [query, requests.data]);
+
+  const openDecision = (request: TimetableChangeRequestView, nextDecision: 'APPROVE' | 'REJECT') => {
+    setSelected(request);
+    setDecision(nextDecision);
+    setNote('');
+  };
+
+  const submit = async () => {
+    if (!selected) return;
+    if (decision === 'REJECT' && !note.trim()) {
+      toast.show('err', 'Cần nhập lý do từ chối để giáo viên biết cách xử lý');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.post(`/academic/timetable-change-requests/${encodeURIComponent(selected.id)}/decision`, {
+        approved: decision === 'APPROVE', note,
+      });
+      toast.show('ok', decision === 'APPROVE' ? 'Đã duyệt và cập nhật lịch hiệu lực' : 'Đã gửi phản hồi từ chối');
+      setSelected(null);
+      requests.reload();
+    } catch (caught: unknown) {
+      toast.show('err', caught instanceof Error ? caught.message : 'Không thể xử lý yêu cầu');
+    } finally { setBusy(false); }
+  };
+
+  return <div className="academic-change-approval">
+    {toast.node}
+    <header className="academic-change-hero">
+      <div><span><ArrowRightLeft size={15} /> Điều phối thay đổi sau phát hành</span><h2>Duyệt dạy thay và đổi tiết</h2><p>Hệ thống kiểm tra chuyên môn, trùng lịch giáo viên, lớp và phòng một lần nữa khi Giáo vụ phê duyệt.</p></div>
+      <strong>{filtered.length}<small>yêu cầu chờ xử lý</small></strong>
+    </header>
+    <div className="academic-change-toolbar"><label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm lớp, môn, giáo viên hoặc lý do" /></label><button className="live-btn ghost" type="button" onClick={() => requests.reload()}><RotateCcw size={15} /> Làm mới</button></div>
+    <Async state={{ ...requests, data: filtered }} empty="Không có yêu cầu dạy thay hoặc đổi tiết đang chờ duyệt">
+      {(items) => <div className="academic-change-list">{items.map((request) => <article key={request.id}>
+        <div className="academic-change-date"><strong>{new Date(`${request.occurrenceDate}T00:00:00`).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}</strong><span>Tiết gốc</span></div>
+        <div className="academic-change-main"><header><strong>{request.requestType === 'SUBSTITUTE' ? 'Dạy thay' : request.requestType === 'RESCHEDULE' ? 'Đổi tiết' : 'Dạy thay & đổi tiết'} · {request.subjectName} · Lớp {request.classCode}</strong><StatusPill value={request.status} /></header><p>{request.originalTeacherName}{request.substituteTeacherName ? ` → ${request.substituteTeacherName}` : ''}{request.proposedDate ? ` · Chuyển tới ${new Date(`${request.proposedDate}T00:00:00`).toLocaleDateString('vi-VN')} · tiết ${request.proposedPeriodNo}` : ''}</p><blockquote>{request.reason}</blockquote></div>
+        <div className="academic-change-actions"><button className="live-btn subtle" type="button" onClick={() => openDecision(request, 'APPROVE')}><CheckCircle2 size={15} /> Duyệt</button><button className="live-btn ghost danger" type="button" onClick={() => openDecision(request, 'REJECT')}><X size={15} /> Từ chối</button></div>
+      </article>)}</div>}
+    </Async>
+    {selected && <Modal title={`${decision === 'APPROVE' ? 'Duyệt' : 'Từ chối'} yêu cầu · ${selected.subjectName} · Lớp ${selected.classCode}`} onClose={() => setSelected(null)} footer={<><button className="live-btn ghost" type="button" onClick={() => setSelected(null)}>Đóng</button><button className={`live-btn ${decision === 'REJECT' ? 'danger' : ''}`} type="button" disabled={busy} onClick={submit}>{decision === 'APPROVE' ? <CheckCircle2 size={15} /> : <X size={15} />} {busy ? 'Đang xử lý…' : decision === 'APPROVE' ? 'Xác nhận duyệt' : 'Xác nhận từ chối'}</button></>}>
+      <div className="change-review-summary"><strong>{selected.originalTeacherName}</strong><span>{selected.requestType === 'SUBSTITUTE' ? `Nhờ ${selected.substituteTeacherName || '—'} dạy thay` : `Đổi từ ${selected.occurrenceDate} sang ${selected.proposedDate}, tiết ${selected.proposedPeriodNo}`}</span><p>{selected.reason}</p></div>
+      <Field label={decision === 'APPROVE' ? 'Ghi chú phản hồi (không bắt buộc)' : 'Lý do từ chối'}><textarea rows={4} value={note} onChange={(event) => setNote(event.target.value)} placeholder={decision === 'APPROVE' ? 'Nhập lưu ý cho giáo viên nếu cần' : 'Nêu rõ lý do và hướng xử lý phù hợp'} /></Field>
+    </Modal>}
+  </div>;
+}
+
 export function AdminTimetableLive() {
   return <FunctionTabs tabs={[
     { id: 'planning', label: '1. Phân công giáo viên tự động', Icon: BookOpenCheck, content: <AdminWorkloadPlanningLive /> },
     { id: 'automatic', label: '2. Tạo thời khóa biểu tự động', Icon: CalendarDays, content: <AdminAutoTimetableLive /> },
     { id: 'assignments', label: '3. Điều chỉnh phân công thủ công', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
     { id: 'timetable', label: '4. Điều chỉnh thời khóa biểu thủ công', Icon: CalendarDays, content: <TimetableEditor /> },
+    { id: 'changes', label: '5. Duyệt dạy thay & đổi tiết', Icon: ArrowRightLeft, content: <TimetableChangeApprovalPanel /> },
   ]} />;
 }

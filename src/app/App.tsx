@@ -7,7 +7,7 @@ import { useAuth } from '../api/auth';
 import { ActiveChildProvider } from '../api/activeChild';
 import { useTheme } from '../api/theme';
 import { useApi } from '../api/useApi';
-import type { UnreadCount } from '../api/types';
+import type { TeacherWorkspaceContext, UnreadCount } from '../api/types';
 import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
 import { GlobalSearch } from '../components/GlobalSearch';
 import { ConnectivityBanner } from '../components/SystemFeedback';
@@ -28,8 +28,14 @@ function pageFromLocation(): PageId {
   return resolvePageRoute(readHashRoute().path)?.pageId ?? 'dashboard';
 }
 
-function pageAllowed(page: PageId, roleId: RoleId) {
-  return page === 'dashboard' || modules[roleId].some((item) => item.code === page);
+function pageAllowed(page: PageId, roleId: RoleId, teacherContext?: TeacherWorkspaceContext | null) {
+  if (page === 'dashboard') return true;
+  if (!modules[roleId].some((item) => item.code === page)) return false;
+  if (roleId !== 'teacher' || !teacherContext) return true;
+  if (['B8', 'B9', 'B13'].includes(page)) return teacherContext.homeroomTeacher;
+  if (page === 'B12') return teacherContext.examResponsibilities;
+  if (page === 'B14') return teacherContext.loadRegistrationVisible;
+  return true;
 }
 
 export default function App() {
@@ -52,6 +58,8 @@ export default function App() {
   const { data: notificationUnread, reload: reloadNotifications } = useApi<UnreadCount>(notificationBadgeEnabled ? '/notifications/unread-count' : null);
   const chatEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
   const { data: chatUnread, reload: reloadChatUnread } = useApi<UnreadCount>(chatEnabled ? '/chat/unread-count' : null);
+  const teacherWorkspace = useApi<TeacherWorkspaceContext>(userRole === 'TEACHER' ? '/me/teacher-workspace' : null);
+  const teacherContext = teacherWorkspace.data;
 
   // Khôi phục deep-link nếu trang thuộc vai trò hiện tại; nếu không thì về Tổng quan.
   useEffect(() => {
@@ -67,14 +75,14 @@ export default function App() {
     const roleId = userRole.toLowerCase() as RoleId;
     const route = readHashRoute();
     const requested = pageFromLocation();
-    const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
+    const next = pageAllowed(requested, roleId, teacherContext) ? requested : 'dashboard';
     setActivePage(next);
     const canonicalHash = pageHash(roleId, next, route.params);
     if (window.location.hash !== canonicalHash) {
       window.history.replaceState(null, '', canonicalHash);
     }
     setSidebarOpen(false);
-  }, [userId, userRole]);
+  }, [userId, userRole, teacherContext]);
 
   useEffect(() => {
     if (!userRole) return;
@@ -82,7 +90,7 @@ export default function App() {
     const syncFromLocation = () => {
       const route = readHashRoute();
       const requested = pageFromLocation();
-      const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
+      const next = pageAllowed(requested, roleId, teacherContext) ? requested : 'dashboard';
       setActivePage(next);
       setSidebarOpen(false);
       const canonicalHash = pageHash(roleId, next, route.params);
@@ -96,7 +104,7 @@ export default function App() {
       window.removeEventListener('popstate', syncFromLocation);
       window.removeEventListener('hashchange', syncFromLocation);
     };
-  }, [userId, userRole]);
+  }, [userId, userRole, teacherContext]);
 
   useEffect(() => {
     if (loading || user || readHashRoute().path) return;
@@ -151,7 +159,6 @@ export default function App() {
     if (!userId) return;
     return subscribeRealtime((event) => {
       if (event.type === 'NOTIFICATION') {
-        reloadNotifications();
         window.dispatchEvent(new Event(NOTIFICATION_INBOX_CHANGED));
       } else if (event.type === 'CHAT' || event.type === 'CHAT_READ') {
         reloadChatUnread();
@@ -183,7 +190,7 @@ export default function App() {
   const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
-    const next = pageAllowed(page, role.id) ? page : 'dashboard';
+    const next = pageAllowed(page, role.id, teacherContext) ? page : 'dashboard';
     const nextHash = pageHash(role.id, next);
     if (window.location.hash !== nextHash) window.history.pushState(null, '', nextHash);
     setActivePage(next);
@@ -233,6 +240,7 @@ export default function App() {
             activePage={activePage}
             onSelect={selectPage}
             collapsed={sidebarCollapsed}
+            teacherContext={teacherContext}
             badges={{ ...(notificationPage[roleId] ? { [notificationPage[roleId]!]: unreadNotifications } : {}), ...(chatPage[roleId] ? { [chatPage[roleId]!]: unreadMessages } : {}) }}
           />
           <div className="sidebar-footer">

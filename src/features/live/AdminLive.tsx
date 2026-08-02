@@ -5,7 +5,7 @@ import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
-  ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
+  ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog, ReportCardScopeOverview,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, EmptyState, PaginatedData, ServerPagination, useToast, money, fmtDateTime, fmtDate } from './common';
@@ -16,8 +16,8 @@ import { useHashNumber, useHashString } from '../../api/urlState';
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
   username: '', fullName: '', role: 'STUDENT', password: 'Sse@123456',
-  email: '', phone: '', avatarUrl: '', teacherCode: '', mainSubject: '',
-  studentCode: '', classId: '', dateOfBirth: '', gender: '', placeOfBirth: '',
+  email: '', phone: '', avatarUrl: '', teacherCode: '',
+  studentCode: '', dateOfBirth: '', gender: '', placeOfBirth: '',
   ethnicity: 'Kinh', nationality: 'Việt Nam', address: '', enrollmentDate: '',
   guardianName: '', guardianPhone: '',
 };
@@ -86,19 +86,28 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   ].filter(Boolean).join('&');
   const users = useApi<PageResponse<ApiUser>>(`/users/page?${params}`);
   const classes = useApi<SchoolClass[]>('/classes');
-  const students = useApi<ApiUser[]>('/users?role=STUDENT');
   const toast = useToast();
   const [showEditor, setShowEditor] = useState(false);
   const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...BLANK_USER });
   const [linkedStudentId, setLinkedStudentId] = useState('');
+  const [linkStudentQuery, setLinkStudentQuery] = useState('');
+  const [debouncedLinkStudentQuery, setDebouncedLinkStudentQuery] = useState('');
+  const [linkExceptionReason, setLinkExceptionReason] = useState('');
+  const [linkExceptionConfirmed, setLinkExceptionConfirmed] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [importStrategy, setImportStrategy] = useState<'ALL_OR_NOTHING' | 'SKIP_ERRORS'>('ALL_OR_NOTHING');
   const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
+  const linkedStudents = useApi<ApiUser[]>(editingUser?.role === 'PARENT' ? `/users/${editingUser.id}/children` : null);
+  const studentLookup = useApi<PageResponse<ApiUser>>(
+    editingUser?.role === 'PARENT' && debouncedLinkStudentQuery.length >= 2
+      ? `/users/page?role=STUDENT&q=${encodeURIComponent(debouncedLinkStudentQuery)}&page=0&size=20&sort=fullName`
+      : null,
+  );
   const roleConfig = fixedRole ? USER_ROLE_CONFIG[fixedRole] : null;
   const availableGrades = useMemo(() => [...new Set((classes.data || [])
     .map((schoolClass) => schoolClass.gradeLevel).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'vi')), [classes.data]);
@@ -119,6 +128,11 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   }, [q]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedLinkStudentQuery(linkStudentQuery.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [linkStudentQuery]);
+
+  useEffect(() => {
     setPageNumber(1);
   }, [selectedRole, debouncedQ, gradeLevel, classId, status, setPageNumber]);
 
@@ -128,11 +142,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     if (classId !== 'ALL' && !(classes.data || []).some((schoolClass) => schoolClass.id === classId
       && (value === 'ALL' || schoolClass.gradeLevel === value))) setClassId('ALL');
   };
-  const linkedStudentsInScope = (parent: ApiUser) => (students.data || []).filter((student) =>
-    (parent.childrenIds || []).includes(student.id)
-    && (classId !== 'ALL' ? student.classId === classId : gradeLevel === 'ALL'
-      || classes.data?.some((schoolClass) => schoolClass.id === student.classId && schoolClass.gradeLevel === gradeLevel)));
-
   const toggleLock = async (u: ApiUser) => {
     try {
       await api.post(`/users/${u.id}/${u.status === 'ACTIVE' ? 'lock' : 'unlock'}`);
@@ -144,6 +153,10 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   const closeEditor = () => {
     setShowEditor(false);
     setEditingUser(null);
+    setLinkedStudentId('');
+    setLinkStudentQuery('');
+    setLinkExceptionReason('');
+    setLinkExceptionConfirmed(false);
     setForm({ ...BLANK_USER, role: fixedRole || BLANK_USER.role });
   };
 
@@ -184,7 +197,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       setImportPreview(null);
       setImportFile(null);
       toast.show('ok', `Đã nhập an toàn ${result.importedRows}/${result.totalRows} tài khoản`);
-      users.reload(); students.reload(); classes.reload();
+      users.reload(); classes.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setImporting(false); }
   };
@@ -199,23 +212,33 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   };
 
   const linkChild = async () => {
-    if (!editingUser || !linkedStudentId) return;
+    if (!editingUser || !linkedStudentId || !linkExceptionConfirmed || linkExceptionReason.trim().length < 10) return;
     try {
-      await api.post(`/users/${editingUser.id}/children`, { studentId: linkedStudentId, primaryContact: true });
+      await api.post(`/users/${editingUser.id}/children`, {
+        studentId: linkedStudentId, primaryContact: true,
+        confirmException: true, reason: linkExceptionReason.trim(),
+      });
       setEditingUser({ ...editingUser, childrenIds: [...new Set([...(editingUser.childrenIds ?? []), linkedStudentId])] });
       setLinkedStudentId('');
+      setLinkStudentQuery('');
+      setLinkExceptionReason('');
+      setLinkExceptionConfirmed(false);
       toast.show('ok', 'Đã liên kết học sinh với phụ huynh');
-      users.reload();
+      users.reload(); linkedStudents.reload(); studentLookup.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
   const unlinkChild = async (studentId: string) => {
-    if (!editingUser) return;
+    if (!editingUser || !linkExceptionConfirmed || linkExceptionReason.trim().length < 10) {
+      return toast.show('err', 'Hãy xác nhận ngoại lệ và nhập lý do tối thiểu 10 ký tự');
+    }
     try {
-      await api.del(`/users/${editingUser.id}/children/${studentId}`);
+      await api.del(`/users/${editingUser.id}/children/${studentId}?confirmException=true&reason=${encodeURIComponent(linkExceptionReason.trim())}`);
       setEditingUser({ ...editingUser, childrenIds: (editingUser.childrenIds ?? []).filter((id) => id !== studentId) });
+      setLinkExceptionReason('');
+      setLinkExceptionConfirmed(false);
       toast.show('ok', 'Đã bỏ liên kết học sinh');
-      users.reload();
+      users.reload(); linkedStudents.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
@@ -237,9 +260,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       phone: user.phone || '',
       avatarUrl: user.avatarUrl || '',
       teacherCode: user.teacherCode || '',
-      mainSubject: user.mainSubject || '',
       studentCode: user.studentCode || '',
-      classId: user.classId || '',
       dateOfBirth: user.dateOfBirth || '',
       gender: user.gender || '',
       placeOfBirth: user.placeOfBirth || '',
@@ -256,8 +277,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   const saveUser = async () => {
     if (!form.username.trim() || !form.fullName.trim()) return toast.show('err', 'Vui lòng nhập tên đăng nhập và họ tên');
     if (!editingUser && form.password.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
-    if (form.role === 'STUDENT' && !form.classId) return toast.show('err', 'Vui lòng chọn lớp cho học sinh');
-    const cls = classes.data?.find((c) => c.id === form.classId);
     const body: Record<string, unknown> = {
       fullName: form.fullName.trim(), email: form.email.trim(), phone: form.phone.trim(), avatarUrl: form.avatarUrl.trim(),
     };
@@ -268,13 +287,10 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     }
     if (form.role === 'TEACHER') {
       body.teacherCode = form.teacherCode.trim();
-      body.mainSubject = form.mainSubject.trim();
     }
     if (form.role === 'STUDENT') {
       Object.assign(body, {
         studentCode: form.studentCode.trim() || null,
-        classId: form.classId,
-        className: cls?.code || '',
         dateOfBirth: form.dateOfBirth || null,
         gender: form.gender || null,
         placeOfBirth: form.placeOfBirth.trim(),
@@ -360,9 +376,9 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
                       : fixedRole === 'TEACHER'
                         ? <><strong>{u.mainSubject || 'Chưa cập nhật môn'}</strong>{u.teacherCode && <small style={{ color: 'var(--muted)' }}> · {u.teacherCode}</small>}</>
                         : fixedRole === 'PARENT'
-                          ? <div className="parent-account-class-links">{linkedStudentsInScope(u).length
-                            ? linkedStudentsInScope(u).map((student) => <span key={student.id}><strong>{student.fullName}</strong><small>{student.className || 'Chưa xếp lớp'}</small></span>)
-                            : <Badge tone="blue">{u.childrenIds?.length || 0} học sinh</Badge>}</div>
+                          ? <div className="parent-account-class-links">{(u.childrenIds || []).length
+                            ? <span><strong>{u.childrenIds?.length} học sinh đã liên kết</strong><small>Mở hồ sơ để xem chi tiết</small></span>
+                            : <Badge tone="blue">Chưa liên kết</Badge>}</div>
                           : <Badge tone="blue">{viLabel(u.role)}</Badge>}</td>
                     <td><StatusPill value={u.status} /></td>
                     <td>
@@ -412,13 +428,14 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
             </div>
             <div className="safe-import-table">
               <table className="live-table">
-                <thead><tr><th>Dòng</th><th>Tài khoản</th><th>Vai trò</th><th>Lớp</th><th>Kết quả kiểm tra</th></tr></thead>
+                <thead><tr><th>Dòng</th><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái đầu vào</th><th>Liên kết tự động</th><th>Kết quả kiểm tra</th></tr></thead>
                 <tbody>{importPreview.rows.map((row) => (
                   <tr key={row.row} className={row.valid ? '' : 'has-error'}>
                     <td>{row.row}</td>
                     <td><strong>{row.fullName || '—'}</strong><small>@{row.username || 'chưa có'}</small></td>
                     <td>{viLabel(row.role || '')}</td>
                     <td>{row.classCode || '—'}</td>
+                    <td>{row.linkedUsername ? `@${row.linkedUsername}` : '—'}</td>
                     <td>{row.valid
                       ? <span className="safe-import-valid"><CheckCircle2 size={14} /> Hợp lệ</span>
                       : <span className="safe-import-error"><AlertTriangle size={14} /> {row.error}</span>}</td>
@@ -460,10 +477,9 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
 
             {form.role === 'TEACHER' && (
               <section className="admin-user-form-section">
-                <header><span><IdCard size={18} /></span><div><h4>Thông tin giảng dạy</h4><p>Mã cán bộ và chuyên ngành phụ trách</p></div></header>
+                <header><span><IdCard size={18} /></span><div><h4>Thông tin định danh giáo viên</h4><p>Admin chỉ quản lý tài khoản; chuyên môn và phân công do Giáo vụ thực hiện</p></div></header>
                 <div className="admin-user-form-grid">
                   <Field label="Mã giáo viên"><input value={form.teacherCode} onChange={(e) => set('teacherCode', e.target.value)} placeholder="GV003" /></Field>
-                  <Field label="Môn chính"><input value={form.mainSubject} onChange={(e) => set('mainSubject', e.target.value)} placeholder="Toán" /></Field>
                 </div>
               </section>
             )}
@@ -471,17 +487,12 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
             {form.role === 'STUDENT' && (
               <>
                 <section className="admin-user-form-section">
-                  <header><span><School size={18} /></span><div><h4>Thông tin học tập</h4><p>Lớp học, mã học sinh và thời điểm nhập học</p></div></header>
+                  <header><span><School size={18} /></span><div><h4>Hồ sơ nhập học</h4><p>Học sinh mới được đưa vào danh sách Chờ phân lớp để Giáo vụ xử lý</p></div></header>
                   <div className="admin-user-form-grid">
                     <Field label="Mã học sinh"><input value={form.studentCode} onChange={(e) => set('studentCode', e.target.value)} placeholder="Để trống để hệ thống tự sinh" /></Field>
-                    <Field label="Lớp học *">
-                      <select value={form.classId} onChange={(e) => set('classId', e.target.value)}>
-                        <option value="">— Chọn lớp —</option>
-                        {(classes.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.code} — {c.name}</option>)}
-                      </select>
-                    </Field>
                     <Field label="Ngày nhập học"><input type="date" value={form.enrollmentDate} onChange={(e) => set('enrollmentDate', e.target.value)} /></Field>
                   </div>
+                  <div className="admin-user-privacy-note"><GraduationCap size={16} /><span>Trạng thái sau khi tạo: <strong>Chờ phân lớp</strong>. Admin không thể phân lớp hoặc chuyển lớp tại trang tài khoản.</span></div>
                 </section>
 
                 <section className="admin-user-form-section">
@@ -514,20 +525,28 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
 
             {form.role === 'PARENT' && editingUser && (
               <section className="admin-user-form-section">
-                <header><span><Link2 size={18} /></span><div><h4>Liên kết học sinh</h4><p>Phụ huynh chỉ xem được dữ liệu của các học sinh đã liên kết</p></div></header>
+                <header><span><Link2 size={18} /></span><div><h4>Xử lý liên kết ngoại lệ</h4><p>Luồng thông thường dùng import/liên kết tự động; mọi thay đổi thủ công đều được ghi nhật ký</p></div></header>
+                <div className="admin-user-privacy-note"><AlertTriangle size={16} /><span>Chỉ sử dụng khi dữ liệu tự động không thể đối soát. Cần xác nhận và ghi rõ lý do.</span></div>
+                <Field label="Tìm học sinh"><input value={linkStudentQuery} onChange={(event) => setLinkStudentQuery(event.target.value)} placeholder="Nhập tên, mã học sinh hoặc tên đăng nhập" /></Field>
                 <div className="live-toolbar">
                   <select className="live-select grow" value={linkedStudentId} onChange={(e) => setLinkedStudentId(e.target.value)}>
                     <option value="">— Chọn học sinh —</option>
-                    {(students.data ?? []).filter((student) => !(editingUser.childrenIds ?? []).includes(student.id)).map((student) => (
+                    {(studentLookup.data?.items ?? []).filter((student) => {
+                      if ((editingUser.childrenIds ?? []).includes(student.id)) return false;
+                      return true;
+                    }).map((student) => (
                       <option key={student.id} value={student.id}>{student.fullName} · {student.studentCode || student.username} · {student.className || 'Chưa xếp lớp'}</option>
                     ))}
                   </select>
-                  <button type="button" className="live-btn" onClick={linkChild} disabled={!linkedStudentId}><Link2 size={14} /> Liên kết</button>
+                  <button type="button" className="live-btn" onClick={linkChild} disabled={!linkedStudentId || !linkExceptionConfirmed || linkExceptionReason.trim().length < 10}><Link2 size={14} /> Xử lý ngoại lệ</button>
                 </div>
+                <small className="muted-text">Nhập ít nhất 2 ký tự; hệ thống chỉ tải tối đa 20 kết quả phù hợp để tránh tải toàn bộ học sinh.</small>
+                <Field label="Lý do ngoại lệ *"><textarea rows={2} value={linkExceptionReason} onChange={(event) => setLinkExceptionReason(event.target.value)} placeholder="Mô tả nguyên nhân không thể liên kết bằng import/tự động (tối thiểu 10 ký tự)" /></Field>
+                <label className="admin-user-exception-confirm"><input type="checkbox" checked={linkExceptionConfirmed} onChange={(event) => setLinkExceptionConfirmed(event.target.checked)} /><span>Tôi xác nhận đây là trường hợp ngoại lệ và chịu trách nhiệm về thay đổi này.</span></label>
                 <div className="linked-student-list">
-                  {(editingUser.childrenIds ?? []).length === 0 && <span>Chưa liên kết học sinh nào.</span>}
-                  {(editingUser.childrenIds ?? []).map((id) => {
-                    const student = students.data?.find((item) => item.id === id);
+                  {(linkedStudents.data ?? []).length === 0 && <span>Chưa liên kết học sinh nào.</span>}
+                  {(linkedStudents.data ?? []).map((student) => {
+                    const id = student.id;
                     return <div key={id}><strong>{student?.fullName || id}</strong><small>{student?.className || 'Chưa xếp lớp'}</small><button type="button" onClick={() => unlinkChild(id)}><Unlink size={14} /> Bỏ liên kết</button></div>;
                   })}
                 </div>
@@ -743,10 +762,13 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
   const [yearId, setYearId] = useState('');
   const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
   const rolloverPreview = useApi<YearRolloverPreview>(yearId ? `/academic-years/${yearId}/rollover-preview` : null);
+  const reportCards = useApi<ReportCardScopeOverview>(yearId ? `/report-cards/overview?academicYearId=${encodeURIComponent(yearId)}` : null);
   const toast = useToast();
   const [finalizing, setFinalizing] = useState(false);
   const [rolloverResult, setRolloverResult] = useState<YearRolloverResult | null>(null);
   const selectedYear = useMemo(() => years.find((year) => year.id === yearId), [years, yearId]);
+  const lockedReportCardCount = (reportCards.data?.lockedCount ?? 0) + (reportCards.data?.publishedCount ?? 0);
+  const reportCardsReady = Boolean(preview.data?.length) && lockedReportCardCount >= (preview.data?.length ?? 0);
   const [rolloverForm, setRolloverForm] = useState({ nextYearCode: '', nextYearName: '', startDate: '', endDate: '', createIntakeClasses: true, activateNextYear: true });
 
   useEffect(() => {
@@ -771,14 +793,14 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
       const result = await api.post<YearRolloverResult>(`/academic-years/${yearId}/rollover`, rolloverForm);
       setRolloverResult(result);
       toast.show('ok', `Đã chuyển sang năm học ${result.nextYearCode}`);
-      onChanged?.(result); preview.reload(); rolloverPreview.reload();
+      onChanged?.(result); preview.reload(); rolloverPreview.reload(); reportCards.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setFinalizing(false); }
   };
 
   return (
     <Section title="Tổng kết và chuyển năm học" subtitle="Một quy trình an toàn để tổng kết, xếp lớp, khóa dữ liệu cũ và kích hoạt năm mới" wide
-      action={yearId ? <button className="live-btn ghost" onClick={() => { preview.reload(); rolloverPreview.reload(); }}><RefreshCw size={14} /> Kiểm tra lại</button> : undefined}>
+      action={yearId ? <button className="live-btn ghost" onClick={() => { preview.reload(); rolloverPreview.reload(); reportCards.reload(); }}><RefreshCw size={14} /> Kiểm tra lại</button> : undefined}>
       {toast.node}
       <div className="live-toolbar">
         <select className="live-select grow" value={yearId} onChange={(e) => setYearId(e.target.value)}>
@@ -793,10 +815,11 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
             <article><span>Học sinh</span><strong>{readiness.studentCount}</strong><small>{readiness.classCount} lớp trong năm học</small></article>
             <article className={readiness.semesterCount < 2 ? 'warning' : 'success'}><span>Học kỳ bắt buộc</span><strong>{Math.min(readiness.semesterCount, 2)}/2</strong><small>Phải có đủ học kỳ I và II</small></article>
             <article className={readiness.incompleteCount ? 'warning' : 'success'}><span>Sẵn sàng</span><strong>{readiness.readyCount}/{readiness.studentCount}</strong><small>{readiness.incompleteCount ? `${readiness.incompleteCount} hồ sơ cần hoàn thiện` : 'Đã đủ điểm hai kỳ và hạnh kiểm'}</small></article>
+            <article className={reportCardsReady ? 'success' : 'warning'}><span>Học bạ đã khóa</span><strong>{lockedReportCardCount}/{readiness.studentCount}</strong><small>{reportCardsReady ? 'Đủ điều kiện chốt năm' : 'Hoàn thiện tại mục Học bạ điện tử'}</small></article>
             <article><span>Dự kiến lên lớp</span><strong>{readiness.expectedPromoted}</strong><small>Được tự động xếp lớp mới</small></article>
             <article><span>Lưu ban / Tốt nghiệp</span><strong>{readiness.expectedRetained} / {readiness.expectedGraduated}</strong><small>Được xử lý riêng theo kết quả</small></article>
           </div>
-          {readiness.blockers.length ? <div className="rollover-blockers"><AlertTriangle size={19} /><div><strong>Chưa thể chuyển năm học</strong>{readiness.blockers.map((item) => <span key={item}>{item}</span>)}</div></div>
+          {readiness.blockers.length || !reportCardsReady ? <div className="rollover-blockers"><AlertTriangle size={19} /><div><strong>Chưa thể chuyển năm học</strong>{readiness.blockers.map((item) => <span key={item}>{item}</span>)}{!reportCardsReady && <span>Cần Giáo vụ kiểm tra và khóa đủ {readiness.studentCount} học bạ tại bước “Học bạ điện tử”.</span>}</div></div>
             : <div className="rollover-ready"><ShieldCheck size={19} /><div><strong>Dữ liệu đã sẵn sàng</strong><span>Thao tác được thực hiện trong một giao dịch; có lỗi sẽ không thay đổi dữ liệu.</span></div></div>}
 
           {selectedYear?.status === 'ACTIVE' && <div className="rollover-builder">
@@ -812,7 +835,7 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
               <label><input type="checkbox" checked={rolloverForm.activateNextYear} onChange={(event) => setRolloverForm({ ...rolloverForm, activateNextYear: event.target.checked })} /><span><strong>Kích hoạt ngay năm học mới</strong><small>Đồng thời kích hoạt học kỳ đầu tiên</small></span></label>
             </div>
             <div className="rollover-class-plan"><span>Lớp sẽ tạo</span><div>{readiness.classPlan.filter((item) => rolloverForm.createIntakeClasses || item.type !== 'NEW_INTAKE').map((item) => <i key={`${item.type}-${item.targetClassCode}`}><b>{item.targetClassCode}</b><small>{item.type === 'NEW_INTAKE' ? 'Tuyển sinh mới' : `${item.sourceClassCode} → ${item.targetClassCode}`}</small></i>)}</div></div>
-            <button className="live-btn rollover-submit" disabled={finalizing || readiness.blockers.length > 0} onClick={rolloverYear}><GraduationCap size={17} /> {finalizing ? 'Đang chuyển năm học…' : <>Chuyển sang {rolloverForm.nextYearCode || 'năm học mới'} <ArrowRight size={16} /></>}</button>
+            <button className="live-btn rollover-submit" disabled={finalizing || readiness.blockers.length > 0 || !reportCardsReady} onClick={rolloverYear}><GraduationCap size={17} /> {finalizing ? 'Đang chuyển năm học…' : <>Chuyển sang {rolloverForm.nextYearCode || 'năm học mới'} <ArrowRight size={16} /></>}</button>
           </div>}
           {rolloverResult && <div className="rollover-result"><CheckCircle2 size={20} /><div><strong>Đã chuyển sang {rolloverResult.nextYearCode}</strong><span>{rolloverResult.createdClassCount} lớp · {rolloverResult.createdSemesterCount} học kỳ · {rolloverResult.promotedCount} lên lớp · {rolloverResult.retainedCount} lưu ban · {rolloverResult.graduatedCount} tốt nghiệp</span></div></div>}
         </div>}</Async>
@@ -1315,9 +1338,10 @@ export function AdminFinanceLive() {
 
 const ANNOUNCEMENT_CATEGORIES = [
   { value: 'GENERAL', label: 'Thông báo chung', hint: 'Thông tin điều hành và nhắc nhở chung', title: 'Thông báo từ nhà trường', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường trân trọng thông báo:' },
-  { value: 'HOLIDAY', label: 'Nghỉ lễ', hint: 'Lịch nghỉ, ngày trở lại trường', title: 'Thông báo lịch nghỉ', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường thông báo lịch nghỉ và thời gian trở lại trường như sau:' },
-  { value: 'EVENT', label: 'Sự kiện', hint: 'Hoạt động, chương trình của nhà trường', title: 'Thông báo sự kiện nhà trường', body: 'Nhà trường trân trọng thông báo chương trình sắp diễn ra:' },
-  { value: 'PARENT_MEETING', label: 'Họp phụ huynh', hint: 'Thời gian, địa điểm và nội dung cuộc họp', title: 'Thông báo họp phụ huynh', body: 'Kính gửi quý phụ huynh,\n\nNhà trường trân trọng thông báo lịch họp phụ huynh như sau:' },
+  { value: 'HOLIDAY_EVENT', label: 'Nghỉ lễ & sự kiện', hint: 'Lịch nghỉ hoặc hoạt động toàn trường', title: 'Thông báo nghỉ lễ / sự kiện', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường trân trọng thông báo:' },
+  { value: 'ADMINISTRATIVE', label: 'Hành chính & quy định', hint: 'Quy định, hướng dẫn và thủ tục chung', title: 'Thông báo hành chính', body: 'Nhà trường thông báo quy định và hướng dẫn thực hiện như sau:' },
+  { value: 'MEETING', label: 'Lịch họp chung', hint: 'Lịch họp và nội dung phối hợp toàn trường', title: 'Thông báo lịch họp', body: 'Nhà trường trân trọng thông báo lịch họp chung như sau:' },
+  { value: 'EMERGENCY', label: 'Thông báo khẩn cấp', hint: 'Thông tin cần được chú ý và xử lý ngay', title: 'THÔNG BÁO KHẨN', body: 'Nhà trường thông báo khẩn cấp tới toàn thể cán bộ, giáo viên, học sinh và phụ huynh:' },
 ];
 
 const ANNOUNCEMENT_AUDIENCES = [
@@ -1327,7 +1351,10 @@ const ANNOUNCEMENT_AUDIENCES = [
   { value: 'PARENT', label: 'Phụ huynh', hint: 'Toàn bộ phụ huynh đang hoạt động', Icon: UserRound },
 ];
 
-const ANNOUNCEMENT_CATEGORY_LABEL = Object.fromEntries(ANNOUNCEMENT_CATEGORIES.map((item) => [item.value, item.label]));
+const ANNOUNCEMENT_CATEGORY_LABEL: Record<string, string> = {
+  ...Object.fromEntries(ANNOUNCEMENT_CATEGORIES.map((item) => [item.value, item.label])),
+  HOLIDAY: 'Nghỉ lễ (dữ liệu cũ)', EVENT: 'Sự kiện (dữ liệu cũ)', PARENT_MEETING: 'Họp phụ huynh (dữ liệu cũ)',
+};
 const ANNOUNCEMENT_AUDIENCE_LABEL = Object.fromEntries(ANNOUNCEMENT_AUDIENCES.map((item) => [item.value, item.label]));
 const ANNOUNCEMENT_PRIORITY_LABEL: Record<string, string> = { NORMAL: 'Thông thường', IMPORTANT: 'Quan trọng', URGENT: 'Khẩn cấp' };
 
@@ -1338,7 +1365,7 @@ export function AdminNotificationsLive() {
   const deliveryLogs = useApi<NotificationDeliveryLog[]>('/notification-delivery-logs');
   const toast = useToast();
   const [sending, setSending] = useState(false);
-  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '', holidayStartDate: '', holidayEndDate: '' });
+  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '', holidayMode: false, holidayStartDate: '', holidayEndDate: '' });
   const selectedCategory = ANNOUNCEMENT_CATEGORIES.find((item) => item.value === form.category) || ANNOUNCEMENT_CATEGORIES[0];
   const recipientCount = audienceCounts.data?.[form.audience] ?? 0;
 
@@ -1346,18 +1373,20 @@ export function AdminNotificationsLive() {
     setForm((current) => ({
       ...current,
       category: category.value,
-      audience: category.value === 'HOLIDAY' ? 'ALL' : current.audience,
+      audience: category.value === 'EMERGENCY' ? 'ALL' : current.audience,
+      priority: category.value === 'EMERGENCY' ? 'URGENT' : current.priority,
       title: category.title,
       body: category.body,
-      holidayStartDate: category.value === 'HOLIDAY' ? current.holidayStartDate : '',
-      holidayEndDate: category.value === 'HOLIDAY' ? current.holidayEndDate : '',
+      holidayMode: category.value === 'HOLIDAY_EVENT' ? current.holidayMode : false,
+      holidayStartDate: category.value === 'HOLIDAY_EVENT' ? current.holidayStartDate : '',
+      holidayEndDate: category.value === 'HOLIDAY_EVENT' ? current.holidayEndDate : '',
     }));
   };
 
   const sendAnnouncement = async () => {
     if (!form.title.trim() || !form.body.trim()) return toast.show('err', 'Vui lòng nhập tiêu đề và nội dung thông báo');
-    if (form.category === 'HOLIDAY' && (!form.holidayStartDate || !form.holidayEndDate)) return toast.show('err', 'Vui lòng chọn đầy đủ thời gian nghỉ');
-    if (form.category === 'HOLIDAY' && form.holidayEndDate < form.holidayStartDate) return toast.show('err', 'Ngày kết thúc không được trước ngày bắt đầu');
+    if (form.holidayMode && (!form.holidayStartDate || !form.holidayEndDate)) return toast.show('err', 'Vui lòng chọn đầy đủ thời gian nghỉ');
+    if (form.holidayMode && form.holidayEndDate < form.holidayStartDate) return toast.show('err', 'Ngày kết thúc không được trước ngày bắt đầu');
     if (!recipientCount) return toast.show('err', 'Phạm vi đã chọn hiện không có người nhận');
     setSending(true);
     try {
@@ -1367,10 +1396,10 @@ export function AdminNotificationsLive() {
         priority: form.priority,
         title: form.title.trim(),
         body: form.body.trim(),
-        holidayStartDate: form.category === 'HOLIDAY' ? form.holidayStartDate : null,
-        holidayEndDate: form.category === 'HOLIDAY' ? form.holidayEndDate : null,
+        holidayStartDate: form.holidayMode ? form.holidayStartDate : null,
+        holidayEndDate: form.holidayMode ? form.holidayEndDate : null,
       });
-      toast.show('ok', form.category === 'HOLIDAY'
+      toast.show('ok', form.holidayMode
         ? `Đã thông báo nghỉ và tự động miễn điểm danh trong ${form.holidayStartDate === form.holidayEndDate ? 'ngày đã chọn' : 'khoảng thời gian đã chọn'}`
         : `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
       setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL', holidayStartDate: '', holidayEndDate: '' }));
@@ -1421,21 +1450,22 @@ export function AdminNotificationsLive() {
               <label>Phạm vi nhận</label>
               <div className="announcement-audience-grid">
                 {ANNOUNCEMENT_AUDIENCES.map(({ value, label, hint, Icon }) => (
-                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} disabled={form.category === 'HOLIDAY' && value !== 'ALL'} onClick={() => setForm({ ...form, audience: value })}>
+                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} disabled={(form.holidayMode || form.category === 'EMERGENCY') && value !== 'ALL'} onClick={() => setForm({ ...form, audience: value })}>
                     <span><Icon size={17} /></span><div><strong>{label}</strong><small>{hint}</small></div><b>{audienceCounts.data?.[value] ?? 0}</b>
                   </button>
                 ))}
               </div>
-              {form.category === 'HOLIDAY' && <small className="announcement-holiday-help">Thông báo nghỉ luôn áp dụng cho toàn trường và tự động tắt yêu cầu điểm danh trong thời gian đã chọn.</small>}
+              {(form.holidayMode || form.category === 'EMERGENCY') && <small className="announcement-holiday-help">{form.holidayMode ? 'Thông báo nghỉ áp dụng cho toàn trường và tự động tắt yêu cầu điểm danh trong thời gian đã chọn.' : 'Thông báo khẩn cấp luôn gửi tới toàn trường với mức độ Khẩn cấp.'}</small>}
             </div>
 
             <div className="announcement-form-grid">
-              {form.category === 'HOLIDAY' && <>
+              {form.category === 'HOLIDAY_EVENT' && <label className="wide admin-user-exception-confirm"><input type="checkbox" checked={form.holidayMode} onChange={(event) => setForm({ ...form, holidayMode: event.target.checked, audience: event.target.checked ? 'ALL' : form.audience, holidayStartDate: event.target.checked ? form.holidayStartDate : '', holidayEndDate: event.target.checked ? form.holidayEndDate : '' })} /><span>Đây là thông báo ngày nghỉ; tự động miễn điểm danh trong khoảng thời gian bên dưới.</span></label>}
+              {form.holidayMode && <>
                 <label><span>Ngày bắt đầu nghỉ</span><input type="date" value={form.holidayStartDate} onChange={(event) => setForm({ ...form, holidayStartDate: event.target.value, holidayEndDate: form.holidayEndDate && form.holidayEndDate < event.target.value ? event.target.value : form.holidayEndDate })} /></label>
                 <label><span>Ngày kết thúc nghỉ</span><input type="date" min={form.holidayStartDate} value={form.holidayEndDate} onChange={(event) => setForm({ ...form, holidayEndDate: event.target.value })} /></label>
               </>}
               <label className="wide"><span>Tiêu đề</span><input maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Nhập tiêu đề rõ ràng, dễ hiểu" /></label>
-              <label><span>Mức độ</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
+              <label><span>Mức độ</span><select value={form.priority} disabled={form.category === 'EMERGENCY'} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
               <label className="wide"><span>Nội dung</span><textarea maxLength={4000} rows={7} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Nhập đầy đủ thời gian, địa điểm và hướng dẫn cần thiết…" /><small>{form.body.length}/4000 ký tự</small></label>
             </div>
           </div>
@@ -1446,7 +1476,7 @@ export function AdminNotificationsLive() {
               <header><Badge tone={form.priority === 'URGENT' ? 'red' : 'blue'}>{selectedCategory.label}</Badge><span>{ANNOUNCEMENT_PRIORITY_LABEL[form.priority]}</span></header>
               <strong>{form.title || 'Tiêu đề thông báo'}</strong>
               <p>{form.body || 'Nội dung thông báo sẽ hiển thị tại đây.'}</p>
-              {form.category === 'HOLIDAY' && <small><CalendarDays size={14} /> {form.holidayStartDate || 'Chọn ngày bắt đầu'} → {form.holidayEndDate || 'Chọn ngày kết thúc'}</small>}
+              {form.holidayMode && <small><CalendarDays size={14} /> {form.holidayStartDate || 'Chọn ngày bắt đầu'} → {form.holidayEndDate || 'Chọn ngày kết thúc'}</small>}
               <small>Vừa xong · Từ Ban quản trị nhà trường</small>
             </div>
             <div className="announcement-send-summary"><span>Đối tượng</span><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[form.audience]}</strong><span>Dự kiến nhận</span><strong>{recipientCount} người</strong></div>
@@ -1459,7 +1489,7 @@ export function AdminNotificationsLive() {
       <Section title="Lịch sử gửi thông báo" subtitle="Theo dõi phạm vi, nội dung và số lượng người nhận" wide>
         <Async paginate state={announcements} empty="Chưa có thông báo nào được gửi" itemLabel="thông báo">
           {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Đối tượng</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small>{item.category === 'HOLIDAY' && item.holidayStartDate && <small>Thời gian nghỉ: {item.holidayStartDate} → {item.holidayEndDate}</small>}</td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
+            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small>{['HOLIDAY', 'HOLIDAY_EVENT'].includes(item.category || '') && item.holidayStartDate && <small>Thời gian nghỉ: {item.holidayStartDate} → {item.holidayEndDate}</small>}</td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
           </table></div>}
         </Async>
       </Section>

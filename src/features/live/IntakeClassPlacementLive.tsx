@@ -10,6 +10,10 @@ import type {
 } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
+import {
+  closedAcademicYears, operationalAcademicYears, operationalYearLabel,
+  resolveOperationalAcademicYearId,
+} from './academicYearSelection';
 
 const genderLabel = (gender?: string | null) => gender === 'MALE' ? 'Nam' : gender === 'FEMALE' ? 'Nữ' : 'Khác';
 
@@ -27,15 +31,22 @@ export function IntakeClassPlacementLive() {
   const [preview, setPreview] = useState<IntakePlacementPreview | null>(null);
   const [previewStale, setPreviewStale] = useState(false);
   const [busy, setBusy] = useState(false);
+  const workingYears = useMemo(() => operationalAcademicYears(years.data ?? []), [years.data]);
+  const archivedYears = useMemo(() => closedAcademicYears(years.data ?? []), [years.data]);
+  const selectedYear = workingYears.find((year) => year.id === academicYearId);
 
   useEffect(() => {
-    if (!years.data?.length || years.data.some((year) => year.id === academicYearId)) return;
-    setAcademicYearId(years.data.find((year) => year.status === 'ACTIVE')?.id ?? years.data[0].id);
+    if (!years.data) return;
+    const nextId = resolveOperationalAcademicYearId(years.data, academicYearId);
+    if (nextId === academicYearId) return;
+    setAcademicYearId(nextId);
+    setPreview(null);
+    setLocks({});
   }, [academicYearId, years.data]);
 
-  const candidates = useApi<IntakePlacementCandidate[]>(academicYearId
+  const candidates = useApi<IntakePlacementCandidate[]>(selectedYear
     ? `/intake-class-placement/candidates?academicYearId=${encodeURIComponent(academicYearId)}&gradeLevel=${encodeURIComponent(gradeLevel)}` : null);
-  const history = useApi<IntakePlacementRun[]>(academicYearId
+  const history = useApi<IntakePlacementRun[]>(selectedYear
     ? `/intake-class-placement/history?academicYearId=${encodeURIComponent(academicYearId)}&gradeLevel=${encodeURIComponent(gradeLevel)}` : null);
   const lockedPlacements = useMemo(() => Object.entries(locks).map(([studentId, classCode]) => ({ studentId, classCode })), [locks]);
   const payload = () => ({ academicYearId, gradeLevel, maxStudentsPerClass: maxStudents,
@@ -95,9 +106,11 @@ export function IntakeClassPlacementLive() {
 
     <div className="intake-config-card">
       <div className="intake-config-title"><GraduationCap size={23} /><div><strong>Thiết lập phân lớp</strong><small>Hệ thống chỉ lấy học sinh chưa được xếp lớp trong năm học đã chọn</small></div></div>
+      {archivedYears.length > 0 && <div className="intake-archived-year-note"><LockKeyhole size={18} /><div><strong>Năm học đã đóng được chuyển sang kho lưu trữ</strong><span>{archivedYears.map((year) => year.code).join(', ')} chỉ dùng để tra cứu, không xuất hiện trong biểu mẫu phân lớp.</span></div></div>}
       <div className="intake-config-grid">
-        <label><span>Năm học</span><select value={academicYearId} onChange={(event) => { setAcademicYearId(event.target.value); setPreview(null); setLocks({}); }}>
-          {(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code} · {year.status === 'ACTIVE' ? 'Đang hoạt động' : year.name}</option>)}
+        <label><span>Năm học đang thao tác</span><select value={academicYearId} disabled={!workingYears.length} onChange={(event) => { setAcademicYearId(event.target.value); setPreview(null); setLocks({}); }}>
+          {!workingYears.length && <option value="">Chưa có năm học khả dụng</option>}
+          {workingYears.map((year) => <option key={year.id} value={year.id}>{operationalYearLabel(year)}</option>)}
         </select></label>
         <label><span>Khối cần phân lớp</span><select value={gradeLevel} onChange={(event) => { setGradeLevel(event.target.value); setPreview(null); setLocks({}); }}><option value="K10">Khối 10 (đầu cấp)</option><option value="K11">Khối 11</option><option value="K12">Khối 12</option></select></label>
         <label><span>Sĩ số tối đa/lớp</span><input type="number" min={20} max={60} value={maxStudents} onChange={(event) => { setMaxStudents(Number(event.target.value)); setPreview(null); }} /></label>
@@ -109,8 +122,8 @@ export function IntakeClassPlacementLive() {
         <label><input type="checkbox" checked={balanceGender} onChange={(event) => { setBalanceGender(event.target.checked); setPreview(null); }} /><span><strong>Cân bằng giới tính</strong><small>Giảm chênh lệch nam/nữ giữa các lớp</small></span></label>
       </div>
       <div className="intake-config-actions">
-        <div><UsersRound size={18} /><strong>{candidates.loading ? 'Đang kiểm tra…' : `${candidates.data?.length ?? 0} học sinh chờ phân lớp`}</strong></div>
-        <button className="live-btn primary" disabled={busy || !academicYearId} onClick={createPreview}><Sparkles size={17} /> {busy ? 'Đang tính toán…' : preview ? 'Tính lại phương án' : 'Tạo bản xem trước'}</button>
+        <div><UsersRound size={18} /><strong>{!selectedYear ? 'Chưa có năm học để thao tác' : candidates.loading ? 'Đang kiểm tra…' : `${candidates.data?.length ?? 0} học sinh chờ phân lớp`}</strong></div>
+        <button className="live-btn primary" disabled={busy || !selectedYear} onClick={createPreview}><Sparkles size={17} /> {busy ? 'Đang tính toán…' : preview ? 'Tính lại phương án' : 'Tạo bản xem trước'}</button>
       </div>
     </div>
 

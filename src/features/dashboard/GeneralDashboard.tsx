@@ -1,7 +1,7 @@
 import {
   Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2,
   CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
-  DoorOpen, GraduationCap, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
+  DoorOpen, GraduationCap, HeartHandshake, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
   UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -11,9 +11,11 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
 import { emitNotificationInboxChanged } from '../../api/liveEvents';
+import { pageHash } from '../../api/routes';
 import type {
   DashboardCalendarItem, DashboardChart, DashboardMetric, DashboardResponse, DashboardWorkItem,
-  AcademicYear, ExamAgendaItem, Notification, Room, SchoolClass,
+  AcademicYear, ExamAgendaItem, Notification, Room, SchoolClass, TeacherDashboardOverview,
+  TeacherWorkspaceContext,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
 import { viLabel } from '../../components/ui';
@@ -109,6 +111,7 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
     { code: 'B3', title: 'Điểm danh', description: 'Ghi nhận theo tiết học', Icon: ClipboardCheck },
     { code: 'B4', title: 'Bảng điểm', description: 'Cập nhật kết quả học tập', Icon: BarChart3 },
     { code: 'B5', title: 'Giao bài tập', description: 'Tạo và chấm bài', Icon: BookOpenCheck },
+    { code: 'B16', title: 'Hỗ trợ học sinh', description: 'Ghi nhận và theo dõi can thiệp', Icon: HeartHandshake },
     { code: 'B12', title: 'Lịch thi & nhiệm vụ', description: 'Coi thi và nhập điểm', Icon: CalendarCheck2 },
   ],
   student: [
@@ -148,6 +151,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const academicRooms = useApi<Room[]>(roleId === 'academic_staff' ? '/rooms' : null);
   const academicClasses = useApi<SchoolClass[]>(roleId === 'academic_staff' ? '/classes' : null);
   const academicYears = useApi<AcademicYear[]>(roleId === 'academic_staff' ? '/academicYears' : null);
+  const teacherWorkspace = useApi<TeacherWorkspaceContext>(roleId === 'teacher' ? '/me/teacher-workspace' : null);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
@@ -157,7 +161,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const today = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   }).format(new Date());
-  const hasError = Boolean(dashboard.error || notifications.error || examAgenda.error);
+  const hasError = Boolean(dashboard.error || notifications.error || examAgenda.error || teacherWorkspace.error);
   const loading = dashboard.loading;
   const links = quickLinks[roleId];
   const primaryLink = roleId === 'admin'
@@ -176,6 +180,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     academicRooms.reload();
     academicClasses.reload();
     academicYears.reload();
+    teacherWorkspace.reload();
   };
   const markNotificationRead = async (id: string) => {
     setMarkingNotificationId(id);
@@ -221,6 +226,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         rooms={academicRooms.data ?? []}
         classes={academicClasses.data ?? []}
         years={academicYears.data ?? []}
+        teacherWorkspace={teacherWorkspace.data}
         onMarkNotificationRead={markNotificationRead}
         onReload={reloadAll}
         onNavigate={navigate}
@@ -373,7 +379,7 @@ const operationalDashboardConfig: Record<OperationalRole, {
 function OperationalRoleDashboard({
   roleId, firstName, today, data, loading, hasError, notifications, notificationsLoading,
   markingNotificationId, examAgenda, examAgendaLoading, onMarkNotificationRead, onReload, onNavigate,
-  rooms, classes, years,
+  rooms, classes, years, teacherWorkspace,
 }: {
   roleId: OperationalRole;
   firstName: string;
@@ -389,6 +395,7 @@ function OperationalRoleDashboard({
   rooms: Room[];
   classes: SchoolClass[];
   years: AcademicYear[];
+  teacherWorkspace?: TeacherWorkspaceContext | null;
   onMarkNotificationRead: (id: string) => Promise<void>;
   onReload: () => void;
   onNavigate: (page: PageId) => void;
@@ -396,7 +403,7 @@ function OperationalRoleDashboard({
   const config = operationalDashboardConfig[roleId];
   const overview = data?.roleOverview;
   const metrics = (data?.metrics ?? []).map(toMetric);
-  const links = quickLinks[roleId];
+  const links = roleId === 'teacher' ? teacherDashboardLinks(teacherWorkspace) : quickLinks[roleId];
   const workItems = overview?.workItems ?? [];
   const openItems = workItems.filter((item) => item.severity !== 'SUCCESS');
   const HeroIcon = config.Icon;
@@ -440,6 +447,14 @@ function OperationalRoleDashboard({
 
       {roleId === 'academic_staff' && <AcademicRoomCapacity rooms={rooms} classes={classes} years={years} onOpen={() => onNavigate('E1')} />}
 
+      {roleId === 'teacher' && (
+        <TeacherTodayWorkspace
+          overview={data?.teacherOverview}
+          loading={loading}
+          onNavigate={onNavigate}
+        />
+      )}
+
       <section className="role-command-workspace">
         <article className="role-command-worklist">
           <header><div><span>CẦN XỬ LÝ</span><h3>{config.workTitle}</h3><p>{config.workDescription}</p></div><strong className={openItems.length ? 'has-work' : 'is-clear'}>{openItems.length} nhóm việc</strong></header>
@@ -468,6 +483,74 @@ function OperationalRoleDashboard({
         <div>{data?.charts.map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}</div>
       </section>}
     </div>
+  );
+}
+
+function teacherDashboardLinks(workspace?: TeacherWorkspaceContext | null): DashboardLink[] {
+  const links = quickLinks.teacher.filter((item) => item.code !== 'B12' || workspace?.examResponsibilities);
+  if (workspace?.loadRegistrationVisible) {
+    links.push({ code: 'B14', title: 'Đăng ký tải dạy', description: workspace.loadRegistrationOpen ? 'Theo dõi kỳ đăng ký hiện tại' : 'Xem kế hoạch tải dạy', Icon: Clock3 });
+  }
+  if (workspace?.homeroomTeacher) {
+    links.push({ code: 'B9', title: 'Duyệt đơn nghỉ', description: 'Xử lý yêu cầu của lớp chủ nhiệm', Icon: CalendarCheck2 });
+    links.push({ code: 'B13', title: 'Học bạ lớp chủ nhiệm', description: 'Theo dõi và xác nhận hồ sơ', Icon: GraduationCap });
+  }
+  return links;
+}
+
+function TeacherTodayWorkspace({ overview, loading, onNavigate }: {
+  overview?: TeacherDashboardOverview | null;
+  loading: boolean;
+  onNavigate: (page: PageId) => void;
+}) {
+  const lessons = overview?.todayLessons ?? [];
+  const students = overview?.attentionStudents ?? [];
+  const nextLesson = lessons.find((item) => item.status === 'IN_PROGRESS')
+    ?? lessons.find((item) => item.status === 'UPCOMING');
+  return (
+    <section className="teacher-today-workspace" aria-label="Trung tâm công việc hôm nay">
+      <article className="teacher-today-lessons">
+        <header>
+          <div><span>NHỊP DẠY HÔM NAY</span><h3>Tiết dạy và điểm danh</h3><p>Trạng thái được đồng bộ theo từng tiết, không cần dò lại thời khóa biểu.</p></div>
+          <strong>{lessons.length} tiết</strong>
+        </header>
+        {loading ? <AdminListSkeleton /> : lessons.length === 0 ? (
+          <div className="teacher-today-empty"><CalendarCheck2 size={22} /><div><strong>Hôm nay không có tiết dạy</strong><small>Bạn có thể chuẩn bị bài hoặc xử lý các công việc còn tồn.</small></div></div>
+        ) : (
+          <div className="teacher-lesson-list">
+            {lessons.map((lesson) => {
+              const active = lesson.slotId === nextLesson?.slotId;
+              return <button type="button" key={lesson.slotId} className={`${active ? 'is-next' : ''} is-${lesson.status.toLowerCase()}`} onClick={() => onNavigate(lesson.attendanceRecorded ? 'B2' : 'B3')}>
+                <time><strong>{lesson.startTime || `Tiết ${lesson.periodNo}`}</strong><span>{lesson.endTime || `Tiết ${lesson.periodNo}`}</span></time>
+                <div><small>{active ? lesson.status === 'IN_PROGRESS' ? 'ĐANG DIỄN RA' : 'TIẾT TIẾP THEO' : `TIẾT ${lesson.periodNo}`}</small><strong>{lesson.subjectName} · {lesson.classCode}</strong><span>{lesson.roomCode ? `Phòng ${lesson.roomCode}` : 'Chưa xếp phòng'}</span></div>
+                <b className={lesson.attendanceRecorded ? 'is-done' : 'is-pending'}>{lesson.attendanceRecorded ? 'Đã điểm danh' : 'Chưa điểm danh'}</b>
+                <ArrowRight size={15} />
+              </button>;
+            })}
+          </div>
+        )}
+      </article>
+
+      <article className="teacher-attention-students">
+        <header>
+          <div><span>CẦN QUAN TÂM</span><h3>Học sinh cần hỗ trợ</h3><p>Tổng hợp từ chuyên cần, bài quá hạn và điểm thuộc đúng phạm vi phụ trách.</p></div>
+          <strong className={students.length ? 'has-alert' : 'is-clear'}>{students.length}</strong>
+        </header>
+        {loading ? <AdminListSkeleton /> : students.length === 0 ? (
+          <div className="teacher-today-empty is-safe"><CheckCircle2 size={22} /><div><strong>Chưa có cảnh báo nổi bật</strong><small>Không phát hiện trường hợp cần ưu tiên trong dữ liệu hiện tại.</small></div></div>
+        ) : (
+          <div className="teacher-attention-list">
+            {students.map((student) => <button type="button" key={student.studentId} onClick={() => {
+              window.location.hash = pageHash('teacher', 'B16', new URLSearchParams({ class: student.classId, student: student.studentId }));
+            }}>
+              <span className={student.severity === 'CRITICAL' ? 'is-critical' : 'is-warning'}>{student.studentName.trim().charAt(0)}</span>
+              <div><small>{student.classCode} · {student.studentCode}</small><strong>{student.studentName}</strong><p>{student.reason}</p></div>
+              <ArrowRight size={15} />
+            </button>)}
+          </div>
+        )}
+      </article>
+    </section>
   );
 }
 

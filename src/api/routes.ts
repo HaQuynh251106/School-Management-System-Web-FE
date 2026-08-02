@@ -14,7 +14,6 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A1S: 'hoc-sinh',
     A1T: 'giao-vien',
     A1P: 'phu-huynh',
-    A1A: 'cuu-hoc-sinh',
     A1O: 'nhan-su-van-hanh',
     A6: 'lich-su-he-thong',
     A8: 'bao-cao-thong-ke',
@@ -25,12 +24,16 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     E2: 'xep-thoi-khoa-bieu',
     E3: 'tao-ky-thi',
     E4: 'cuu-hoc-sinh',
+    E5: 'hoc-ba-dien-tu',
   },
   accountant: {
     F1: 'tai-chinh-noi-bo',
   },
   teacher: {
     B1: 'lop-duoc-phan-cong',
+    B14: 'dang-ky-tai-day',
+    B15: 'so-dau-bai-dieu-chinh-lich',
+    B16: 'ho-tro-hoc-sinh',
     B2: 'thoi-khoa-bieu',
     B3: 'diem-danh',
     B4: 'bang-diem',
@@ -42,7 +45,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     B10: 'bao-cao-giang-day',
     B11: 'ho-so-cai-dat',
     B12: 'khao-thi',
-    B13: 'hanh-kiem-tong-ket',
+    B13: 'hoc-ba-lop-chu-nhiem',
   },
   student: {
     C1: 'ho-so-ca-nhan',
@@ -55,7 +58,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     C8: 'bao-cao-ca-nhan',
     C9: 'ho-so-cai-dat',
     C10: 'thi-phuc-khao',
-    C11: 'tong-ket-nam-hoc',
+    C11: 'hoc-ba-dien-tu',
   },
   parent: {
     D1: 'chon-hoc-sinh',
@@ -67,7 +70,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     D7: 'bao-cao-cua-con',
     D8: 'ho-so-cai-dat',
     D9: 'lich-thi-cua-con',
-    D10: 'tong-ket-nam-hoc',
+    D10: 'hoc-ba-cua-con',
   },
 };
 

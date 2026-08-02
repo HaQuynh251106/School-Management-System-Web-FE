@@ -54,7 +54,7 @@ export interface ApiUser {
   mainSubject?: string | null;
   childrenIds?: string[] | null;
   cohortId?: string | null;
-  studentStatus?: 'ENROLLED' | 'GRADUATED' | 'WITHDRAWN' | 'TRANSFERRED' | null;
+  studentStatus?: 'PENDING_PLACEMENT' | 'ENROLLED' | 'GRADUATED' | 'WITHDRAWN' | 'TRANSFERRED' | null;
   graduatedAt?: string | null;
   graduationAcademicYearId?: string | null;
   graduationClassId?: string | null;
@@ -82,6 +82,30 @@ export interface AlumniRecord {
   graduationAcademicYearId?: string | null; graduationAcademicYearCode?: string | null;
   graduationClassId?: string | null; graduationClassCode?: string | null;
   annualAverage?: number | null; conductGrade?: string | null; accountStatus: string;
+}
+
+export interface TeacherWorkspaceContext {
+  homeroomTeacher: boolean;
+  homeroomClasses: Array<{ id: string; code: string; name?: string | null; studentCount: number }>;
+  teachingClassCount: number;
+  examResponsibilities: boolean;
+  invigilationDutyCount: number;
+  gradingDutyCount: number;
+  pendingReviewCount: number;
+  semesterId?: string | null;
+  semesterName?: string | null;
+  loadRegistrationVisible: boolean;
+  loadRegistrationOpen: boolean;
+  loadRegistrationEditable: boolean;
+  loadRegistrationOpensOn?: string | null;
+  loadRegistrationClosesOn?: string | null;
+  loadRegistrationStatus?: string | null;
+}
+export interface AlumniClassSummary {
+  classId: string; classCode: string; className?: string | null;
+  cohortId?: string | null; cohortCode?: string | null; cohortName?: string | null;
+  graduationAcademicYearId?: string | null; graduationAcademicYearCode?: string | null;
+  studentCount: number; averageScore?: number | null; goodConductCount: number; activeAccountCount: number;
 }
 export interface Subject { id: string; code: string; name: string; coefficient: number; }
 export interface AcademicYear { id: string; code: string; name: string; status: string; startDate?: string; endDate?: string; }
@@ -499,6 +523,52 @@ export interface StudentYearlySummary {
   missingRequirements?: string | null; nextClassId?: string | null; finalizedAt?: string | null;
 }
 
+export type ReportCardStatus = 'DRAFT' | 'HOMEROOM_SUBMITTED' | 'APPROVED' | 'LOCKED' | 'PUBLISHED';
+export interface ReportCardSubjectResult {
+  subjectId: string; subjectName: string; semesterOneAverage?: number | null;
+  semesterTwoAverage?: number | null; annualAverage?: number | null; complete: boolean;
+}
+export interface ReportCardAttendance {
+  present: number; excusedAbsence: number; unexcusedAbsence: number; late: number; total: number;
+}
+export interface ReportCardAudit {
+  id: string; action: string; fromStatus?: string | null; toStatus?: string | null;
+  note?: string | null; actorId: string; actorName?: string | null; createdAt: string;
+}
+export interface ReportCardView {
+  id: string; academicYearId: string; academicYearCode: string; studentId: string;
+  studentCode?: string | null; studentName: string; classId: string; classCode: string;
+  status: ReportCardStatus; homeroomTeacherId?: string | null; homeroomTeacherName?: string | null;
+  homeroomComment?: string | null; semesterOneAverage?: number | null; semesterTwoAverage?: number | null;
+  annualAverage?: number | null; conductGrade?: string | null; promotionStatus?: string | null;
+  missingRequirements?: string | null; subjectCount: number; subjects: ReportCardSubjectResult[];
+  attendance: ReportCardAttendance; verificationCode: string; submittedAt?: string | null;
+  approvedAt?: string | null; lockedAt?: string | null; publishedAt?: string | null;
+  editableByHomeroom: boolean; audits: ReportCardAudit[];
+}
+export interface ReportCardListItem {
+  id: string; studentId: string; studentCode?: string | null; studentName: string;
+  classId: string; classCode: string; status: ReportCardStatus; subjectCount: number;
+  annualAverage?: number | null; conductGrade?: string | null; promotionStatus?: string | null;
+  missingRequirements?: string | null; updatedAt?: string | null;
+}
+export interface ReportCardScopeOverview {
+  academicYearId: string; cohortId?: string | null; classCount: number; studentCount: number;
+  draftCount: number; submittedCount: number; approvedCount: number; lockedCount: number;
+  publishedCount: number; incompleteCount: number; completionPercent: number; publishedPercent: number;
+}
+export interface ReportCardClassSummary {
+  classId: string; classCode: string; className: string; gradeLevel: string; cohortId?: string | null;
+  homeroomTeacherId?: string | null; homeroomTeacherName?: string | null; studentCount: number;
+  draftCount: number; submittedCount: number; approvedCount: number; lockedCount: number;
+  publishedCount: number; incompleteCount: number; completionPercent: number; publishedPercent: number;
+}
+export interface GradebookCompletionView {
+  semesterId: string; classId: string; subjectId: string; subjectName: string;
+  completed: boolean; completedBy?: string | null; completedAt?: string | null;
+  studentCount: number; missingStudentCount: number; missingDetails: string[];
+}
+
 export interface YearRolloverClassPlan {
   sourceClassId: string; sourceClassCode: string; targetClassCode: string;
   targetGradeLevel: string; type: 'PROMOTION' | 'NEW_INTAKE'; capacity: number;
@@ -601,11 +671,46 @@ export interface RoleDashboardOverview {
   workItems: DashboardWorkItem[];
 }
 
+export interface TeacherDashboardLesson {
+  slotId: string;
+  periodNo: number;
+  startTime: string;
+  endTime: string;
+  classId: string;
+  classCode: string;
+  subjectId: string;
+  subjectName: string;
+  roomCode: string;
+  status: 'UPCOMING' | 'IN_PROGRESS' | 'COMPLETED' | string;
+  attendanceRecorded: boolean;
+}
+
+export interface TeacherAttentionStudent {
+  studentId: string;
+  studentCode: string;
+  studentName: string;
+  classId: string;
+  classCode: string;
+  attendanceAlerts: number;
+  missingAssignments: number;
+  subjectAverage?: number | null;
+  severity: 'CRITICAL' | 'WARNING' | string;
+  reason: string;
+}
+
+export interface TeacherDashboardOverview {
+  homeroomTeacher: boolean;
+  homeroomClassCodes: string[];
+  todayLessons: TeacherDashboardLesson[];
+  attentionStudents: TeacherAttentionStudent[];
+}
+
 export interface DashboardResponse {
   metrics: DashboardMetric[];
   charts: DashboardChart[];
   adminOverview?: AdminDashboardOverview | null;
   roleOverview?: RoleDashboardOverview | null;
+  teacherOverview?: TeacherDashboardOverview | null;
 }
 
 export interface IntakePlacementCandidate {
@@ -652,4 +757,109 @@ export interface IntakePlacementRun {
   assignedCount: number;
   createdAt: string;
   createdBy: string;
+}
+
+export interface LessonDiary {
+  id: string;
+  slotId: string;
+  sessionDate: string;
+  teacherId: string;
+  actualTeacherId: string;
+  classId: string;
+  subjectId?: string | null;
+  topic?: string | null;
+  lessonContent?: string | null;
+  homework?: string | null;
+  classNote?: string | null;
+  attendanceSummary?: string | null;
+  status: 'DRAFT' | 'SUBMITTED' | string;
+  submittedAt?: string | null;
+  updatedAt: string;
+}
+
+export interface TeachingLessonOccurrence {
+  occurrenceKey: string;
+  slotId: string;
+  date: string;
+  classId: string;
+  classCode: string;
+  subjectId: string;
+  subjectName: string;
+  periodNo: number;
+  startTime: string;
+  endTime: string;
+  roomCode?: string | null;
+  originalTeacherId: string;
+  originalTeacherName: string;
+  effectiveTeacherId: string;
+  effectiveTeacherName: string;
+  assignmentState: 'ORIGINAL' | 'SUBSTITUTE' | 'RESCHEDULE' | 'SUBSTITUTE_AND_RESCHEDULE' | string;
+  changeRequestId?: string | null;
+  diaryId?: string | null;
+  diaryStatus?: string | null;
+}
+
+export interface TimetableChangeRequestView {
+  id: string;
+  slotId: string;
+  occurrenceDate: string;
+  requestType: string;
+  classId: string;
+  classCode: string;
+  subjectName: string;
+  originalTeacherId: string;
+  originalTeacherName: string;
+  substituteTeacherId?: string | null;
+  substituteTeacherName?: string | null;
+  proposedDate?: string | null;
+  proposedPeriodNo?: number | null;
+  proposedStartTime?: string | null;
+  proposedEndTime?: string | null;
+  proposedRoomCode?: string | null;
+  reason: string;
+  status: string;
+  reviewedBy?: string | null;
+  reviewerName?: string | null;
+  reviewNote?: string | null;
+  createdAt: string;
+  reviewedAt?: string | null;
+}
+
+export interface SubstituteCandidate {
+  id: string;
+  fullName: string;
+  mainSubject?: string | null;
+  available: boolean;
+  reason: string;
+}
+
+export interface TeachingOperationsWorkspace {
+  lessons: TeachingLessonOccurrence[];
+  changes: TimetableChangeRequestView[];
+}
+
+export interface StudentIntervention {
+  id: string;
+  studentId: string;
+  studentCode?: string | null;
+  studentName: string;
+  classId: string;
+  classCode: string;
+  teacherId: string;
+  teacherName?: string | null;
+  category: 'ACADEMIC' | 'ATTENDANCE' | 'BEHAVIOR' | 'WELLBEING' | 'OTHER' | string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | string;
+  title: string;
+  description: string;
+  actionTaken?: string | null;
+  followUpDate?: string | null;
+  status: 'OPEN' | 'MONITORING' | 'RESOLVED' | string;
+  parentContacted: boolean;
+  parentContactedAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  parentContacts: Array<{ id: string; fullName: string }>;
+  editable: boolean;
+  familyContactAllowed: boolean;
 }

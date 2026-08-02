@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react';
 import { Bell, BellRing, BookOpen, CalendarClock, CalendarPlus, CheckCircle2, Clock3, Download, FileText, Inbox, Lock, MailOpen, MapPin, Paperclip, Pencil, Plus, RefreshCw, RotateCcw, Search, School, Send, Settings2, Trash2, Upload, Users, X } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import { emitNotificationInboxChanged } from '../../api/liveEvents';
+import { emitNotificationInboxChanged, NOTIFICATION_INBOX_CHANGED } from '../../api/liveEvents';
 import type { TimetableSlot, TeachingAssignment, Assignment, Submission, SubmissionAttempt, StoredFile, Notification, NotificationPreference, PageResponse } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, ServerPagination } from './common';
@@ -160,6 +160,11 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   const [f, setF] = useState({ classId: '', subjectId: '', title: '', description: '', deadline: '', allowLate: false });
   const [submissionDraft, setSubmissionDraft] = useState({ content: '', attachmentFileId: '' });
   const [historySubmissionId, setHistorySubmissionId] = useState<string | null>(null);
+  const [assignmentQuery, setAssignmentQuery] = useHashString('q', '');
+  const [assignmentStatus, setAssignmentStatus] = useHashString('status', 'ALL');
+  const [assignmentClass, setAssignmentClass] = useHashString('class', 'ALL');
+  const [submissionQuery, setSubmissionQuery] = useHashString('submissionQ', '');
+  const [submissionStatus, setSubmissionStatus] = useHashString('submissionStatus', 'ALL');
   const attemptHistory = useApi<SubmissionAttempt[]>(historySubmissionId ? `/submissions/${historySubmissionId}/attempts` : null);
 
   const teachingOptions = useMemo(() => {
@@ -169,6 +174,27 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   }, [teachingAssignments.data]);
   const selectedAssignment = (list.data || []).find((assignment) => assignment.id === sel);
   const submissionMap = useMemo(() => new Map((mySubmissions.data || []).map((item) => [item.assignmentId, item])), [mySubmissions.data]);
+  const classOptions = useMemo(() => {
+    const unique = new Map<string, string>();
+    teachingOptions.forEach((assignment) => unique.set(assignment.classId, assignment.classCode || classLabel(assignment.classId)));
+    (list.data || []).forEach((assignment) => unique.set(assignment.classId, unique.get(assignment.classId) || classLabel(assignment.classId)));
+    return [...unique.entries()].sort((left, right) => left[1].localeCompare(right[1], 'vi'));
+  }, [list.data, teachingOptions]);
+  const filteredAssignments = useMemo(() => {
+    const keyword = assignmentQuery.trim().toLocaleLowerCase('vi');
+    return (list.data || []).filter((assignment) => {
+      const matchesQuery = !keyword || [assignment.title, assignment.description, assignment.subjectName, classLabel(assignment.classId)]
+        .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword));
+      const matchesStatus = assignmentStatus === 'ALL' || assignment.status === assignmentStatus;
+      const matchesClass = assignmentClass === 'ALL' || assignment.classId === assignmentClass;
+      return matchesQuery && matchesStatus && matchesClass;
+    });
+  }, [assignmentClass, assignmentQuery, assignmentStatus, list.data]);
+  const filteredSubmissions = useMemo(() => {
+    const keyword = submissionQuery.trim().toLocaleLowerCase('vi');
+    return (subs.data || []).filter((submission) => (!keyword || submission.studentName.toLocaleLowerCase('vi').includes(keyword))
+      && (submissionStatus === 'ALL' || submission.status === submissionStatus));
+  }, [submissionQuery, submissionStatus, subs.data]);
   const published = (list.data || []).filter((item) => item.status === 'PUBLISHED').length;
   const totalSubmissions = (list.data || []).reduce((total, item) => total + (item.submissionCount || 0), 0);
 
@@ -337,7 +363,13 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
         <article><span><Send size={18} /></span><div><small>Đang phát hành</small><strong>{published}</strong></div></article>
         <article><span><Users size={18} /></span><div><small>{actor === 'teacher' ? 'Bài đã nộp' : 'Đã hoàn thành'}</small><strong>{actor === 'teacher' ? totalSubmissions : mySubmissions.data?.length || 0}</strong></div></article>
       </div>
-      <Async paginate state={list} empty="Chưa có bài tập" itemLabel="bài tập">
+      <div className="assignment-data-toolbar">
+        <label className="assignment-search"><Search size={16} /><input value={assignmentQuery} onChange={(event) => setAssignmentQuery(event.target.value)} placeholder="Tìm tiêu đề, môn hoặc lớp…" /></label>
+        {actor === 'teacher' && <select className="live-select" aria-label="Lọc lớp bài tập" value={assignmentClass} onChange={(event) => setAssignmentClass(event.target.value)}><option value="ALL">Tất cả lớp</option>{classOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>}
+        <select className="live-select" aria-label="Lọc trạng thái bài tập" value={assignmentStatus} onChange={(event) => setAssignmentStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="DRAFT">Bản nháp</option><option value="PUBLISHED">Đang phát hành</option><option value="CLOSED">Đã đóng</option></select>
+        {(assignmentQuery || assignmentStatus !== 'ALL' || assignmentClass !== 'ALL') && <button className="live-btn subtle" type="button" onClick={() => { setAssignmentQuery(''); setAssignmentStatus('ALL'); setAssignmentClass('ALL'); }}><X size={14} /> Xóa bộ lọc</button>}
+      </div>
+      <Async paginate resetKey={`${assignmentQuery}:${assignmentStatus}:${assignmentClass}`} urlStateKey="assignments" state={{ ...list, data: filteredAssignments }} empty="Không có bài tập phù hợp" itemLabel="bài tập">
         {(l) => (
           <div className="assignment-grid">{l.map((assignment) => {
             const submission = submissionMap.get(assignment.id);
@@ -375,7 +407,8 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
       </Async>
       {actor === 'teacher' && sel && <div className="submission-panel">
           <div className="submission-panel-head"><div><small>Bài tập đang xem</small><strong>{selectedAssignment?.title}</strong></div><button className="live-btn subtle" onClick={() => setSel(null)}>Đóng</button></div>
-          <Async paginate state={subs} empty="Chưa có bài nộp" itemLabel="bài nộp">
+          <div className="assignment-data-toolbar compact"><label className="assignment-search"><Search size={16} /><input value={submissionQuery} onChange={(event) => setSubmissionQuery(event.target.value)} placeholder="Tìm học sinh…" /></label><select className="live-select" aria-label="Lọc trạng thái bài nộp" value={submissionStatus} onChange={(event) => setSubmissionStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="SUBMITTED">Đã nộp</option><option value="GRADED">Đã chấm</option><option value="RESUBMISSION_ALLOWED">Được nộp lại</option></select></div>
+          <Async paginate resetKey={`${sel}:${submissionQuery}:${submissionStatus}`} urlStateKey="submissions" state={{ ...subs, data: filteredSubmissions }} empty="Không có bài nộp phù hợp" itemLabel="bài nộp">
             {(l) => (
               <table className="live-table assignment-submission-table"><thead><tr><th>Học sinh</th><th>Bài làm</th><th>Trạng thái</th><th>Điểm và phản hồi</th><th></th></tr></thead>
                 <tbody>{l.map((s) => (
@@ -447,6 +480,13 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
     Array.from(new Set([...Object.keys(NOTIFICATION_TYPE_LABEL), ...items.map((item) => item.type)])).sort(),
   [items]);
   const ownerLabel = audience === 'teacher' ? 'giáo viên' : audience === 'parent' ? 'phụ huynh' : 'học sinh';
+  const reloadInbox = inbox.reload;
+
+  useEffect(() => {
+    const onInboxChanged = () => { void reloadInbox(); };
+    window.addEventListener(NOTIFICATION_INBOX_CHANGED, onInboxChanged);
+    return () => window.removeEventListener(NOTIFICATION_INBOX_CHANGED, onInboxChanged);
+  }, [reloadInbox]);
 
   const refresh = () => { inbox.reload(); preferences.reload(); notificationCapabilities.reload(); };
   const markRead = async (id: string) => {
@@ -458,7 +498,6 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
         summary: { ...current.summary, unread: Math.max(0, (current.summary.unread || 0) - 1) },
       } : current);
       emitNotificationInboxChanged();
-      inbox.reload();
     }
     catch (e: any) { toast.show('err', e.message); }
   };
@@ -471,7 +510,6 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
         summary: { ...current.summary, unread: (current.summary.unread || 0) + 1 },
       } : current);
       emitNotificationInboxChanged();
-      inbox.reload();
     }
     catch (e: any) { toast.show('err', e.message); }
   };
@@ -485,7 +523,6 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
       } : current);
       emitNotificationInboxChanged();
       toast.show('ok', 'Đã đánh dấu tất cả thông báo là đã đọc');
-      inbox.reload();
     }
     catch (e: any) { toast.show('err', e.message); }
   };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, CalendarClock, CheckCircle2, ClipboardPenLine, Clock3, DoorOpen,
-  GraduationCap, History, MapPin, RefreshCw, Save, Send, ShieldCheck, UserCheck, Users,
+  GraduationCap, History, MapPin, RefreshCw, Save, Search, Send, ShieldCheck, UserCheck, Users,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useActiveChild } from '../../api/activeChild';
@@ -10,7 +10,7 @@ import type {
   ApiUser, ExamAgendaItem, ExamReviewRequest, StudentExamResultView, TeacherGradingTask,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
-import { Async, fmtDate, fmtDateTime, useToast } from './common';
+import { Async, EmptyState, fmtDate, fmtDateTime, PaginatedData, useToast } from './common';
 import { useHashString } from '../../api/urlState';
 
 type Actor = 'teacher' | 'student' | 'parent';
@@ -34,8 +34,19 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
   const query = actor === 'parent' && childId ? `?childId=${encodeURIComponent(childId)}` : '';
   const agenda = useApi<ExamAgendaItem[]>(`/me/exam-agenda${query}`);
   const [filterValue, setFilterValue] = useHashString('task', 'ALL');
+  const [agendaQuery, setAgendaQuery] = useHashString('q', '');
+  const [agendaStatus, setAgendaStatus] = useHashString('status', 'ALL');
   const filter = filterValue as Filter;
-  const rows = useMemo(() => (agenda.data || []).filter((item) => filter === 'ALL' || item.taskType === filter), [agenda.data, filter]);
+  const rows = useMemo(() => {
+    const keyword = agendaQuery.trim().toLocaleLowerCase('vi');
+    return (agenda.data || []).filter((item) => {
+      const matchesTask = filter === 'ALL' || item.taskType === filter;
+      const matchesStatus = agendaStatus === 'ALL' || item.status === agendaStatus;
+      const matchesQuery = !keyword || [item.examPeriodName, item.subjectName, item.classCode, item.roomCode]
+        .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword));
+      return matchesTask && matchesStatus && matchesQuery;
+    });
+  }, [agenda.data, agendaQuery, agendaStatus, filter]);
   const upcoming = (agenda.data || []).filter((item) => ['UPCOMING', 'TODAY', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS'].includes(item.status)).length;
   const todayCount = (agenda.data || []).filter((item) => item.status === 'TODAY').length;
   const revisions = Math.max(0, ...(agenda.data || []).map((item) => item.scheduleRevision));
@@ -49,12 +60,14 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
       <div className="my-exams-filters">{filters.map((value) => <button type="button" key={value} className={filter === value ? 'active' : ''} onClick={() => setFilterValue(value)}>
         {value === 'ALL' ? 'Tất cả' : taskMeta[value].label}
       </button>)}</div>
+      <label className="my-exams-search"><Search size={15} /><input value={agendaQuery} onChange={(event) => setAgendaQuery(event.target.value)} placeholder="Tìm kỳ thi, môn, lớp hoặc phòng…" /></label>
+      <select className="live-select" aria-label="Lọc trạng thái nhiệm vụ khảo thí" value={agendaStatus} onChange={(event) => setAgendaStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       <button type="button" className="live-btn ghost compact" onClick={agenda.reload}><RefreshCw size={15} /> Làm mới</button>
     </div>
     <Async state={agenda} allowEmpty empty="Chưa có lịch thi nào được công bố cho tài khoản này">
-      {() => rows.length === 0 ? <div className="empty-state"><strong>Không có công việc phù hợp bộ lọc</strong></div> : <div className="exam-agenda-list">
-        {rows.map((item) => <ExamAgendaCard key={item.id} item={item} actor={actor} />)}
-      </div>}
+      {() => rows.length === 0 ? <EmptyState label="Không có công việc phù hợp bộ lọc" /> : <PaginatedData items={rows} pageSize={10} itemLabel="nhiệm vụ khảo thí" resetKey={`${filter}:${agendaStatus}:${agendaQuery}`} urlStateKey="exam_agenda">{(pagedRows) => <div className="exam-agenda-list">
+        {pagedRows.map((item) => <ExamAgendaCard key={item.id} item={item} actor={actor} />)}
+      </div>}</PaginatedData>}
     </Async>
   </Section>;
 
@@ -84,9 +97,15 @@ function TeacherGradingWorkspace() {
   const toast = useToast();
   const tasks = useApi<TeacherGradingTask[]>('/me/exam-grading');
   const [taskKey, setTaskKey] = useState('');
+  const [candidateQuery, setCandidateQuery] = useHashString('gradingQ', '');
   const [draft, setDraft] = useState<Record<string, { score: string; note: string }>>({});
   const [busy, setBusy] = useState(false);
   const selected = (tasks.data || []).find((task) => `${task.scheduleId}:${task.classId}` === taskKey);
+  const filteredCandidates = useMemo(() => {
+    const keyword = candidateQuery.trim().toLocaleLowerCase('vi');
+    return (selected?.candidates || []).filter((candidate) => !keyword || [candidate.studentName, candidate.studentCode, candidate.candidateNo, candidate.roomCode]
+      .some((value) => String(value || '').toLocaleLowerCase('vi').includes(keyword)));
+  }, [candidateQuery, selected?.candidates]);
   const scoreEntryTime = selected ? fmtDateTime(selected.scoreEntryOpensAt) : '';
   useEffect(() => {
     if (!taskKey && tasks.data?.length) setTaskKey(`${tasks.data[0].scheduleId}:${tasks.data[0].classId}`);
@@ -116,7 +135,7 @@ function TeacherGradingWorkspace() {
     finally { setBusy(false); }
   };
   return <Section title="Nhập điểm theo phân công chấm thi" subtitle="Chỉ giáo viên đúng chuyên môn được quản trị viên giao chấm lớp này mới có quyền cập nhật điểm" wide>
-    {toast.node}<div className="exam-grading-toolbar"><select className="live-select" value={taskKey} onChange={(event) => setTaskKey(event.target.value)}><option value="">Chọn môn và lớp được phân công</option>{(tasks.data || []).map((task) => <option key={`${task.scheduleId}:${task.classId}`} value={`${task.scheduleId}:${task.classId}`}>{task.examPeriodName} · {task.subjectName} · {task.classCode}</option>)}</select><button className="live-btn" disabled={!selected || selected.scoreEntryLocked || busy || !selected.candidates.length} onClick={save}><Save size={15} /> Lưu bảng điểm</button></div>
+    {toast.node}<div className="exam-grading-toolbar"><select className="live-select" value={taskKey} onChange={(event) => setTaskKey(event.target.value)}><option value="">Chọn môn và lớp được phân công</option>{(tasks.data || []).map((task) => <option key={`${task.scheduleId}:${task.classId}`} value={`${task.scheduleId}:${task.classId}`}>{task.examPeriodName} · {task.subjectName} · {task.classCode}</option>)}</select><label className="my-exams-search"><Search size={15} /><input value={candidateQuery} onChange={(event) => setCandidateQuery(event.target.value)} placeholder="Tìm SBD hoặc học sinh…" /></label><button className="live-btn" disabled={!selected || selected.scoreEntryLocked || busy || !selected.candidates.length} onClick={save}><Save size={15} /> Lưu bảng điểm</button></div>
     <Async state={tasks} allowEmpty empty="Chưa có lớp nào được phân công chấm thi">{() => selected ? <>
       <div className="exam-grading-context"><div><small>Kỳ thi</small><strong>{selected.examPeriodName}</strong></div><div><small>Môn · lớp</small><strong>{selected.subjectName} · {selected.classCode}</strong></div><div><small>Ngày thi</small><strong>{fmtDate(selected.examDate)} · {selected.startTime}</strong></div><StatusPill value={!selected.scoreEntryAvailable ? 'NOT_STARTED' : selected.scoreEntryLocked ? 'LOCKED' : 'OPEN'} /></div>
       <div className={`exam-score-unlock-notice ${!selected.scoreEntryAvailable ? 'waiting' : selected.scoreEntryLocked ? 'locked' : 'open'}`}>
@@ -130,7 +149,7 @@ function TeacherGradingWorkspace() {
               : 'Bạn có thể nhập và lưu điểm cho đúng lớp được phân công chấm thi.'}</span>
         </div>
       </div>
-      <div className="exam-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Phòng</th><th>Chỗ</th><th>Điểm</th><th>Nhận xét</th><th>Trạng thái</th></tr></thead><tbody>{selected.candidates.map((candidate) => <tr key={candidate.candidateId}><td><strong className="candidate-number">{candidate.candidateNo}</strong></td><td><strong>{candidate.studentName}</strong><small className="table-subline">{candidate.studentCode}</small></td><td>{candidate.roomCode || '—'}</td><td>{candidate.seatNo ?? '—'}</td><td><input className="exam-score-input" type="number" min="0" max="10" step="0.1" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.score ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: event.target.value, note: draft[candidate.studentId]?.note || '' } })} /></td><td><input className="live-input exam-note-input" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.note ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: draft[candidate.studentId]?.score || '', note: event.target.value } })} placeholder="Nhận xét (không bắt buộc)" /></td><td><StatusPill value={candidate.resultStatus} /></td></tr>)}</tbody></table></div>
+      {filteredCandidates.length === 0 ? <EmptyState label="Không có thí sinh phù hợp từ khóa" /> : <PaginatedData items={filteredCandidates} pageSize={20} itemLabel="thí sinh" resetKey={`${taskKey}:${candidateQuery}`} urlStateKey="exam_candidates">{(pagedCandidates) => <div className="exam-table-wrap"><table className="live-table"><thead><tr><th>SBD</th><th>Học sinh</th><th>Phòng</th><th>Chỗ</th><th>Điểm</th><th>Nhận xét</th><th>Trạng thái</th></tr></thead><tbody>{pagedCandidates.map((candidate) => <tr key={candidate.candidateId}><td><strong className="candidate-number">{candidate.candidateNo}</strong></td><td><strong>{candidate.studentName}</strong><small className="table-subline">{candidate.studentCode}</small></td><td>{candidate.roomCode || '—'}</td><td>{candidate.seatNo ?? '—'}</td><td><input className="exam-score-input" type="number" min="0" max="10" step="0.1" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.score ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: event.target.value, note: draft[candidate.studentId]?.note || '' } })} /></td><td><input className="live-input exam-note-input" disabled={selected.scoreEntryLocked || !selected.scoreEntryAvailable} value={draft[candidate.studentId]?.note ?? ''} onChange={(event) => setDraft({ ...draft, [candidate.studentId]: { score: draft[candidate.studentId]?.score || '', note: event.target.value } })} placeholder="Nhận xét (không bắt buộc)" /></td><td><StatusPill value={candidate.resultStatus} /></td></tr>)}</tbody></table></div>}</PaginatedData>}
     </> : <div className="empty-state"><strong>Chọn môn và lớp để nhập điểm</strong></div>}</Async>
   </Section>;
 }
@@ -138,8 +157,19 @@ function TeacherGradingWorkspace() {
 function TeacherReviewWorkspace() {
   const toast = useToast();
   const reviews = useApi<ExamReviewRequest[]>('/me/exam-reviews');
+  const [reviewQuery, setReviewQuery] = useHashString('reviewQ', '');
+  const [reviewStatus, setReviewStatus] = useHashString('reviewStatus', 'ALL');
   const [draft, setDraft] = useState<Record<string, { score: string; resolution: string }>>({});
   const [busyId, setBusyId] = useState('');
+  const filteredReviews = useMemo(() => {
+    const keyword = reviewQuery.trim().toLocaleLowerCase('vi');
+    return (reviews.data || []).filter((review) => {
+      const matchesStatus = reviewStatus === 'ALL' || review.status === reviewStatus;
+      const matchesQuery = !keyword || [review.studentName, review.subjectName, review.reason]
+        .some((value) => String(value || '').toLocaleLowerCase('vi').includes(keyword));
+      return matchesStatus && matchesQuery;
+    });
+  }, [reviewQuery, reviewStatus, reviews.data]);
   const resolve = async (review: ExamReviewRequest, status: 'APPROVED' | 'REJECTED') => {
     const values = draft[review.id] || { score: String(review.originalScore ?? ''), resolution: '' };
     if (values.resolution.trim().length < 5) return toast.show('err', 'Kết luận phải có ít nhất 5 ký tự');
@@ -152,10 +182,11 @@ function TeacherReviewWorkspace() {
     finally { setBusyId(''); }
   };
   return <Section title="Yêu cầu phúc khảo được giao" subtitle="Giáo viên chỉ thấy yêu cầu thuộc môn và lớp mình phụ trách" wide>{toast.node}
-    <Async state={reviews} allowEmpty empty="Chưa có yêu cầu phúc khảo nào">{(rows) => <div className="teacher-review-grid">{rows.map((review) => {
+    <div className="teacher-review-toolbar"><label className="my-exams-search"><Search size={15} /><input value={reviewQuery} onChange={(event) => setReviewQuery(event.target.value)} placeholder="Tìm học sinh, môn hoặc lý do…" /></label><select className="live-select" value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chờ xử lý</option><option value="APPROVED">Đã chấp nhận</option><option value="REJECTED">Giữ nguyên điểm</option></select></div>
+    <Async state={reviews} allowEmpty empty="Chưa có yêu cầu phúc khảo nào">{() => filteredReviews.length === 0 ? <EmptyState label="Không có yêu cầu phù hợp bộ lọc" /> : <PaginatedData items={filteredReviews} pageSize={12} itemLabel="yêu cầu phúc khảo" resetKey={`${reviewStatus}:${reviewQuery}`} urlStateKey="exam_reviews">{(pagedReviews) => <div className="teacher-review-grid">{pagedReviews.map((review) => {
       const values = draft[review.id] || { score: String(review.originalScore ?? ''), resolution: '' };
       return <article key={review.id}><div className="teacher-review-head"><div><small>{review.subjectName}</small><strong>{review.studentName}</strong><span>{fmtDateTime(review.requestedAt)}</span></div><StatusPill value={review.status} /></div><div className="teacher-review-score"><span>Điểm hiện tại</span><strong>{review.originalScore ?? '—'}</strong></div><p><b>Lý do học sinh:</b> {review.reason}</p>{review.status === 'PENDING' ? <><div className="teacher-review-form"><label><span>Điểm sau phúc khảo</span><input className="live-input" type="number" min="0" max="10" step="0.1" value={values.score} onChange={(event) => setDraft({ ...draft, [review.id]: { ...values, score: event.target.value } })} /></label><label><span>Kết luận xử lý</span><textarea className="live-input" value={values.resolution} onChange={(event) => setDraft({ ...draft, [review.id]: { ...values, resolution: event.target.value } })} placeholder="Nêu kết quả chấm lại và lý do điều chỉnh" /></label></div><div className="teacher-review-actions"><button className="live-btn" disabled={busyId === review.id} onClick={() => resolve(review, 'APPROVED')}><CheckCircle2 size={15} /> Chấp nhận & cập nhật điểm</button><button className="live-btn ghost" disabled={busyId === review.id} onClick={() => resolve(review, 'REJECTED')}>Giữ nguyên điểm</button></div></> : <div className="review-resolution"><strong>Kết luận</strong><p>{review.resolution}</p>{review.resolvedScore != null && <span>Điểm sau xử lý: <b>{review.resolvedScore}</b></span>}</div>}</article>;
-    })}</div>}</Async>
+    })}</div>}</PaginatedData>}</Async>
   </Section>;
 }
 

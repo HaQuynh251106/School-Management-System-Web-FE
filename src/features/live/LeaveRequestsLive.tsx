@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   CalendarCheck2,
@@ -7,6 +7,7 @@ import {
   Clock3,
   MessageSquareText,
   Plus,
+  Search,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { useApi } from '../../api/useApi';
 import type { LeaveRequest } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, fmtDateTime, useToast } from './common';
+import { useHashString } from '../../api/urlState';
 
 type DecisionKind = 'positive' | 'reject';
 type DecisionDrafts = Record<string, Partial<Record<DecisionKind, string>>>;
@@ -27,6 +29,16 @@ export function LeaveRequestsLive({ actor }: { actor: 'student' | 'parent' | 'te
   const [notes, setNotes] = useState<DecisionDrafts>({});
   const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({ startDate: today, endDate: today, reason: '' });
+  const [query, setQuery] = useHashString('q', '');
+  const [status, setStatus] = useHashString('status', actor === 'teacher' ? 'PENDING_HOMEROOM' : 'ALL');
+  const filteredRequests = useMemo(() => {
+    const keyword = query.trim().toLocaleLowerCase('vi');
+    return (requests.data || []).filter((request) => {
+      const matchesQuery = !keyword || [request.studentName, request.classCode, request.reason, request.parentName]
+        .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword));
+      return matchesQuery && (status === 'ALL' || request.status === status);
+    });
+  }, [query, requests.data, status]);
 
   const create = async () => {
     if (!form.reason.trim()) return toast.show('err', 'Vui lòng nhập lý do xin nghỉ');
@@ -160,7 +172,8 @@ export function LeaveRequestsLive({ actor }: { actor: 'student' | 'parent' | 'te
         </div>
       )}
 
-      <Async paginate state={requests} empty="Chưa có đơn xin nghỉ" itemLabel="đơn xin nghỉ">
+      <div className="leave-request-toolbar"><label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm học sinh, lớp hoặc lý do…" /></label><select className="live-select" aria-label="Lọc trạng thái đơn xin nghỉ" value={status} onChange={(event) => setStatus(event.target.value)}><option value="ALL">Tất cả trạng thái</option><option value="PENDING_PARENT">Chờ phụ huynh</option><option value="PENDING_HOMEROOM">Chờ GVCN</option><option value="APPROVED">Đã duyệt</option><option value="REJECTED">Từ chối</option><option value="CANCELLED">Đã hủy</option></select>{(query || status !== 'ALL') && <button className="live-btn subtle" type="button" onClick={() => { setQuery(''); setStatus('ALL'); }}><X size={14} /> Xóa bộ lọc</button>}</div>
+      <Async paginate resetKey={`${query}:${status}`} urlStateKey="leave_requests" state={{ ...requests, data: filteredRequests }} empty="Không có đơn phù hợp" itemLabel="đơn xin nghỉ">
         {(items) => (
           <div className="leave-request-list">
             {items.map((item) => {

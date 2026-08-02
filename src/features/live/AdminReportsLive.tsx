@@ -56,6 +56,7 @@ const GRADE_TONES = ['danger', 'muted', 'primary', 'success'];
 export function AdminReportsLive() {
   const [semesterId, setSemesterId] = useHashString('semester', '');
   const [yearId, setYearId] = useHashString('year', '');
+  const [gradeLevel, setGradeLevel] = useHashString('grade', '');
   const [classId, setClassId] = useHashString('class', '');
   const [subjectId, setSubjectId] = useHashString('subject', '');
   const [feePeriodId, setFeePeriodId] = useHashString('fee_period', '');
@@ -65,10 +66,12 @@ export function AdminReportsLive() {
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const overview = useApi<OverviewReport>('/reports/overview');
   const gradeQuery = new URLSearchParams();
+  if (yearId) gradeQuery.set('academicYearId', yearId);
   if (semesterId) gradeQuery.set('semesterId', semesterId);
   if (classId) gradeQuery.set('classId', classId);
   if (subjectId) gradeQuery.set('subjectId', subjectId);
   const attendanceQuery = new URLSearchParams();
+  if (yearId) attendanceQuery.set('academicYearId', yearId);
   if (classId) attendanceQuery.set('classId', classId);
   if (startDate) attendanceQuery.set('startDate', startDate);
   if (endDate) attendanceQuery.set('endDate', endDate);
@@ -79,8 +82,8 @@ export function AdminReportsLive() {
   const attendance = useApi<AttendanceReport>(`/reports/attendance-summary${attendanceQuery.size ? `?${attendanceQuery}` : ''}`);
   const revenue = useApi<RevenueReport>(`/reports/revenue${revenueQuery.size ? `?${revenueQuery}` : ''}`);
   const years = useApi<AcademicYear[]>('/academicYears');
-  const semesters = useApi<Semester[]>('/semesters');
-  const classes = useApi<SchoolClass[]>('/classes');
+  const semesters = useApi<Semester[]>(yearId ? `/semesters?academicYearId=${encodeURIComponent(yearId)}` : null);
+  const classes = useApi<SchoolClass[]>(yearId ? `/classes?academicYearId=${encodeURIComponent(yearId)}` : null);
   const subjects = useApi<Subject[]>('/subjects');
   const feePeriods = useApi<FeePeriod[]>('/fee-periods');
   const promotion = useApi<Record<string, number>>(yearId ? `/reports/promotion?academicYearId=${encodeURIComponent(yearId)}` : null);
@@ -91,6 +94,27 @@ export function AdminReportsLive() {
     const active = years.data.find((year) => year.status === 'ACTIVE') || years.data[0];
     setYearId(active.id);
   }, [yearId, years.data, setYearId]);
+
+  const yearOptions = useMemo(() => (years.data ?? []).slice().sort((left, right) => {
+    const order = (status: string) => status === 'ACTIVE' ? 0 : status === 'PLANNED' ? 1 : 2;
+    return order(left.status) - order(right.status)
+      || String(right.startDate || right.code).localeCompare(String(left.startDate || left.code));
+  }), [years.data]);
+  const gradeOptions = useMemo(() => [...new Set((classes.data ?? [])
+    .map((item) => item.gradeLevel).filter(Boolean) as string[])].sort(), [classes.data]);
+  const classOptions = useMemo(() => (classes.data ?? [])
+    .filter((item) => !gradeLevel || item.gradeLevel === gradeLevel)
+    .slice().sort((left, right) => left.code.localeCompare(right.code, 'vi')), [classes.data, gradeLevel]);
+  const semesterOptions = useMemo(() => (semesters.data ?? []).slice()
+    .sort((left, right) => left.sequence - right.sequence), [semesters.data]);
+
+  useEffect(() => {
+    if (gradeLevel && !gradeOptions.includes(gradeLevel)) setGradeLevel('');
+    if (classId && !classOptions.some((item) => item.id === classId)) setClassId('');
+  }, [classId, classOptions, gradeLevel, gradeOptions, setClassId, setGradeLevel]);
+  useEffect(() => {
+    if (semesterId && !semesterOptions.some((item) => item.id === semesterId)) setSemesterId('');
+  }, [semesterId, semesterOptions, setSemesterId]);
 
   const selectedSemester = semesters.data?.find((semester) => semester.id === semesterId);
   const gradeTotal = (dist.data || []).reduce((sum, item) => sum + item.count, 0);
@@ -125,6 +149,7 @@ export function AdminReportsLive() {
   const exportReport = async (type: string) => {
     try {
       const query = new URLSearchParams({ type });
+      if (yearId) query.set('academicYearId', yearId);
       if (classId) query.set('classId', classId);
       if (type === 'grades' && semesterId) query.set('semesterId', semesterId);
       if (type === 'grades' && subjectId) query.set('subjectId', subjectId);
@@ -176,8 +201,10 @@ export function AdminReportsLive() {
 
       <section className="report-filter-bar">
         <div><CalendarRange size={18} /><p><strong>Phạm vi phân tích</strong><small>Các biểu đồ và tệp xuất dùng đúng bộ lọc đang chọn</small></p></div>
-        <label><span>Lớp</span><select value={classId} onChange={(event) => setClassId(event.target.value)}><option value="">Toàn trường</option>{(classes.data || []).map((item) => <option key={item.id} value={item.id}>{item.code}</option>)}</select></label>
-        <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}><option value="">Tất cả học kỳ</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name || semester.code}</option>)}</select></label>
+        <label><span>Năm học</span><select value={yearId} onChange={(event) => { setYearId(event.target.value); setGradeLevel(''); setClassId(''); setSemesterId(''); }}><option value="">— Chọn năm học —</option>{yearOptions.map((year) => <option key={year.id} value={year.id}>{year.code} · {year.status === 'ACTIVE' ? 'Đang hoạt động' : year.status === 'PLANNED' ? 'Sắp diễn ra' : 'Lịch sử đã đóng'}</option>)}</select></label>
+        <label><span>Khối</span><select value={gradeLevel} onChange={(event) => { setGradeLevel(event.target.value); setClassId(''); }}><option value="">Tất cả khối</option>{gradeOptions.map((grade) => <option key={grade} value={grade}>Khối {grade.replace(/^K/i, '')}</option>)}</select></label>
+        <label><span>Lớp</span><select value={classId} onChange={(event) => setClassId(event.target.value)}><option value="">Toàn trường</option>{classOptions.map((item) => <option key={item.id} value={item.id}>{item.code}</option>)}</select></label>
+        <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}><option value="">Tất cả học kỳ</option>{semesterOptions.map((semester) => <option key={semester.id} value={semester.id}>{semester.name || semester.code}{semester.status === 'CLOSED' ? ' · Đã đóng' : ''}</option>)}</select></label>
         <label><span>Môn học</span><select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">Tất cả môn</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label><span>Chuyên cần từ ngày</span><input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></label>
         <label><span>Đến ngày</span><input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} /></label>

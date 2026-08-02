@@ -56,6 +56,28 @@ describe('semantic website routes', () => {
     });
   });
 
+  it('publishes the teacher lesson diary and schedule-change workspace on a semantic URL', () => {
+    expect(pagePath('teacher', 'B15')).toBe('giao-vien/so-dau-bai-dieu-chinh-lich');
+    expect(resolvePageRoute('giao-vien/so-dau-bai-dieu-chinh-lich')).toEqual({
+      roleId: 'teacher',
+      pageId: 'B15',
+      legacy: false,
+    });
+  });
+
+  it('publishes student-support history on a filterable teacher URL', () => {
+    expect(pageHash('teacher', 'B16', new URLSearchParams({ class: '10a1', student: 'hs-1' })))
+      .toBe('#/giao-vien/ho-tro-hoc-sinh?class=10a1&student=hs-1');
+    expect(resolvePageRoute('giao-vien/ho-tro-hoc-sinh')).toEqual({
+      roleId: 'teacher', pageId: 'B16', legacy: false,
+    });
+  });
+
+  it('does not expose the alumni workspace to the admin role', () => {
+    expect(PAGE_PATHS.admin).not.toHaveProperty('A1A');
+    expect(resolvePageRoute('quan-tri/cuu-hoc-sinh')).toBeNull();
+  });
+
   it('preserves filters and pagination in a semantic URL', () => {
     expect(pageHash('accountant', 'F1', new URLSearchParams({
       page: '2',

@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, FileDown, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, Upload, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest } from '../../api/types';
+import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest, GradebookCompletionView } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData } from './common';
 import { Modal } from './Modal';
-import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
+import { formatScore, gradeColumns, gradeKey, parseDelimitedGradeImport, scoreTone, weightedAverage, type GradeImportPreview } from './gradebook';
 import { NotificationsLive } from './SharedLive';
 import { useHashString } from '../../api/urlState';
-import { TeacherLoadRegistrationLive } from './WorkloadPlanningLive';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -21,6 +20,9 @@ export function TeacherClassesLive() {
   const teachingAssignments = useApi<TeachingAssignment[]>('/me/teaching-assignments');
   const classesApi = useApi<SchoolClass[]>('/classes');
   const [classId, setClassId] = useHashString('class', '');
+  const [classQuery, setClassQuery] = useHashString('classQ', '');
+  const [roleFilter, setRoleFilter] = useHashString('role', 'ALL');
+  const [studentQuery, setStudentQuery] = useHashString('studentQ', '');
   const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const studentProfile = useApi<ApiUser>(profileTarget
@@ -55,10 +57,25 @@ export function TeacherClassesLive() {
   const selectedClass = classId ? classMap[classId] : undefined;
   const selectedIsHomeroom = selectedClass?.homeroomTeacherId === user?.id;
   const profileClass = profileTarget ? classMap[profileTarget.classId] : undefined;
+  const filteredGroups = useMemo(() => {
+    const keyword = classQuery.trim().toLocaleLowerCase('vi');
+    return groups.filter((group) => {
+      const schoolClass = classMap[group.classId];
+      const homeroom = schoolClass?.homeroomTeacherId === user?.id;
+      const matchesRole = roleFilter === 'ALL' || (roleFilter === 'HOMEROOM' ? homeroom : !homeroom);
+      const matchesQuery = !keyword || [schoolClass?.code, schoolClass?.name, ...group.subjects]
+        .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword));
+      return matchesRole && matchesQuery;
+    });
+  }, [classMap, classQuery, groups, roleFilter, user?.id]);
+  const filteredStudents = useMemo(() => {
+    const keyword = studentQuery.trim().toLocaleLowerCase('vi');
+    return (students.data || []).filter((student) => !keyword || [student.fullName, student.studentCode, student.username]
+      .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword)));
+  }, [studentQuery, students.data]);
 
   return (
     <>
-    <TeacherLoadRegistrationLive />
     <Section title="Lớp giảng dạy và chủ nhiệm" subtitle="Theo dõi lớp phụ trách, danh sách học sinh và hồ sơ lớp chủ nhiệm" wide>
       {homeroomClasses.length > 0 && (
         <div className="homeroom-overview">
@@ -83,7 +100,8 @@ export function TeacherClassesLive() {
           </div>
         </div>
       )}
-      <Async paginate state={{ data: groups, loading: teachingAssignments.loading || classesApi.loading, error: teachingAssignments.error || classesApi.error }} empty="Chưa được phân công lớp nào" itemLabel="lớp phụ trách">
+      <div className="teacher-class-toolbar"><label><Search size={16} /><input value={classQuery} onChange={(event) => setClassQuery(event.target.value)} placeholder="Tìm lớp hoặc môn giảng dạy…" /></label><select className="live-select" value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option value="ALL">Tất cả vai trò</option><option value="HOMEROOM">Lớp chủ nhiệm</option><option value="SUBJECT">Lớp bộ môn</option></select>{(classQuery || roleFilter !== 'ALL') && <button type="button" className="live-btn subtle" onClick={() => { setClassQuery(''); setRoleFilter('ALL'); }}><RotateCcw size={14} /> Xóa bộ lọc</button>}</div>
+      <Async paginate resetKey={`${classQuery}:${roleFilter}`} urlStateKey="teacher_classes" state={{ data: filteredGroups, loading: teachingAssignments.loading || classesApi.loading, error: teachingAssignments.error || classesApi.error }} empty="Không có lớp phù hợp" itemLabel="lớp phụ trách">
         {(assignedGroups) => (
           <div className="teacher-class-table-wrap">
             <table className="live-table">
@@ -110,11 +128,12 @@ export function TeacherClassesLive() {
         <div className="teacher-student-list">
           <div className="teacher-student-list-head">
             <div><span>Danh sách học sinh</span><strong>Lớp {selectedClass?.code || classId}</strong></div>
+            <label className="teacher-student-search"><Search size={15} /><input value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} placeholder="Tìm tên hoặc mã học sinh…" /></label>
             {selectedIsHomeroom
               ? <p><ShieldCheck size={16} /> Lớp chủ nhiệm · Được xem hồ sơ chi tiết</p>
               : <p className="limited"><LockKeyhole size={16} /> Lớp bộ môn · Chỉ xem danh sách cơ bản</p>}
           </div>
-          <Async paginate state={students} empty="Lớp chưa có học sinh" itemLabel="học sinh">
+          <Async paginate resetKey={`${classId}:${studentQuery}`} urlStateKey="teacher_students" state={{ ...students, data: filteredStudents }} empty="Không có học sinh phù hợp" itemLabel="học sinh">
             {(l) => (
               <div className="teacher-class-table-wrap">
                 <table className="live-table"><thead><tr><th>STT</th><th>Mã học sinh</th><th>Họ và tên</th><th>Lớp</th><th></th></tr></thead>
@@ -616,6 +635,7 @@ export function TeacherGradesLive() {
   const [classId, setClassId] = useHashString('class', '');
   const [semesterId, setSemesterId] = useHashString('semester', '');
   const [selectedSubjectId, setSelectedSubjectId] = useHashString('subject', '');
+  const [gradeQuery, setGradeQuery] = useHashString('q', '');
   const [reason, setReason] = useState('');
 
   useEffect(() => {
@@ -642,7 +662,12 @@ export function TeacherGradesLive() {
 
   const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
   const subjectId = selectedSubject?.subjectId || '';
-  const canEdit = Boolean(selectedSubject?.editable);
+  const subjectEditable = Boolean(selectedSubject?.editable);
+  const gradebookCompletion = useApi<GradebookCompletionView>(classId && semesterId && subjectId && subjectEditable
+    ? `/gradebook-completions?semesterId=${encodeURIComponent(semesterId)}&classId=${encodeURIComponent(classId)}&subjectId=${encodeURIComponent(subjectId)}`
+    : null);
+  const gradebookLocked = Boolean(gradebookCompletion.data?.completed);
+  const canEdit = subjectEditable && !gradebookLocked;
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const existing = useApi<Grade[]>(
     classId && subjectId && semesterId
@@ -650,12 +675,56 @@ export function TeacherGradesLive() {
       : null,
   );
   const [scores, setScores] = useState<Record<string, string>>({});
+  const [baselineScores, setBaselineScores] = useState<Record<string, string>>({});
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState('');
+  const [lastSavedAt, setLastSavedAt] = useState('');
+  const [importPreview, setImportPreview] = useState<GradeImportPreview | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const scopeKey = user?.id && classId && semesterId && subjectId
+    ? `gradebook-draft:${user.id}:${classId}:${semesterId}:${subjectId}`
+    : '';
 
   useEffect(() => {
     const m: Record<string, string> = {};
     (existing.data || []).forEach((grade) => (m[gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1)] = String(grade.score)));
+    setBaselineScores(m);
+    setDraftRecovered(false);
+    if (scopeKey && canEdit) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(scopeKey) || 'null') as { scores?: Record<string, string>; savedAt?: string } | null;
+        if (saved?.scores && JSON.stringify(saved.scores) !== JSON.stringify(m)) {
+          setScores(saved.scores);
+          setDraftRecovered(true);
+          setDraftSavedAt(saved.savedAt || '');
+          return;
+        }
+      } catch { localStorage.removeItem(scopeKey); }
+    }
     setScores(m);
-  }, [existing.data]);
+  }, [canEdit, existing.data, scopeKey]);
+
+  const dirty = useMemo(() => JSON.stringify(scores) !== JSON.stringify(baselineScores), [baselineScores, scores]);
+
+  useEffect(() => {
+    if (!scopeKey || !canEdit || !dirty) return;
+    const timer = window.setTimeout(() => {
+      const savedAt = new Date().toISOString();
+      localStorage.setItem(scopeKey, JSON.stringify({ scores, savedAt }));
+      setDraftSavedAt(savedAt);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [canEdit, dirty, scopeKey, scores]);
+
+  useEffect(() => {
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeLeave);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeave);
+  }, [dirty]);
 
   const ready = Boolean(classId && semesterId && subjectId && cats.data?.length);
   const classMap = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item.code])), [classes.data]);
@@ -677,6 +746,11 @@ export function TeacherGradesLive() {
     });
     return { student, values, average: weightedAverage(values, cats.data || []) };
   }), [students.data, cats.data, columns, scores]);
+  const filteredGradeRows = useMemo(() => {
+    const keyword = gradeQuery.trim().toLocaleLowerCase('vi');
+    return gradeRows.filter((row) => !keyword || [row.student.fullName, row.student.studentCode, row.student.username]
+      .some((value) => (value || '').toLocaleLowerCase('vi').includes(keyword)));
+  }, [gradeQuery, gradeRows]);
 
   const averages = gradeRows.map((row) => row.average).filter((score): score is number => score != null);
   const classAverage = averages.length
@@ -687,9 +761,58 @@ export function TeacherGradesLive() {
   const completedCells = gradeRows.reduce((total, row) => total + row.values.length, 0);
   const completion = totalCells ? Math.round((completedCells / totalCells) * 100) : 0;
 
+  const changeScopeSafely = (change: () => void) => {
+    if (dirty && !window.confirm('Bạn còn điểm chưa lưu. Bản nháp vẫn được giữ, nhưng bạn có muốn chuyển phạm vi đang xem không?')) return;
+    change();
+  };
+
+  const discardDraft = () => {
+    if (!dirty) return;
+    if (!window.confirm('Hoàn tác toàn bộ thay đổi chưa lưu và trở về dữ liệu gần nhất trên hệ thống?')) return;
+    setScores(baselineScores);
+    setDraftRecovered(false);
+    setDraftSavedAt('');
+    if (scopeKey) localStorage.removeItem(scopeKey);
+    toast.show('ok', 'Đã hoàn tác các thay đổi chưa lưu.');
+  };
+
+  const downloadImportTemplate = () => {
+    if (!students.data?.length || !columns.length) return toast.show('err', 'Chưa có dữ liệu học sinh hoặc cấu hình đầu điểm.');
+    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const header = ['Mã học sinh', 'Họ tên', ...columns.map((column) => column.label)];
+    const rows = students.data.map((student) => [student.studentCode || student.username, student.fullName, ...columns.map(() => '')]);
+    const csv = `\uFEFF${[header, ...rows].map((row) => row.map((cell) => escapeCsv(String(cell))).join(';')).join('\r\n')}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `mau-nhap-diem-${classMap.get(classId) || classId}-${subjectName || subjectId}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const previewImportFile = async (file?: File) => {
+    if (!file) return;
+    try {
+      setImportPreview(parseDelimitedGradeImport(await file.text(), students.data || [], columns));
+    } catch {
+      toast.show('err', 'Không thể đọc tệp. Vui lòng sử dụng mẫu CSV/TSV do hệ thống cung cấp.');
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const applyImportPreview = () => {
+    if (!importPreview?.validScores) return;
+    setScores((current) => ({ ...current, ...importPreview.changes }));
+    toast.show('ok', `Đã đưa ${importPreview.validScores} điểm hợp lệ vào bản nháp. Hãy kiểm tra bảng và chọn “Lưu sổ điểm”.`);
+    setImportPreview(null);
+  };
+
   const submit = async () => {
     if (!ready) return toast.show('err', 'Chọn đủ Lớp / Học kỳ để hệ thống xác định môn mặc định');
-    if (!canEdit) return toast.show('err', 'Bạn chỉ được xem điểm môn ngoài chuyên ngành, không thể thay đổi dữ liệu');
+    if (!canEdit) return toast.show('err', gradebookLocked
+      ? 'Sổ điểm đã hoàn tất và đang được khóa. Hãy liên hệ Giáo vụ nếu cần điều chỉnh.'
+      : 'Bạn chỉ được xem điểm môn ngoài chuyên ngành, không thể thay đổi dữ liệu');
     const invalid = Object.values(scores).some((value) => value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 10));
     if (invalid) return toast.show('err', 'Điểm phải nằm trong khoảng 0 đến 10');
 
@@ -716,23 +839,54 @@ export function TeacherGradesLive() {
         entries: batch.entries,
       })));
       toast.show('ok', `Đã lưu ${entryCount} đầu điểm. Điểm mới hoặc điểm thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
-      existing.reload();
+      if (scopeKey) localStorage.removeItem(scopeKey);
+      setDraftRecovered(false);
+      setDraftSavedAt('');
+      setLastSavedAt(new Date().toISOString());
+      setReason('');
+      await Promise.all([existing.reload(), gradebookCompletion.reload()]);
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
+  const completeGradebook = async () => {
+    if (!subjectEditable || !ready) return;
+    if (completion < 100) return toast.show('err', 'Cần nhập đủ tất cả đầu điểm của mọi học sinh trước khi hoàn tất sổ điểm');
+    if (!window.confirm(`Xác nhận hoàn tất sổ điểm ${subjectName} của lớp ${classMap.get(classId) || classId}? Sau bước này sổ điểm sẽ được khóa.`)) return;
+    try {
+      await api.put(`/gradebook-completions?semesterId=${encodeURIComponent(semesterId)}&classId=${encodeURIComponent(classId)}&subjectId=${encodeURIComponent(subjectId)}`, { note: 'Giáo viên bộ môn xác nhận đã hoàn tất điểm' });
+      toast.show('ok', 'Đã hoàn tất và khóa sổ điểm môn. Giáo vụ sẽ sử dụng dữ liệu này để duyệt học bạ.');
+      await gradebookCompletion.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
-    <Section title="Sổ điểm học kỳ" subtitle="Nhập điểm theo từng đầu điểm và tự động tính tổng kết theo hệ số" wide
-      action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready || !canEdit}>{canEdit ? <Send size={15} /> : <LockKeyhole size={15} />} {canEdit ? 'Lưu sổ điểm' : 'Chỉ xem'}</button>}>
+    <Section title="Sổ điểm học kỳ" subtitle="Nhập đủ điểm, lưu và xác nhận hoàn tất để chuyển dữ liệu sang quy trình học bạ" wide
+      action={<div className="gradebook-header-actions"><button className="live-btn gradebook-save" onClick={submit} disabled={!ready || !canEdit}>{canEdit ? <Send size={15} /> : <LockKeyhole size={15} />} {gradebookLocked ? 'Sổ điểm đã khóa' : canEdit ? 'Lưu sổ điểm' : 'Chỉ xem'}</button>{subjectEditable && <button className="live-btn primary" onClick={completeGradebook} disabled={!ready || gradebookLocked || completion < 100}><CheckCircle2 size={15} /> {gradebookLocked ? 'Đã hoàn tất' : 'Hoàn tất môn'}</button>}</div>}>
       {toast.node}
+      {canEdit && ready && <div className={`gradebook-safetybar ${dirty ? 'dirty' : 'saved'}`}>
+        <div className="gradebook-save-state">
+          {dirty ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+          <div><strong>{dirty ? 'Có thay đổi chưa lưu' : 'Dữ liệu đã đồng bộ'}</strong><span>{dirty
+            ? draftSavedAt ? `Bản nháp tự động lưu lúc ${fmtDateTime(draftSavedAt)}` : 'Hệ thống đang lưu bản nháp trên thiết bị này'
+            : lastSavedAt ? `Lưu thành công lúc ${fmtDateTime(lastSavedAt)}` : 'Bạn có thể nhập trực tiếp hoặc import từ tệp mẫu'}</span></div>
+          {draftRecovered && <Badge tone="orange">Đã khôi phục bản nháp</Badge>}
+        </div>
+        <div className="gradebook-safety-actions">
+          <input ref={fileInputRef} hidden type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values" onChange={(event) => void previewImportFile(event.target.files?.[0])} />
+          <button className="live-btn" type="button" onClick={downloadImportTemplate}><FileDown size={15} /> Tải mẫu CSV</button>
+          <button className="live-btn" type="button" onClick={() => fileInputRef.current?.click()}><Upload size={15} /> Import & xem trước</button>
+          <button className="live-btn" type="button" disabled={!dirty} onClick={discardDraft}><RotateCcw size={15} /> Hoàn tác chưa lưu</button>
+        </div>
+      </div>}
       <div className="gradebook-filterbar">
-        <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
+        <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => changeScopeSafely(() => setClassId(e.target.value))}>
           <option value="">— Chọn lớp —</option>{classOpts.map((id) => <option key={id} value={id}>{classMap.get(id) || id}</option>)}
         </select></label>
-        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
+        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => changeScopeSafely(() => setSemesterId(e.target.value))}>
           <option value="">— Chọn học kỳ —</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
         </select></label>
         {contextMatches && gradebookContext.data?.homeroomTeacher ? (
-          <label><span>Môn học của lớp chủ nhiệm</span><select className="live-select" value={subjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
+          <label><span>Môn học của lớp chủ nhiệm</span><select className="live-select" value={subjectId} onChange={(event) => changeScopeSafely(() => setSelectedSubjectId(event.target.value))}>
             {contextSubjects.map((subject) => <option key={subject.subjectId} value={subject.subjectId}>{subject.subjectName}{subject.editable ? ' · Có thể chỉnh sửa' : ' · Chỉ xem'}</option>)}
           </select></label>
         ) : (
@@ -741,24 +895,31 @@ export function TeacherGradesLive() {
         {canEdit ? (
           <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
         ) : (
-          <div className="gradebook-readonly-card"><Eye size={18} /><div><strong>Chế độ chỉ xem</strong><small>Điểm do giáo viên bộ môn {selectedSubject?.teacherName || 'phụ trách'} quản lý</small></div></div>
+          <div className="gradebook-readonly-card">{gradebookLocked ? <LockKeyhole size={18} /> : <Eye size={18} />}<div><strong>{gradebookLocked ? 'Sổ điểm đã khóa' : 'Chế độ chỉ xem'}</strong><small>{gradebookLocked ? 'Giáo vụ cần mở lại nếu có điều chỉnh' : `Điểm do giáo viên bộ môn ${selectedSubject?.teacherName || 'phụ trách'} quản lý`}</small></div></div>
         )}
       </div>
 
       {ready && gradebookContext.data?.homeroomTeacher && (
         <div className={`gradebook-access-notice ${canEdit ? 'editable' : 'readonly'}`}>
           {canEdit ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}
-          <span>{canEdit
+          <span>{gradebookLocked
+            ? `Sổ điểm môn ${subjectName} đã được xác nhận hoàn tất và khóa để Giáo vụ duyệt học bạ.`
+            : canEdit
             ? `Bạn là giáo viên chủ nhiệm và có thể cập nhật môn ${subjectName} thuộc chuyên ngành của mình.`
             : `Bạn là giáo viên chủ nhiệm nên được xem môn ${subjectName}, nhưng không thể thay đổi điểm ngoài chuyên ngành.`}</span>
         </div>
       )}
 
+      {ready && subjectEditable && <div className={`gradebook-finalization ${gradebookLocked ? 'locked' : completion === 100 ? 'ready' : 'pending'}`}>
+        {gradebookLocked ? <LockKeyhole size={19} /> : completion === 100 ? <CheckCircle2 size={19} /> : <Clock3 size={19} />}
+        <div><strong>{gradebookLocked ? 'Sổ điểm đã được xác nhận hoàn tất' : completion === 100 ? 'Sổ điểm đã đủ dữ liệu để hoàn tất' : `Còn ${totalCells - completedCells} đầu điểm cần nhập`}</strong><span>{gradebookLocked ? 'Điểm đang được khóa để Giáo vụ kiểm tra học bạ. Mọi điều chỉnh phải được Giáo vụ mở lại kèm lý do.' : 'Sau khi kiểm tra chính xác, chọn “Hoàn tất môn” để chuyển sang quy trình học bạ.'}</span></div>
+      </div>}
+
       {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
-        <Async paginate state={{ data: gradeRows, loading: students.loading, error: students.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
+        <Async paginate resetKey={`${classId}:${semesterId}:${subjectId}:${gradeQuery}`} urlStateKey="grade_students" state={{ data: filteredGradeRows, loading: students.loading, error: students.error }} empty="Không có học sinh phù hợp" itemLabel="học sinh">
           {(pagedGradeRows) => (
             <div className="gradebook-shell">
-              <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
+              <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><label className="gradebook-student-search"><Search size={15} /><input value={gradeQuery} onChange={(event) => setGradeQuery(event.target.value)} placeholder="Tìm học sinh…" /></label><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
 
               <div className="gradebook-summary">
                 <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình lớp</small><strong>{formatScore(classAverage)}</strong><p>{averages.length}/{gradeRows.length} học sinh có điểm</p></div></article>
@@ -793,6 +954,24 @@ export function TeacherGradesLive() {
           )}
         </Async>
       )}
+      {importPreview && <Modal title="Xem trước dữ liệu điểm import" onClose={() => setImportPreview(null)} size="wide" footer={<>
+        <button className="live-btn" type="button" onClick={() => setImportPreview(null)}>Hủy</button>
+        <button className="live-btn primary" type="button" disabled={!importPreview.validScores} onClick={applyImportPreview}><CheckCircle2 size={15} /> Áp dụng vào bản nháp</button>
+      </>}>
+        <div className="grade-import-preview">
+          <div className="grade-import-stats">
+            <article><small>Dòng dữ liệu</small><strong>{importPreview.rows}</strong></article>
+            <article><small>Học sinh khớp</small><strong>{importPreview.matchedStudents}</strong></article>
+            <article className="valid"><small>Điểm hợp lệ</small><strong>{importPreview.validScores}</strong></article>
+            <article className={importPreview.errors.length ? 'invalid' : 'valid'}><small>Cần xử lý</small><strong>{importPreview.errors.length}</strong></article>
+          </div>
+          <div className={`grade-import-message ${importPreview.errors.length ? 'warning' : 'success'}`}>
+            {importPreview.errors.length ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+            <div><strong>{importPreview.errors.length ? 'Một số dòng chưa thể nhập' : 'Tệp hợp lệ và sẵn sàng'}</strong><span>Chỉ các điểm hợp lệ được đưa vào bản nháp; hệ thống chưa gửi thông báo cho đến khi bạn lưu sổ điểm.</span></div>
+          </div>
+          {importPreview.errors.length > 0 && <div className="grade-import-errors"><strong>Chi tiết cần kiểm tra</strong><ul>{importPreview.errors.slice(0, 20).map((error, index) => <li key={`${index}-${error}`}>{error}</li>)}</ul>{importPreview.errors.length > 20 && <small>Còn {importPreview.errors.length - 20} lỗi khác.</small>}</div>}
+        </div>
+      </Modal>}
     </Section>
   );
 }

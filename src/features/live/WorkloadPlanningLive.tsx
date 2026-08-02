@@ -7,7 +7,7 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { updateHashQuery, useHashString } from '../../api/urlState';
 import type {
-  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumRequirement, Semester, Subject, TeacherLoadRegistration, TeachingAssignment, TimetableVersion,
+  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumRequirement, Semester, Subject, TeacherLoadRegistration, TeacherWorkspaceContext, TeachingAssignment, TimetableVersion,
 } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
@@ -22,15 +22,22 @@ function useSelectedSemester() {
   const semesters = useApi<Semester[]>('/semesters');
   const years = useApi<AcademicYear[]>('/academicYears');
   const [semesterId, setSemesterId] = useHashString('hoc_ky', '');
+  const operationalYearIds = useMemo(() => new Set((years.data || [])
+    .filter((year) => year.status === 'ACTIVE' || year.status === 'PLANNED').map((year) => year.id)), [years.data]);
+  const semesterOptions = useMemo(() => (semesters.data || []).filter((item) => item.status !== 'CLOSED'
+    && operationalYearIds.has(item.academicYearId)), [operationalYearIds, semesters.data]);
   useEffect(() => {
-    if (!semesters.data?.length) return;
-    const currentSemesterExists = semesters.data.some((item) => item.id === semesterId);
+    if (!semesterOptions.length) {
+      if (semesterId) setSemesterId('');
+      return;
+    }
+    const currentSemesterExists = semesterOptions.some((item) => item.id === semesterId);
     if (currentSemesterExists) return;
-    const preferred = semesters.data.find((item) => item.status === 'ACTIVE')
-      ?? semesters.data.find((item) => item.status === 'PLANNED')
-      ?? semesters.data[0];
+    const preferred = semesterOptions.find((item) => item.status === 'ACTIVE')
+      ?? semesterOptions.find((item) => item.status === 'PLANNED')
+      ?? semesterOptions[0];
     setSemesterId(preferred.id);
-  }, [semesterId, semesters.data, setSemesterId]);
+  }, [semesterId, semesterOptions, setSemesterId]);
   const semesterLabel = (semester: Semester) => {
     const year = years.data?.find((item) => item.id === semester.academicYearId);
     const status = semester.status === 'ACTIVE' ? 'Đang hoạt động'
@@ -38,11 +45,12 @@ function useSelectedSemester() {
         : semester.status === 'COMPLETED' ? 'Đã kết thúc' : semester.status;
     return `${year?.code || 'Chưa rõ năm học'} · ${semester.name} · ${status}`;
   };
-  return { semesters, semesterId, setSemesterId, semesterLabel };
+  return { semesters, semesterOptions, semesterId, setSemesterId, semesterLabel };
 }
 
 export function TeacherLoadRegistrationLive() {
-  const { semesters, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
+  const { semesterOptions, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
+  const workspace = useApi<TeacherWorkspaceContext>('/me/teacher-workspace');
   const registration = useApi<TeacherLoadRegistration>(
     semesterId ? `/me/teacher-load-registration?semesterId=${encodeURIComponent(semesterId)}` : null,
   );
@@ -52,7 +60,16 @@ export function TeacherLoadRegistrationLive() {
   const [unavailable, setUnavailable] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const editable = !registration.data || ['DRAFT', 'REJECTED'].includes(registration.data.status);
+  const editableByStatus = !registration.data || ['DRAFT', 'REJECTED'].includes(registration.data.status);
+  const editable = editableByStatus && workspace.data?.loadRegistrationEditable === true
+    && workspace.data.semesterId === semesterId;
+
+  useEffect(() => {
+    if (workspace.data?.semesterId && semesterOptions.some((item) => item.id === workspace.data?.semesterId)
+      && semesterId !== workspace.data.semesterId) {
+      setSemesterId(workspace.data.semesterId);
+    }
+  }, [semesterId, semesterOptions, setSemesterId, workspace.data?.semesterId]);
 
   useEffect(() => {
     if (!registration.data) return;
@@ -110,9 +127,16 @@ export function TeacherLoadRegistrationLive() {
           </div>
         )}
       </div>
+      {workspace.data && <div className={`load-registration-window ${workspace.data.loadRegistrationOpen ? 'is-open' : 'is-closed'}`}>
+        {workspace.data.loadRegistrationOpen ? <CalendarCheck2 size={18} /> : <LockKeyhole size={18} />}
+        <div><strong>{workspace.data.loadRegistrationOpen ? 'Đang trong thời gian đăng ký' : 'Cổng đăng ký hiện đã đóng'}</strong>
+          <small>{workspace.data.loadRegistrationOpensOn && workspace.data.loadRegistrationClosesOn
+            ? `Thời gian: ${workspace.data.loadRegistrationOpensOn} đến ${workspace.data.loadRegistrationClosesOn}`
+            : 'Thời gian đăng ký chưa được xác định'}</small></div>
+      </div>}
       <div className="load-form-grid">
-        <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
-          {(semesters.data || []).map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
+        <label><span>Học kỳ</span><select value={semesterId} disabled={Boolean(workspace.data?.semesterId)} onChange={(event) => setSemesterId(event.target.value)}>
+          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
         </select></label>
         <label><span>Số tiết tối đa/tuần</span><input type="number" min={1} max={60} disabled={!editable}
           value={maxPeriods} onChange={(event) => setMaxPeriods(Number(event.target.value))} /></label>
@@ -155,7 +179,7 @@ export function TeacherLoadRegistrationLive() {
 }
 
 export function AdminWorkloadPlanningLive() {
-  const { semesters, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
+  const { semesterOptions, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
   const subjects = useApi<Subject[]>('/subjects');
   const requirements = useApi<CurriculumRequirement[]>(
     semesterId ? `/curriculum-requirements?semesterId=${encodeURIComponent(semesterId)}` : null,
@@ -195,6 +219,17 @@ export function AdminWorkloadPlanningLive() {
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật'); }
   };
 
+  const updateSpecialization = async (item: TeacherLoadRegistration) => {
+    const mainSubject = window.prompt(`Chuyên môn chính của ${item.teacherName}:`, item.mainSubject || '');
+    if (mainSubject === null) return;
+    if (!mainSubject.trim()) return toast.show('err', 'Vui lòng nhập chuyên môn chính');
+    try {
+      await api.put(`/users/${item.teacherId}/specialization`, { mainSubject: mainSubject.trim() });
+      toast.show('ok', `Đã chuẩn hóa chuyên môn của ${item.teacherName}`);
+      await registrations.reload();
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật chuyên môn'); }
+  };
+
   const generatePlan = async (apply: boolean) => {
     setBusy(true);
     try {
@@ -232,7 +267,7 @@ export function AdminWorkloadPlanningLive() {
     <div className="workload-planning-page">
       <Section title="Phân công giáo viên tự động" subtitle="Thực hiện lần lượt 3 bước; hệ thống chỉ lưu khi bạn xác nhận ở bước cuối" wide>
         <label className="semester-focus"><span>1. Chọn học kỳ cần phân công</span><select value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setStage('subjects'); }}>
-          {(semesters.data || []).map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
+          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
         </select></label>
         <div className="planning-stepper planning-stepper-buttons">
           <button type="button" className={`${stage === 'subjects' ? 'active' : ''} ${requirements.data?.length ? 'done' : ''}`} onClick={() => setStage('subjects')}><span>1</span><strong>Khai báo số tiết</strong><small>Mỗi môn học bao nhiêu tiết/tuần?</small></button>
@@ -263,7 +298,7 @@ export function AdminWorkloadPlanningLive() {
         <div className="plain-language-help"><UserRoundCheck size={20} /><div><strong>Kiểm tra khả năng nhận lớp của giáo viên</strong><span>“Tải tối đa” là số tiết giáo viên đăng ký có thể dạy trong một tuần. Hãy duyệt các đăng ký hợp lệ trước khi sang bước 3.</span></div></div>
         <Async state={registrations} empty="Chưa có giáo viên gửi đăng ký tải dạy">
           {(rows) => <div className="teacher-load-table"><table className="live-table"><thead><tr><th>Giáo viên</th><th>Chuyên môn</th><th>Tải tối đa</th><th>Đã giao</th><th>Khối ưu tiên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-            <tbody>{rows.map((item) => <tr key={item.id}><td><strong>{item.teacherName}</strong><small>{item.teacherCode || '—'}</small></td><td>{item.mainSubject || 'Chưa cập nhật'}</td><td>{item.maxWeeklyPeriods} tiết</td><td>{item.assignedWeeklyPeriods}/{item.maxWeeklyPeriods}</td><td>{item.preferredGradeLevels.join(', ') || 'Không giới hạn'}</td><td><StatusPill value={item.status} /></td><td><div className="row-actions">
+            <tbody>{rows.map((item) => <tr key={item.id}><td><strong>{item.teacherName}</strong><small>{item.teacherCode || '—'}</small></td><td><div className="proposed-teacher"><strong>{item.mainSubject || 'Chưa cập nhật'}</strong><button type="button" className="link-button" onClick={() => updateSpecialization(item)}>Chuẩn hóa</button></div></td><td>{item.maxWeeklyPeriods} tiết</td><td>{item.assignedWeeklyPeriods}/{item.maxWeeklyPeriods}</td><td>{item.preferredGradeLevels.join(', ') || 'Không giới hạn'}</td><td><StatusPill value={item.status} /></td><td><div className="row-actions">
               {item.status === 'SUBMITTED' && <><button className="icon-btn success" title="Duyệt" onClick={() => review(item, 'APPROVED')}><CheckCircle2 size={16} /></button><button className="icon-btn danger" title="Yêu cầu điều chỉnh" onClick={() => review(item, 'REJECTED')}><AlertTriangle size={16} /></button></>}
               {['APPROVED', 'LOCKED', 'REJECTED'].includes(item.status) && <button className="icon-btn" title="Mở lại cho giáo viên sửa" onClick={() => review(item, 'DRAFT')}><LockKeyhole size={16} /></button>}
             </div></td></tr>)}</tbody></table></div>}
@@ -304,7 +339,7 @@ export function AdminWorkloadPlanningLive() {
 }
 
 export function AdminAutoTimetableLive() {
-  const { semesters, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
+  const { semesterOptions, semesterId, setSemesterId, semesterLabel } = useSelectedSemester();
   const assignments = useApi<TeachingAssignment[]>(semesterId
     ? `/teaching-assignments?semesterId=${encodeURIComponent(semesterId)}` : null);
   const versions = useApi<TimetableVersion[]>(semesterId
@@ -400,7 +435,7 @@ export function AdminAutoTimetableLive() {
       </div>
       <div className="auto-timetable-toolbar">
         <label><span>Chọn học kỳ cần tạo thời khóa biểu</span><select value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setSelectedPreviewClass(''); }}>
-          {(semesters.data || []).map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
+          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
         </select></label>
         <div className="automation-rules"><CheckCircle2 size={18} /><span><strong>Hệ thống tự kiểm tra trước khi lưu</strong>Không trùng lớp · Không trùng giáo viên · Không trùng phòng · Tôn trọng ca học và tiết bận</span></div>
       </div>

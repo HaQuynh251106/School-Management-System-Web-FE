@@ -53,7 +53,8 @@ export function ChatLive() {
   const contactScopes = useApi<Record<string, ChatContactScope[]>>('/chat/contact-scopes');
   const teachingClasses = useApi<SchoolClass[]>(user?.role === 'TEACHER' ? '/me/teaching-classes' : null);
   const studentClass = useApi<SchoolClass>(user?.role === 'STUDENT' && user.classId ? `/classes/${user.classId}` : null);
-  const [withId, setWithId] = useState<string | null>(null);
+  const [withParam, setWithParam] = useHashString('with', '');
+  const withId = withParam || null;
   const msgs = useApi<PageResponse<ChatMsg>>(withId ? `/chat/messages/page?withUserId=${encodeURIComponent(withId)}&page=0&size=50` : null);
   const [olderMessages, setOlderMessages] = useState<ChatMsg[]>([]);
   const [loadedPage, setLoadedPage] = useState(0);
@@ -150,11 +151,11 @@ export function ChatLive() {
 
   useEffect(() => {
     if (filteredContacts.length === 0) {
-      if (withId) setWithId(null);
+      if (withId) setWithParam('', 'replace');
       return;
     }
-    if (!filteredContacts.some((item) => item.userId === withId)) setWithId(filteredContacts[0].userId);
-  }, [filteredContacts, withId]);
+    if (!filteredContacts.some((item) => item.userId === withId)) setWithParam(filteredContacts[0].userId, 'replace');
+  }, [filteredContacts, setWithParam, withId]);
 
   useEffect(() => {
     setOlderMessages([]);
@@ -316,7 +317,7 @@ export function ChatLive() {
             {(items) => (
               <div className="chat-contact-list">
                 {items.map((item) => (
-                  <button type="button" key={item.userId} className={withId === item.userId ? 'active' : ''} onClick={() => setWithId(item.userId)}>
+                  <button type="button" key={item.userId} className={withId === item.userId ? 'active' : ''} onClick={() => setWithParam(item.userId, 'push')}>
                     <span className="chat-avatar">{initials(item.name) || <UserRound size={17} />}</span>
                     <span className="chat-contact-copy">
                       <span><strong>{item.name}</strong><time>{item.lastTime ? fmtDateTime(item.lastTime) : ''}</time></span>

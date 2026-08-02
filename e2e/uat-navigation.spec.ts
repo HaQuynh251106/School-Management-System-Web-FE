@@ -13,7 +13,7 @@ type UatRole = {
 const roles: UatRole[] = [
   {
     label: 'Quản trị', username: 'admin', password: process.env.E2E_ADMIN_PASSWORD ?? '', landing: 'quan-tri',
-    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'cuu-hoc-sinh', 'nhan-su-van-hanh', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
+    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'nhan-su-van-hanh', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
   },
   {
     label: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', changedPassword: process.env.E2E_ACADEMIC_STAFF_CHANGED_PASSWORD, landing: 'giao-vu',
@@ -25,15 +25,15 @@ const roles: UatRole[] = [
   },
   {
     label: 'Giáo viên', username: 'gv.nguyenminh', password: process.env.E2E_TEACHER_PASSWORD ?? '', landing: 'giao-vien',
-    pages: ['tong-quan', 'lop-duoc-phan-cong', 'thoi-khoa-bieu', 'diem-danh', 'bang-diem', 'bai-tap', 'trao-doi', 'thong-bao', 'cong-no-lop-chu-nhiem', 'duyet-don-xin-nghi', 'bao-cao-giang-day', 'ho-so-cai-dat', 'khao-thi', 'hanh-kiem-tong-ket'],
+    pages: ['tong-quan', 'lop-duoc-phan-cong', 'dang-ky-tai-day', 'so-dau-bai-dieu-chinh-lich', 'ho-tro-hoc-sinh', 'thoi-khoa-bieu', 'diem-danh', 'bang-diem', 'bai-tap', 'trao-doi', 'thong-bao', 'cong-no-lop-chu-nhiem', 'duyet-don-xin-nghi', 'bao-cao-giang-day', 'ho-so-cai-dat', 'khao-thi', 'hoc-ba-lop-chu-nhiem'],
   },
   {
     label: 'Học sinh', username: 'hs.nguyenminhan', password: process.env.E2E_STUDENT_PASSWORD ?? '', landing: 'hoc-sinh',
-    pages: ['tong-quan', 'ho-so-ca-nhan', 'theo-doi-hoc-tap', 'chuyen-can', 'bai-tap', 'thong-bao', 'xin-nghi-hoc', 'trao-doi', 'bao-cao-ca-nhan', 'ho-so-cai-dat', 'thi-phuc-khao', 'tong-ket-nam-hoc'],
+    pages: ['tong-quan', 'ho-so-ca-nhan', 'theo-doi-hoc-tap', 'chuyen-can', 'bai-tap', 'thong-bao', 'xin-nghi-hoc', 'trao-doi', 'bao-cao-ca-nhan', 'ho-so-cai-dat', 'thi-phuc-khao', 'hoc-ba-dien-tu'],
   },
   {
     label: 'Phụ huynh', username: 'ph.nguyenvanhung', password: process.env.E2E_PARENT_PASSWORD ?? '', landing: 'phu-huynh',
-    pages: ['tong-quan', 'chon-hoc-sinh', 'hoc-tap-cua-con', 'lien-lac-giao-vien-chu-nhiem', 'hoc-phi-thanh-toan', 'thong-bao', 'xac-nhan-nghi-hoc', 'bao-cao-cua-con', 'ho-so-cai-dat', 'lich-thi-cua-con', 'tong-ket-nam-hoc'],
+    pages: ['tong-quan', 'chon-hoc-sinh', 'hoc-tap-cua-con', 'lien-lac-giao-vien-chu-nhiem', 'hoc-phi-thanh-toan', 'thong-bao', 'xac-nhan-nghi-hoc', 'bao-cao-cua-con', 'ho-so-cai-dat', 'lich-thi-cua-con', 'hoc-ba-cua-con'],
   },
 ];
 
