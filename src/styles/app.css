@@ -4252,7 +4252,30 @@ td {
   }
 }
 /* Teacher load registration and automatic teaching assignment */
+.academic-scheduling-workspace { display: grid; gap: 14px; min-width: 0; }
+.academic-scheduling-principle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--role-color) 24%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--role-color) 5%, var(--panel));
+  color: var(--role-color);
+}
+.academic-scheduling-principle > svg { padding: 8px; width: 38px; height: 38px; border-radius: 11px; background: color-mix(in srgb, var(--role-color) 11%, var(--panel)); }
+.academic-scheduling-principle > div { min-width: 0; display: grid; gap: 2px; }
+.academic-scheduling-principle strong { color: var(--ink); font-size: .9rem; }
+.academic-scheduling-principle > div span { color: var(--muted); font-size: .78rem; line-height: 1.4; }
+.academic-scheduling-scope { padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--role-color) 10%, var(--panel)); color: var(--role-color); font-size: .72rem; font-weight: 850; white-space: nowrap; }
 .workload-planning-page { display: grid; gap: 18px; }
+.planning-control-shell { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: 0 8px 24px rgba(15, 23, 42, .04); }
+.planning-control-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .72fr); align-items: end; gap: 18px; }
+.planning-control-heading > div { display: grid; gap: 3px; }
+.planning-control-heading > div > span { color: var(--role-color); font-size: .66rem; font-weight: 900; letter-spacing: .08em; }
+.planning-control-heading > div > strong { color: var(--ink); font-size: 1.08rem; }
+.planning-control-heading > div > small { color: var(--muted); font-size: .78rem; }
 .planning-stepper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
 .planning-stepper > div { display: grid; grid-template-columns: 38px 1fr; column-gap: 10px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-subtle, #f8fafc); }
 .planning-stepper > div > span { grid-row: 1 / 3; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #e8eef8; color: #47617f; font-weight: 800; }
@@ -4272,12 +4295,27 @@ td {
 .planning-stepper-buttons > button.done:not(.active) > span { background: #07866e; color: white; }
 .planning-stepper-buttons > button:disabled { cursor: not-allowed; opacity: .62; }
 .planning-stepper-buttons > button:disabled > span { background: #e8eef8; color: #7c8ba1; }
-.semester-focus { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-radius: 12px; background: var(--surface-subtle, #f7f9fc); border: 1px solid var(--line); }
-.semester-focus > span { font-weight: 750; color: var(--ink); }
-.semester-focus select { min-width: 300px; }
+.semester-focus { display: grid; gap: 6px; min-width: 0; }
+.semester-focus > span { color: var(--muted); font-size: .74rem; font-weight: 800; }
+.semester-focus select { width: 100%; min-width: 0; }
 .requirement-form { display: grid; grid-template-columns: 150px minmax(220px, 1fr) 110px auto; gap: 10px; margin-bottom: 16px; }
 .requirement-form input, .requirement-form select, .load-form-grid input, .load-form-grid select, .semester-focus select { min-height: 44px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--ink); padding: 0 12px; }
+.requirement-grade-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 12px; }
+.requirement-grade-tabs button { display: grid; gap: 3px; padding: 11px 14px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-subtle, #f8fafc); color: var(--ink); cursor: pointer; }
+.requirement-grade-tabs button span { font-size: .86rem; font-weight: 850; }
+.requirement-grade-tabs button small { color: var(--muted); font-size: .72rem; }
+.requirement-grade-tabs button.active { border-color: color-mix(in srgb, var(--role-color) 62%, var(--line)); background: color-mix(in srgb, var(--role-color) 7%, var(--panel)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--role-color) 10%, transparent); }
+.requirement-grade-tabs button.active span { color: var(--role-color); }
+.requirement-form-compact { grid-template-columns: minmax(240px, 1fr) 150px auto; }
+.requirement-form-compact label { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.requirement-form-compact label > span { color: var(--muted); font-size: .68rem; font-weight: 750; }
+.requirement-form-compact label input { width: 100%; }
 .requirement-columns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.requirement-single-column { grid-template-columns: minmax(0, 1fr); }
+.requirement-single-column article { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.requirement-single-column article > header { grid-column: 1 / -1; }
+.requirement-single-column article > p { grid-column: 1 / -1; }
+.requirement-single-column article > div:nth-last-child(-n + 3) { border-bottom: 0; }
 .requirement-columns article { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .requirement-columns header { display: flex; justify-content: space-between; padding: 13px 14px; background: var(--surface-subtle, #f6f8fc); border-bottom: 1px solid var(--line); }
 .requirement-columns header span { color: var(--muted); font-size: .82rem; }
@@ -4286,6 +4324,56 @@ td {
 .requirement-columns article > div b { color: #1e5dbe; font-size: .84rem; }
 .requirement-columns article button { border: 0; background: transparent; color: var(--muted); cursor: pointer; }
 .requirement-columns article p { color: var(--muted); padding: 22px 14px; margin: 0; text-align: center; }
+.curriculum-readiness-banner { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 14px; border: 1px solid; border-radius: 14px; }
+.curriculum-readiness-banner.is-complete { color: #08735f; border-color: #9edbca; background: #effbf7; }
+.curriculum-readiness-banner.is-incomplete { color: #a04a0c; border-color: #f0c58f; background: #fff8eb; }
+.curriculum-readiness-banner div { display: grid; gap: 3px; }
+.curriculum-readiness-banner strong { color: var(--ink); font-size: .92rem; }
+.curriculum-readiness-banner span { color: var(--muted); font-size: .79rem; }
+.curriculum-readiness-banner > b { padding: 6px 10px; border-radius: 999px; background: color-mix(in srgb, currentColor 9%, transparent); font-size: .78rem; white-space: nowrap; }
+.requirement-grade-tabs button { position: relative; }
+.requirement-grade-tabs button em { margin-top: 4px; color: #b45309; font-size: .68rem; font-style: normal; font-weight: 800; }
+.requirement-grade-tabs button.complete em { color: #07866e; }
+.requirement-grade-tabs button.incomplete:not(.active) { border-color: color-mix(in srgb, #e5a243 35%, var(--line)); }
+.curriculum-grade-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.curriculum-grade-summary > div { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-subtle, #f8fafc); }
+.curriculum-grade-summary span { color: var(--muted); font-size: .7rem; font-weight: 750; text-transform: uppercase; letter-spacing: .03em; }
+.curriculum-grade-summary strong { color: var(--ink); font-size: 1rem; }
+.curriculum-grade-summary .text-success { color: #07866e; }
+.curriculum-grade-summary .text-warning { color: #b45309; }
+.curriculum-missing-panel { display: grid; grid-template-columns: minmax(220px, .7fr) 1.3fr; gap: 14px; align-items: center; padding: 12px 14px; margin-bottom: 12px; border: 1px solid #f1c27d; border-radius: 13px; background: #fffaf0; }
+.curriculum-missing-panel > div:first-child { display: flex; align-items: center; gap: 9px; color: #b45309; }
+.curriculum-missing-panel span { display: grid; gap: 2px; }
+.curriculum-missing-panel strong { color: var(--ink); font-size: .85rem; }
+.curriculum-missing-panel small { color: var(--muted); font-size: .72rem; }
+.curriculum-missing-panel > div:last-child { display: flex; flex-wrap: wrap; gap: 7px; }
+.curriculum-missing-panel button { padding: 7px 10px; border: 1px solid #e7ae5c; border-radius: 999px; background: var(--surface); color: #91520c; font-size: .75rem; font-weight: 750; cursor: pointer; }
+.curriculum-missing-panel button:hover { background: #fff0ce; }
+.requirement-columns article > div { grid-template-columns: minmax(0, 1fr) auto auto; }
+.requirement-row-actions { display: flex; align-items: center; gap: 4px; }
+.requirement-row-actions button { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line) !important; border-radius: 8px; background: var(--surface) !important; }
+.requirement-row-actions button:hover { color: var(--role-color); border-color: var(--role-color) !important; }
+.requirement-row-actions button:last-child:hover { color: #dc2626; border-color: #ef9b9b !important; }
+.curriculum-undo { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border: 1px solid #a6c8ff; border-radius: 12px; background: #f1f6ff; color: #1e5dbe; }
+.curriculum-undo span { flex: 1; color: var(--ink); font-size: .8rem; }
+.curriculum-copy-panel { margin-top: 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface-subtle, #f8fafc); }
+.curriculum-copy-panel summary { display: flex; align-items: center; gap: 8px; padding: 12px 14px; color: var(--ink); font-size: .82rem; font-weight: 800; cursor: pointer; }
+.curriculum-copy-panel > div { display: grid; grid-template-columns: minmax(260px, 1.4fr) 180px minmax(180px, .8fr) auto; gap: 10px; align-items: end; padding: 0 14px 14px; }
+.curriculum-copy-panel label, .copy-target { display: grid; gap: 5px; }
+.curriculum-copy-panel label span, .copy-target span { color: var(--muted); font-size: .68rem; font-weight: 750; }
+.curriculum-copy-panel select { width: 100%; min-height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.copy-target { min-height: 42px; justify-content: center; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 10px; }
+.copy-target strong { color: var(--ink); font-size: .76rem; }
+.curriculum-history-toggle { display: flex; justify-content: flex-end; margin-top: 10px; }
+.curriculum-history-toggle .link-button { display: inline-flex; align-items: center; gap: 6px; }
+.curriculum-history-list { overflow: hidden; margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; }
+.curriculum-history-list > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 13px; border-bottom: 1px solid var(--line); }
+.curriculum-history-list > div:last-child { border-bottom: 0; }
+.curriculum-history-list span { display: grid; gap: 2px; }
+.curriculum-history-list strong { color: var(--ink); font-size: .78rem; }
+.curriculum-history-list small { color: var(--muted); font-size: .68rem; }
+.curriculum-history-list b { color: var(--role-color); font-size: .72rem; }
+.curriculum-history-list > p { margin: 0; padding: 16px; color: var(--muted); text-align: center; }
 .teacher-load-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
 .teacher-load-table .live-table { margin: 0; min-width: 850px; }
 .teacher-load-table td > small { display: block; color: var(--muted); margin-top: 3px; }
@@ -4345,6 +4433,7 @@ td {
 .inline-warning { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 11px 13px; color: #9b4b00; background: #fff8e8; border: 1px solid #f1d497; border-radius: 10px; }
 .plain-language-help { display: flex; align-items: center; gap: 11px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid #bcd3f4; border-radius: 12px; background: #f5f8ff; color: #2864dc; }
 .plain-language-help > div { display: grid; gap: 3px; }
+.plain-language-help.compact { padding: 10px 12px; margin-bottom: 12px; }
 .plain-language-help strong { color: var(--ink); }
 .plain-language-help span { color: var(--muted); font-size: .8rem; }
 .wizard-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -4433,6 +4522,17 @@ td {
 [data-theme='dark'] .availability-grid button.blocked { background: #351c1d; border-color: #704143; color: #ffaaa6; }
 [data-theme='dark'] .automation-rules { background: #102d29; border-color: #24564d; }
 [data-theme='dark'] .plain-language-help, [data-theme='dark'] .planning-stepper-buttons > button.active { background: #14233b; border-color: #31598d; }
+[data-theme='dark'] .academic-scheduling-principle, [data-theme='dark'] .requirement-grade-tabs button.active { background: #102d29; border-color: #24564d; }
+[data-theme='dark'] .curriculum-readiness-banner.is-complete { background: #102d29; border-color: #24564d; }
+[data-theme='dark'] .curriculum-readiness-banner.is-complete { color: #72d8c5; }
+[data-theme='dark'] .curriculum-readiness-banner.is-incomplete,
+[data-theme='dark'] .curriculum-missing-panel { background: #302515; border-color: #6d5129; }
+[data-theme='dark'] .curriculum-missing-panel button { background: #211c14; border-color: #795923; color: #f8c777; }
+[data-theme='dark'] .curriculum-undo { background: #14233b; border-color: #31598d; }
+[data-theme='dark'] .curriculum-grade-summary > div,
+[data-theme='dark'] .curriculum-copy-panel,
+[data-theme='dark'] .curriculum-history-list { background: #111d30; border-color: #263a55; }
+[data-theme='dark'] .curriculum-history-list > div { background: #111d30; border-color: #263a55; }
 [data-theme='dark'] .workflow-blocker { background: #352811; border-color: #725b2c; }
 [data-theme='dark'] .workflow-complete, [data-theme='dark'] .timetable-simple-flow .done { background: #102d29; border-color: #24564d; }
 [data-theme='dark'] .schedule-result-hero.success { background: #102d29; border-color: #24564d; }
@@ -4441,9 +4541,15 @@ td {
 
 @media (max-width: 900px) {
   .planning-stepper, .requirement-columns { grid-template-columns: 1fr; }
+  .planning-control-heading { grid-template-columns: 1fr; align-items: stretch; }
   .requirement-form, .load-form-grid { grid-template-columns: 1fr; }
+  .curriculum-grade-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .curriculum-copy-panel > div { grid-template-columns: 1fr 1fr; }
   .semester-focus, .load-registration-overview { align-items: stretch; flex-direction: column; }
   .semester-focus select { min-width: 0; width: 100%; }
+  .requirement-single-column article { grid-template-columns: 1fr 1fr; }
+  .requirement-single-column article > div:nth-last-child(-n + 3) { border-bottom: 1px solid var(--line); }
+  .requirement-single-column article > div:nth-last-child(-n + 2) { border-bottom: 0; }
   .availability-grid { overflow-x: auto; grid-template-columns: 70px repeat(6, 70px); }
   .auto-timetable-toolbar { grid-template-columns: 1fr; }
   .assignment-preview-guide { grid-template-columns: 1fr; }
@@ -4453,6 +4559,19 @@ td {
   .schedule-result-hero { grid-template-columns: auto 1fr; }
   .schedule-result-metrics { grid-column: 1 / -1; }
   .class-preview-picker { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .academic-scheduling-principle { grid-template-columns: auto minmax(0, 1fr); }
+  .academic-scheduling-scope { grid-column: 2; justify-self: start; }
+  .requirement-grade-tabs { grid-template-columns: 1fr; }
+  .curriculum-readiness-banner { grid-template-columns: auto 1fr; }
+  .curriculum-readiness-banner > b { grid-column: 1 / -1; justify-self: start; }
+  .curriculum-missing-panel, .curriculum-copy-panel > div { grid-template-columns: 1fr; }
+  .curriculum-grade-summary { grid-template-columns: 1fr 1fr; }
+  .requirement-single-column article { grid-template-columns: 1fr; }
+  .requirement-single-column article > div { border-bottom: 1px solid var(--line) !important; }
+  .requirement-single-column article > div:last-child { border-bottom: 0 !important; }
 }
 
 @media (max-width: 600px) {

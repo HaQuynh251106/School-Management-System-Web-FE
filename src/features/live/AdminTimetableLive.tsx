@@ -1002,11 +1002,38 @@ function TimetableChangeApprovalPanel() {
 }
 
 export function AdminTimetableLive() {
-  return <FunctionTabs tabs={[
-    { id: 'planning', label: '1. Phân công giáo viên tự động', Icon: BookOpenCheck, content: <AdminWorkloadPlanningLive /> },
-    { id: 'automatic', label: '2. Tạo thời khóa biểu tự động', Icon: CalendarDays, content: <AdminAutoTimetableLive /> },
-    { id: 'assignments', label: '3. Điều chỉnh phân công thủ công', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
-    { id: 'timetable', label: '4. Điều chỉnh thời khóa biểu thủ công', Icon: CalendarDays, content: <TimetableEditor /> },
-    { id: 'changes', label: '5. Duyệt dạy thay & đổi tiết', Icon: ArrowRightLeft, content: <TimetableChangeApprovalPanel /> },
-  ]} />;
+  return <div className="academic-scheduling-workspace">
+    <div className="academic-scheduling-principle">
+      <BookOpenCheck size={19} />
+      <div><strong>Tự động trước, điều chỉnh sau</strong><span>Chọn đúng học kỳ; hệ thống sẽ giữ riêng phân công và thời khóa biểu của từng học kỳ.</span></div>
+      <span className="academic-scheduling-scope">Theo học kỳ</span>
+    </div>
+    <FunctionTabs tabs={[
+      {
+        id: 'planning', label: 'Phân công tự động', Icon: BookOpenCheck,
+        description: 'Thiết lập số tiết, duyệt tải dạy và xác nhận giáo viên phụ trách',
+        content: <AdminWorkloadPlanningLive />,
+      },
+      {
+        id: 'automatic', label: 'Tạo lịch tự động', Icon: CalendarDays,
+        description: 'Xếp thứ, tiết và phòng; lưu bản nháp rồi kiểm tra trước khi phát hành',
+        content: <AdminAutoTimetableLive />,
+      },
+      {
+        id: 'assignments', label: 'Sửa phân công', Icon: UserRoundCheck,
+        description: 'Chỉ dùng khi cần thay giáo viên, lớp, môn hoặc số tiết',
+        content: <TeachingAssignmentManager />,
+      },
+      {
+        id: 'timetable', label: 'Sửa thời khóa biểu', Icon: CalendarDays,
+        description: 'Điều chỉnh riêng từng ô lịch sau khi đã có phương án tự động',
+        content: <TimetableEditor />,
+      },
+      {
+        id: 'changes', label: 'Dạy thay & đổi tiết', Icon: ArrowRightLeft,
+        description: 'Duyệt các yêu cầu phát sinh trong quá trình vận hành lịch',
+        content: <TimetableChangeApprovalPanel />,
+      },
+    ]} />
+  </div>;
 }

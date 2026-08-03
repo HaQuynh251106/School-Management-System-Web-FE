@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpenCheck, CalendarCheck2, CheckCircle2, ClipboardCheck, Clock3,
-  History, LockKeyhole, Rocket, RotateCcw, Send, Sparkles, Trash2, UserRoundCheck,
+  Copy, History, LockKeyhole, Pencil, Rocket, RotateCcw, Send, Sparkles, Trash2, UserRoundCheck,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { updateHashQuery, useHashString } from '../../api/urlState';
 import type {
-  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumRequirement, Semester, Subject, TeacherLoadRegistration, TeacherWorkspaceContext, TeachingAssignment, TimetableVersion,
+  AcademicYear, AutoAssignmentPlan, AutoTimetablePlan, CurriculumReadiness, CurriculumRequirement,
+  CurriculumRequirementHistory, Semester, Subject, TeacherLoadRegistration, TeacherWorkspaceContext,
+  TeachingAssignment, TimetableVersion,
 } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
@@ -184,28 +186,44 @@ export function AdminWorkloadPlanningLive() {
   const requirements = useApi<CurriculumRequirement[]>(
     semesterId ? `/curriculum-requirements?semesterId=${encodeURIComponent(semesterId)}` : null,
   );
+  const readiness = useApi<CurriculumReadiness>(
+    semesterId ? `/curriculum-requirements/readiness?semesterId=${encodeURIComponent(semesterId)}` : null,
+  );
+  const history = useApi<CurriculumRequirementHistory[]>(
+    semesterId ? `/curriculum-requirements/history?semesterId=${encodeURIComponent(semesterId)}` : null,
+  );
   const registrations = useApi<TeacherLoadRegistration[]>(
     semesterId ? `/teacher-load-registrations?semesterId=${encodeURIComponent(semesterId)}` : null,
   );
   const toast = useToast();
-  const [grade, setGrade] = useState('K10');
+  const [grade, setGrade] = useHashString('dinh_muc_khoi', 'K10');
   const [subjectId, setSubjectId] = useState('');
   const [periods, setPeriods] = useState(2);
   const [plan, setPlan] = useState<AutoAssignmentPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<'subjects' | 'teachers' | 'review'>('subjects');
+  const [lastDeleted, setLastDeleted] = useState<CurriculumRequirement | null>(null);
+  const [copySourceSemesterId, setCopySourceSemesterId] = useState('');
+  const [copySourceGrade, setCopySourceGrade] = useState('K10');
+  const [showHistory, setShowHistory] = useState(false);
   const pending = (registrations.data || []).filter((item) => item.status === 'SUBMITTED').length;
   const approved = (registrations.data || []).filter((item) => ['APPROVED', 'LOCKED'].includes(item.status)).length;
   const assignmentComplete = Boolean(plan && plan.unassignedCount === 0
     && (plan.applied || plan.proposedCount === 0 && plan.existingCount > 0));
+  const curriculumComplete = readiness.data?.complete === true;
+
+  const reloadCurriculum = async () => {
+    await Promise.all([requirements.reload(), readiness.reload(), history.reload()]);
+  };
 
   const saveRequirement = async () => {
     if (!semesterId || !subjectId) return;
     try {
       await api.put('/curriculum-requirements', { semesterId, gradeLevel: grade, subjectId, weeklyPeriods: periods });
       toast.show('ok', 'Đã cập nhật định mức môn học');
-      await requirements.reload();
+      await reloadCurriculum();
       setSubjectId('');
+      setLastDeleted(null);
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể lưu định mức'); }
   };
 
@@ -217,6 +235,47 @@ export function AdminWorkloadPlanningLive() {
       toast.show('ok', status === 'APPROVED' ? 'Đã duyệt tải dạy' : status === 'DRAFT' ? 'Đã mở lại đăng ký' : 'Đã gửi yêu cầu điều chỉnh');
       await registrations.reload();
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật'); }
+  };
+
+  const editRequirement = (item: CurriculumRequirement) => {
+    setGrade(item.gradeLevel);
+    setSubjectId(item.subjectId);
+    setPeriods(item.weeklyPeriods);
+  };
+
+  const deleteRequirement = async (item: CurriculumRequirement) => {
+    if (!window.confirm(`Xóa định mức ${item.subjectName} của ${item.gradeLevel.replace('K', 'Khối ')}?`)) return;
+    try {
+      await api.del(`/curriculum-requirements/${item.id}`);
+      setLastDeleted(item);
+      await reloadCurriculum();
+      toast.show('ok', `Đã xóa ${item.subjectName}. Bạn có thể hoàn tác ngay bên dưới.`);
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể xóa định mức'); }
+  };
+
+  const undoDelete = async () => {
+    if (!lastDeleted) return;
+    try {
+      await api.put('/curriculum-requirements', {
+        semesterId: lastDeleted.semesterId, gradeLevel: lastDeleted.gradeLevel,
+        subjectId: lastDeleted.subjectId, weeklyPeriods: lastDeleted.weeklyPeriods,
+      });
+      toast.show('ok', `Đã khôi phục định mức ${lastDeleted.subjectName}`);
+      setLastDeleted(null);
+      await reloadCurriculum();
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể hoàn tác'); }
+  };
+
+  const copyRequirements = async () => {
+    if (!copySourceSemesterId) return toast.show('err', 'Hãy chọn học kỳ nguồn');
+    try {
+      await api.post('/curriculum-requirements/copy', {
+        sourceSemesterId: copySourceSemesterId, sourceGradeLevel: copySourceGrade,
+        targetSemesterId: semesterId, targetGradeLevel: grade, overwrite: true,
+      });
+      toast.show('ok', `Đã sao chép định mức ${copySourceGrade} vào ${grade}`);
+      await reloadCurriculum();
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể sao chép định mức'); }
   };
 
   const updateSpecialization = async (item: TeacherLoadRegistration) => {
@@ -251,6 +310,14 @@ export function AdminWorkloadPlanningLive() {
   const groupedRequirements = useMemo(() => GRADES.map((item) => ({
     grade: item, rows: (requirements.data || []).filter((row) => row.gradeLevel === item),
   })), [requirements.data]);
+  const activeRequirementGroup = groupedRequirements.find((item) => item.grade === grade)
+    ?? groupedRequirements[0];
+  const activeReadiness = readiness.data?.grades.find((item) => item.gradeLevel === grade);
+  const expectedSubjectCount = readiness.data?.expectedSubjectCount || subjects.data?.length || 0;
+  const missingSubjects = activeReadiness?.missingSubjects || [];
+  const selectedGradePeriods = activeRequirementGroup?.rows.reduce((sum, item) => sum + item.weeklyPeriods, 0) || 0;
+  const unusualRequirements = (activeRequirementGroup?.rows || []).filter((item) => item.weeklyPeriods > 10);
+  const unusualTotal = selectedGradePeriods > 0 && (selectedGradePeriods < 25 || selectedGradePeriods > 40);
   const registrationByTeacher = useMemo(() => new Map(
     (registrations.data || []).map((item) => [item.teacherId, item]),
   ), [registrations.data]);
@@ -265,38 +332,105 @@ export function AdminWorkloadPlanningLive() {
 
   return (
     <div className="workload-planning-page">
-      <Section title="Phân công giáo viên tự động" subtitle="Thực hiện lần lượt 3 bước; hệ thống chỉ lưu khi bạn xác nhận ở bước cuối" wide>
-        <label className="semester-focus"><span>1. Chọn học kỳ cần phân công</span><select value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setStage('subjects'); }}>
-          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
-        </select></label>
-        <div className="planning-stepper planning-stepper-buttons">
-          <button type="button" className={`${stage === 'subjects' ? 'active' : ''} ${requirements.data?.length ? 'done' : ''}`} onClick={() => setStage('subjects')}><span>1</span><strong>Khai báo số tiết</strong><small>Mỗi môn học bao nhiêu tiết/tuần?</small></button>
-          <button type="button" className={`${stage === 'teachers' ? 'active' : ''} ${approved ? 'done' : ''}`} onClick={() => setStage('teachers')}><span>2</span><strong>Kiểm tra giáo viên</strong><small>{pending} chờ duyệt · {approved} có thể phân công</small></button>
-          <button type="button" disabled={!approved} className={`${stage === 'review' ? 'active' : ''} ${plan ? 'done' : ''}`} onClick={() => setStage('review')}><span>3</span><strong>Xem và xác nhận</strong><small>{approved ? 'Kiểm tra kết quả trước khi lưu' : 'Cần duyệt giáo viên ở bước 2'}</small></button>
+      <div className="planning-control-shell">
+        <div className="planning-control-heading">
+          <div><span>PHÂN CÔNG TỰ ĐỘNG</span><strong>Chuẩn bị dữ liệu theo học kỳ</strong><small>Chỉ lưu vào hệ thống sau khi bạn kiểm tra và xác nhận phương án.</small></div>
+          <label className="semester-focus"><span>Học kỳ đang lập kế hoạch</span><select aria-label="Học kỳ đang lập kế hoạch" value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setStage('subjects'); }}>
+            {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
+          </select></label>
         </div>
-      </Section>
+        <div className="planning-stepper planning-stepper-buttons">
+          <button type="button" className={`${stage === 'subjects' ? 'active' : ''} ${curriculumComplete ? 'done' : ''}`} onClick={() => setStage('subjects')}><span>1</span><strong>Khai báo số tiết</strong><small>{curriculumComplete ? 'Đã đủ định mức cho mọi khối' : 'Cần hoàn thiện đủ môn trước'}</small></button>
+          <button type="button" disabled={!curriculumComplete} className={`${stage === 'teachers' ? 'active' : ''} ${approved ? 'done' : ''}`} onClick={() => setStage('teachers')}><span>2</span><strong>Kiểm tra giáo viên</strong><small>{curriculumComplete ? `${pending} chờ duyệt · ${approved} có thể phân công` : 'Đang khóa vì thiếu định mức'}</small></button>
+          <button type="button" disabled={!curriculumComplete || !approved} className={`${stage === 'review' ? 'active' : ''} ${plan ? 'done' : ''}`} onClick={() => setStage('review')}><span>3</span><strong>Xem và xác nhận</strong><small>{!curriculumComplete ? 'Hoàn thiện bước 1 trước' : approved ? 'Kiểm tra kết quả trước khi lưu' : 'Cần duyệt giáo viên ở bước 2'}</small></button>
+        </div>
+      </div>
 
       {stage === 'subjects' && (
-      <Section title="Số tiết học mỗi tuần" subtitle="Chọn khối, môn học và nhập số tiết mà mỗi lớp cần học trong một tuần" wide>
-        <div className="plain-language-help"><BookOpenCheck size={20} /><div><strong>Bước này trả lời một câu hỏi đơn giản</strong><span>Mỗi lớp của từng khối cần học môn này bao nhiêu tiết trong một tuần?</span></div></div>
-        <div className="requirement-form">
-          <select value={grade} onChange={(event) => setGrade(event.target.value)}>{GRADES.map((item) => <option key={item} value={item}>{item.replace('K', 'Khối ')}</option>)}</select>
-          <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">Chọn môn học</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
-          <input type="number" min={1} max={20} value={periods} onChange={(event) => setPeriods(Number(event.target.value))} />
-          <button className="live-btn primary" disabled={!subjectId} onClick={saveRequirement}><BookOpenCheck size={16} /> Lưu định mức</button>
+      <Section title="Định mức môn học theo khối" subtitle="Hoàn thiện đủ danh mục môn và số tiết mỗi tuần trước khi phân công giáo viên" wide>
+        <div className={`curriculum-readiness-banner ${curriculumComplete ? 'is-complete' : 'is-incomplete'}`}>
+          {curriculumComplete ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
+          <div><strong>{curriculumComplete ? 'Định mức đã sẵn sàng để phân công' : 'Định mức chưa đầy đủ — bước tiếp theo đang được khóa'}</strong>
+            <span>{curriculumComplete ? `Đã kiểm tra đủ ${expectedSubjectCount} môn cho tất cả các khối.` : 'Chọn từng khối bên dưới và bổ sung các môn còn thiếu.'}</span></div>
+          <b>{readiness.data?.configuredRequirementCount || 0}/{(readiness.data?.grades.length || GRADES.length) * expectedSubjectCount} môn–khối</b>
         </div>
-        <div className="requirement-columns">{groupedRequirements.map((group) => <article key={group.grade}>
-          <header><strong>{group.grade.replace('K', 'Khối ')}</strong><span>{group.rows.length} môn</span></header>
-          {group.rows.length ? group.rows.map((item) => <div key={item.id}><span>{item.subjectName}</span><b>{item.weeklyPeriods} tiết</b><button title="Xóa" onClick={async () => { await api.del(`/curriculum-requirements/${item.id}`); requirements.reload(); }}><Trash2 size={14} /></button></div>) : <p>Chưa có định mức</p>}
-        </article>)}</div>
-        <div className="wizard-footer"><span>Đã khai báo {(requirements.data || []).length} môn–khối</span><button className="live-btn primary" onClick={() => setStage('teachers')}>Tiếp theo: Kiểm tra giáo viên</button></div>
+
+        <div className="requirement-grade-tabs" role="tablist" aria-label="Chọn khối cần khai báo">
+          {groupedRequirements.map((group) => {
+            const status = readiness.data?.grades.find((item) => item.gradeLevel === group.grade);
+            const complete = status?.complete === true;
+            return <button type="button" role="tab" aria-selected={grade === group.grade}
+              className={`${grade === group.grade ? 'active' : ''} ${complete ? 'complete' : 'incomplete'}`}
+              key={group.grade} onClick={() => setGrade(group.grade)}>
+              <span>{group.grade.replace('K', 'Khối ')}</span>
+              <small>{group.rows.length}/{expectedSubjectCount} môn · {status?.totalWeeklyPeriods || 0} tiết/tuần</small>
+              <em>{complete ? 'Đã hoàn thiện' : `Thiếu ${status?.missingSubjects.length ?? Math.max(0, expectedSubjectCount - group.rows.length)} môn`}</em>
+            </button>;
+          })}
+        </div>
+
+        <div className="curriculum-grade-summary">
+          <div><span>Khối đang thiết lập</span><strong>{grade.replace('K', 'Khối ')}</strong></div>
+          <div><span>Số môn</span><strong>{activeRequirementGroup?.rows.length || 0}/{expectedSubjectCount}</strong></div>
+          <div><span>Tổng tải học</span><strong>{selectedGradePeriods} tiết/tuần</strong></div>
+          <div><span>Trạng thái</span><strong className={activeReadiness?.complete ? 'text-success' : 'text-warning'}>{activeReadiness?.complete ? 'Sẵn sàng' : 'Cần bổ sung'}</strong></div>
+        </div>
+
+        {missingSubjects.length > 0 && <div className="curriculum-missing-panel">
+          <div><AlertTriangle size={18} /><span><strong>Còn thiếu {missingSubjects.length} môn</strong><small>Chọn một môn để điền nhanh vào biểu mẫu.</small></span></div>
+          <div>{missingSubjects.map((item) => <button type="button" key={item.subjectId}
+            onClick={() => { setSubjectId(item.subjectId); setPeriods(2); }}>{item.subjectName}</button>)}</div>
+        </div>}
+        {(unusualTotal || unusualRequirements.length > 0) && <div className="inline-warning">
+          <AlertTriangle size={17} /> Định mức có dấu hiệu bất thường:
+          {unusualTotal ? ` tổng ${selectedGradePeriods} tiết/tuần nằm ngoài khoảng tham chiếu 25–40` : ''}
+          {unusualRequirements.length ? `; ${unusualRequirements.map((item) => item.subjectName).join(', ')} vượt 10 tiết/tuần` : ''}.
+        </div>}
+
+        <div className="requirement-form requirement-form-compact">
+          <select aria-label="Môn học cần khai báo" value={subjectId} onChange={(event) => {
+            const nextId = event.target.value;
+            setSubjectId(nextId);
+            const existing = activeRequirementGroup?.rows.find((item) => item.subjectId === nextId);
+            if (existing) setPeriods(existing.weeklyPeriods);
+          }}><option value="">Chọn môn học</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+          <label><span>Số tiết/tuần</span><input type="number" min={1} max={20} value={periods} onChange={(event) => setPeriods(Number(event.target.value))} /></label>
+          <button className="live-btn primary" disabled={!subjectId || periods < 1 || periods > 20} onClick={saveRequirement}><BookOpenCheck size={16} /> {activeRequirementGroup?.rows.some((item) => item.subjectId === subjectId) ? 'Cập nhật định mức' : 'Thêm định mức'}</button>
+        </div>
+
+        <div className="requirement-columns requirement-single-column"><article>
+          <header><strong>Danh sách môn {grade.replace('K', 'Khối ')}</strong><span>{activeRequirementGroup?.rows.length || 0} môn · {selectedGradePeriods} tiết/tuần</span></header>
+          {activeRequirementGroup?.rows.length ? activeRequirementGroup.rows.map((item) => <div key={item.id}>
+            <span>{item.subjectName}</span><b>{item.weeklyPeriods} tiết/tuần</b>
+            <span className="requirement-row-actions"><button aria-label={`Sửa định mức ${item.subjectName}`} title="Sửa" onClick={() => editRequirement(item)}><Pencil size={14} /></button>
+              <button aria-label={`Xóa định mức ${item.subjectName}`} title="Xóa" onClick={() => deleteRequirement(item)}><Trash2 size={14} /></button></span>
+          </div>) : <p>Chưa có định mức cho khối này</p>}
+        </article></div>
+
+        {lastDeleted && <div className="curriculum-undo"><RotateCcw size={18} /><span>Đã xóa <strong>{lastDeleted.subjectName}</strong> của {lastDeleted.gradeLevel.replace('K', 'Khối ')}.</span><button className="live-btn subtle" onClick={undoDelete}>Hoàn tác</button></div>}
+
+        <details className="curriculum-copy-panel">
+          <summary><Copy size={17} /> Sao chép định mức từ học kỳ hoặc khối khác</summary>
+          <div><label><span>Học kỳ nguồn</span><select value={copySourceSemesterId} onChange={(event) => setCopySourceSemesterId(event.target.value)}><option value="">Chọn học kỳ nguồn</option>{semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}</select></label>
+            <label><span>Khối nguồn</span><select value={copySourceGrade} onChange={(event) => setCopySourceGrade(event.target.value)}>{GRADES.map((item) => <option key={item} value={item}>{item.replace('K', 'Khối ')}</option>)}</select></label>
+            <div className="copy-target"><span>Sao chép vào</span><strong>{grade.replace('K', 'Khối ')} · học kỳ hiện tại</strong></div>
+            <button className="live-btn subtle" disabled={!copySourceSemesterId || (copySourceSemesterId === semesterId && copySourceGrade === grade)} onClick={copyRequirements}><Copy size={16} /> Sao chép và ghi đè</button></div>
+        </details>
+
+        <div className="curriculum-history-toggle"><button type="button" className="link-button" onClick={() => setShowHistory((value) => !value)}><History size={16} /> {showHistory ? 'Ẩn lịch sử thay đổi' : 'Xem lịch sử thay đổi'}</button></div>
+        {showHistory && <div className="curriculum-history-list">{(history.data || []).length ? (history.data || []).slice(0, 20).map((item) => <div key={item.id}>
+          <span><strong>{item.subjectName}</strong><small>{item.gradeLevel.replace('K', 'Khối ')} · {new Date(item.createdAt).toLocaleString('vi-VN')}</small></span>
+          <b>{item.action === 'CREATED' ? 'Đã thêm' : item.action === 'UPDATED' ? `Đổi ${item.previousWeeklyPeriods} → ${item.newWeeklyPeriods}` : item.action === 'DELETED' ? 'Đã xóa' : 'Đã sao chép'}</b>
+        </div>) : <p>Chưa có lịch sử thay đổi trong học kỳ này.</p>}</div>}
+
+        <div className="wizard-footer"><span>{curriculumComplete ? 'Định mức đã hợp lệ' : 'Hoàn thiện đủ môn cho tất cả các khối để mở bước 2'}</span><button className="live-btn primary" disabled={!curriculumComplete} onClick={() => setStage('teachers')}>Tiếp theo: Kiểm tra giáo viên</button></div>
       </Section>
       )}
 
       {stage === 'teachers' && (
       <Section title="Đăng ký tải dạy của giáo viên" subtitle="Chỉ đăng ký đã duyệt mới được dùng trong thuật toán phân công" wide>
         <div className="plain-language-help"><UserRoundCheck size={20} /><div><strong>Kiểm tra khả năng nhận lớp của giáo viên</strong><span>“Tải tối đa” là số tiết giáo viên đăng ký có thể dạy trong một tuần. Hãy duyệt các đăng ký hợp lệ trước khi sang bước 3.</span></div></div>
-        <Async state={registrations} empty="Chưa có giáo viên gửi đăng ký tải dạy">
+        <Async state={registrations} empty="Chưa có giáo viên gửi đăng ký tải dạy" paginate pageSize={10} itemLabel="giáo viên" urlStateKey="teacher-load-review">
           {(rows) => <div className="teacher-load-table"><table className="live-table"><thead><tr><th>Giáo viên</th><th>Chuyên môn</th><th>Tải tối đa</th><th>Đã giao</th><th>Khối ưu tiên</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
             <tbody>{rows.map((item) => <tr key={item.id}><td><strong>{item.teacherName}</strong><small>{item.teacherCode || '—'}</small></td><td><div className="proposed-teacher"><strong>{item.mainSubject || 'Chưa cập nhật'}</strong><button type="button" className="link-button" onClick={() => updateSpecialization(item)}>Chuẩn hóa</button></div></td><td>{item.maxWeeklyPeriods} tiết</td><td>{item.assignedWeeklyPeriods}/{item.maxWeeklyPeriods}</td><td>{item.preferredGradeLevels.join(', ') || 'Không giới hạn'}</td><td><StatusPill value={item.status} /></td><td><div className="row-actions">
               {item.status === 'SUBMITTED' && <><button className="icon-btn success" title="Duyệt" onClick={() => review(item, 'APPROVED')}><CheckCircle2 size={16} /></button><button className="icon-btn danger" title="Yêu cầu điều chỉnh" onClick={() => review(item, 'REJECTED')}><AlertTriangle size={16} /></button></>}
@@ -309,7 +443,7 @@ export function AdminWorkloadPlanningLive() {
 
       {stage === 'review' && (
       <Section title="Đề xuất phân công tự động" subtitle="Hệ thống giữ nguyên dữ liệu hiện có, ưu tiên đúng chuyên môn, không vượt tải và cân bằng giữa giáo viên" wide
-        action={<div className="row-actions"><button className="live-btn subtle" disabled={busy || !semesterId} onClick={() => generatePlan(false)}><Sparkles size={16} /> Làm mới bản xem trước</button>{assignmentComplete ? <><button className="live-btn success" disabled><CheckCircle2 size={16} /> Đã lưu phân công</button><button className="live-btn primary" onClick={() => updateHashQuery({ tab: 'automatic' }, 'push')}><CalendarCheck2 size={16} /> Tiếp theo: Tạo thời khóa biểu</button></> : <button className="live-btn primary" disabled={busy || !plan || plan.unassignedCount > 0 || plan.proposedCount === 0} onClick={() => generatePlan(true)}><UserRoundCheck size={16} /> Lưu các phân công được đề xuất</button>}</div>}>
+        action={<div className="row-actions"><button className="live-btn subtle" disabled={busy || !semesterId || !curriculumComplete} onClick={() => generatePlan(false)}><Sparkles size={16} /> Làm mới bản xem trước</button>{assignmentComplete ? <><button className="live-btn success" disabled><CheckCircle2 size={16} /> Đã lưu phân công</button><button className="live-btn primary" onClick={() => updateHashQuery({ tab: 'automatic' }, 'push')}><CalendarCheck2 size={16} /> Tiếp theo: Tạo thời khóa biểu</button></> : <button className="live-btn primary" disabled={busy || !plan || plan.unassignedCount > 0 || plan.proposedCount === 0 || !curriculumComplete} onClick={() => generatePlan(true)}><UserRoundCheck size={16} /> Lưu các phân công được đề xuất</button>}</div>}>
         {!plan ? <div className="planning-empty"><Sparkles size={30} /><strong>Chưa tạo phương án</strong><span>Hoàn tất định mức và duyệt tải giáo viên, sau đó chọn “Tạo bản xem trước”.</span></div>
           : <>{assignmentComplete && <div className="assignment-applied-confirmation"><CheckCircle2 size={26} /><div><strong>Phân công giáo viên đã hoàn tất</strong><span>{plan.existingCount || plan.proposedCount} môn–lớp đã được lưu. Không cần áp dụng lại; hãy chuyển sang tạo thời khóa biểu.</span></div></div>}
           {!assignmentComplete && <div className="assignment-preview-guide">

@@ -259,6 +259,21 @@ export interface ExamRoom {
   proctorOneId?: string | null; proctorOneName?: string | null;
   proctorTwoId?: string | null; proctorTwoName?: string | null;
 }
+export interface MissingCurriculumSubject { subjectId: string; subjectName: string; }
+export interface GradeCurriculumReadiness {
+  gradeLevel: string; expectedSubjectCount: number; configuredSubjectCount: number;
+  totalWeeklyPeriods: number; complete: boolean; missingSubjects: MissingCurriculumSubject[];
+}
+export interface CurriculumReadiness {
+  semesterId: string; expectedSubjectCount: number; configuredRequirementCount: number;
+  totalWeeklyPeriods: number; complete: boolean; grades: GradeCurriculumReadiness[];
+}
+export interface CurriculumRequirementHistory {
+  id: string; semesterId: string; gradeLevel: string; subjectId: string; subjectName: string;
+  action: 'CREATED' | 'UPDATED' | 'DELETED' | 'COPIED';
+  previousWeeklyPeriods?: number | null; newWeeklyPeriods?: number | null;
+  actorId?: string | null; createdAt: string;
+}
 export interface ExamRoomAvailability {
   roomId: string; roomCode: string; roomName?: string | null; capacity: number; roomType?: string | null;
   available: boolean; selected: boolean; reason: string;
