@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Archive, BookOpen, CalendarDays, ChevronDown, DoorOpen, GraduationCap, Pencil, PlayCircle, Plus, Save, School, Search, Trash2 } from 'lucide-react';
+import { Archive, ArrowLeftRight, BookOpen, CalendarDays, ChevronDown, DoorOpen, GraduationCap, Pencil, PlayCircle, Plus, Save, School, Search, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { AcademicYear, ApiUser, Room, SchoolClass, Semester, Subject } from '../../api/types';
@@ -12,6 +12,7 @@ import { useHashString } from '../../api/urlState';
 import { IntakeClassPlacementLive } from './IntakeClassPlacementLive';
 import { RoomAllocationPlanner } from './RoomAllocationPlanner';
 import { SubjectRoomRequirements } from './SubjectRoomRequirements';
+import { StudentClassTransferLive } from './StudentClassTransferLive';
 import { closedAcademicYears, operationalAcademicYears } from './academicYearSelection';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
@@ -242,6 +243,7 @@ export function AdminAcademicLive() {
           </Section>
         ) },
         { id: 'intake-placement', label: 'Phân lớp đầu cấp', description: 'Xếp học sinh mới theo sĩ số', Icon: GraduationCap, content: <IntakeClassPlacementLive /> },
+        { id: 'class-transfer', label: 'Chuyển lớp', description: 'Thực hiện tại cuối học kỳ', Icon: ArrowLeftRight, content: <StudentClassTransferLive years={years.data ?? []} classes={classes.data ?? []} onChanged={classes.reload} /> },
         { id: 'rooms', label: 'Phòng', description: 'Chuẩn bị phòng và ca học', Icon: DoorOpen, content: (
           <Section title="Phòng học" subtitle="Cấu hình ca phục vụ và theo dõi phòng đã được giao cho từng lớp" wide>
             <RoomAllocationPlanner years={years.data ?? []} classes={classes.data ?? []} rooms={rooms.data ?? []} onApplied={classes.reload} />

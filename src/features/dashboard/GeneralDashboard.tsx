@@ -1,7 +1,7 @@
 import {
   Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2,
   CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
-  DoorOpen, GraduationCap, HeartHandshake, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
+  GraduationCap, HeartHandshake, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
   UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -14,10 +14,9 @@ import { emitNotificationInboxChanged } from '../../api/liveEvents';
 import { pageHash } from '../../api/routes';
 import type {
   DashboardCalendarItem, DashboardChart, DashboardMetric, DashboardResponse, DashboardWorkItem,
-  AcademicYear, ExamAgendaItem, Notification, Room, SchoolClass, TeacherDashboardOverview,
-  TeacherWorkspaceContext,
+  ExamAgendaItem, Notification, TeacherDashboardOverview, TeacherWorkspaceContext,
 } from '../../api/types';
-import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
+import { BarList, ChartCard, ColumnChart, MetricCard, PieChart } from '../../components/charts';
 import { viLabel } from '../../components/ui';
 import type { Metric, PageId, RoleId } from '../../types';
 
@@ -148,9 +147,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const notifications = useApi<Notification[]>(['teacher', 'student', 'parent'].includes(roleId) ? '/notifications' : null);
   const examAgendaEnabled = ['teacher', 'student', 'parent'].includes(roleId);
   const examAgenda = useApi<ExamAgendaItem[]>(examAgendaEnabled ? '/me/exam-agenda' : null);
-  const academicRooms = useApi<Room[]>(roleId === 'academic_staff' ? '/rooms' : null);
-  const academicClasses = useApi<SchoolClass[]>(roleId === 'academic_staff' ? '/classes' : null);
-  const academicYears = useApi<AcademicYear[]>(roleId === 'academic_staff' ? '/academicYears' : null);
   const teacherWorkspace = useApi<TeacherWorkspaceContext>(roleId === 'teacher' ? '/me/teacher-workspace' : null);
   const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
@@ -177,9 +173,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     dashboard.reload();
     notifications.reload();
     examAgenda.reload();
-    academicRooms.reload();
-    academicClasses.reload();
-    academicYears.reload();
     teacherWorkspace.reload();
   };
   const markNotificationRead = async (id: string) => {
@@ -223,9 +216,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         markingNotificationId={markingNotificationId}
         examAgenda={examAgenda.data ?? []}
         examAgendaLoading={examAgenda.loading}
-        rooms={academicRooms.data ?? []}
-        classes={academicClasses.data ?? []}
-        years={academicYears.data ?? []}
         teacherWorkspace={teacherWorkspace.data}
         onMarkNotificationRead={markNotificationRead}
         onReload={reloadAll}
@@ -379,7 +369,7 @@ const operationalDashboardConfig: Record<OperationalRole, {
 function OperationalRoleDashboard({
   roleId, firstName, today, data, loading, hasError, notifications, notificationsLoading,
   markingNotificationId, examAgenda, examAgendaLoading, onMarkNotificationRead, onReload, onNavigate,
-  rooms, classes, years, teacherWorkspace,
+  teacherWorkspace,
 }: {
   roleId: OperationalRole;
   firstName: string;
@@ -392,9 +382,6 @@ function OperationalRoleDashboard({
   markingNotificationId: string | null;
   examAgenda: ExamAgendaItem[];
   examAgendaLoading: boolean;
-  rooms: Room[];
-  classes: SchoolClass[];
-  years: AcademicYear[];
   teacherWorkspace?: TeacherWorkspaceContext | null;
   onMarkNotificationRead: (id: string) => Promise<void>;
   onReload: () => void;
@@ -402,9 +389,9 @@ function OperationalRoleDashboard({
 }) {
   const config = operationalDashboardConfig[roleId];
   const overview = data?.roleOverview;
-  const metrics = (data?.metrics ?? []).map(toMetric);
-  const links = roleId === 'teacher' ? teacherDashboardLinks(teacherWorkspace) : quickLinks[roleId];
-  const workItems = overview?.workItems ?? [];
+  const metrics = (data?.metrics ?? []).slice(0, 4).map(toMetric);
+  const links = (roleId === 'teacher' ? teacherDashboardLinks(teacherWorkspace) : quickLinks[roleId]).slice(0, 3);
+  const workItems = (overview?.workItems ?? []).slice(0, 4);
   const openItems = workItems.filter((item) => item.severity !== 'SUCCESS');
   const HeroIcon = config.Icon;
 
@@ -445,8 +432,6 @@ function OperationalRoleDashboard({
         </section>
       )}
 
-      {roleId === 'academic_staff' && <AcademicRoomCapacity rooms={rooms} classes={classes} years={years} onOpen={() => onNavigate('E1')} />}
-
       {roleId === 'teacher' && (
         <TeacherTodayWorkspace
           overview={data?.teacherOverview}
@@ -480,7 +465,7 @@ function OperationalRoleDashboard({
 
       {!loading && (data?.charts.length ?? 0) > 0 && <section className="role-command-insights">
         <header><div><span>PHÂN TÍCH THEO PHẠM VI</span><h3>{roleId === 'accountant' ? 'Tình hình thu và công nợ' : roleId === 'teacher' ? 'Nhịp giảng dạy của tôi' : 'Tiến độ tổ chức đào tạo'}</h3></div><small>Dữ liệu được tổng hợp tự động</small></header>
-        <div>{data?.charts.map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}</div>
+        <div>{data?.charts.slice(0, 2).map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}</div>
       </section>}
     </div>
   );
@@ -554,28 +539,6 @@ function TeacherTodayWorkspace({ overview, loading, onNavigate }: {
   );
 }
 
-function AcademicRoomCapacity({ rooms, classes, years, onOpen }: {
-  rooms: Room[]; classes: SchoolClass[]; years: AcademicYear[]; onOpen: () => void;
-}) {
-  const currentYear = years.find((year) => year.status === 'ACTIVE') || years.find((year) => year.status === 'PLANNED');
-  const currentClasses = classes.filter((item) => item.academicYearId === currentYear?.id);
-  const mainRooms = rooms.filter((room) => room.status !== 'MAINTENANCE' && room.status !== 'INACTIVE'
-    && room.homeRoomEligible !== false && (room.roomType || 'GENERAL') === 'GENERAL');
-  const functionalRooms = rooms.filter((room) => room.homeRoomEligible === false || (room.roomType || 'GENERAL') !== 'GENERAL');
-  const slots = mainRooms.reduce((total, room) => total + (room.supportsMorning === false ? 0 : 1) + (room.supportsAfternoon === false ? 0 : 1), 0);
-  const spare = slots - currentClasses.length;
-  const assigned = currentClasses.filter((item) => item.roomId).length;
-  return <section className="academic-room-capacity">
-    <header><div><span>NĂNG LỰC PHÒNG HỌC</span><h3>{currentYear?.code || 'Năm học hiện tại'} · {currentClasses.length} lớp</h3><p>Theo dõi khả năng đáp ứng hai ca trước khi phân lớp và phát hành thời khóa biểu.</p></div><button type="button" onClick={onOpen}>Mở quy hoạch phòng <ArrowRight size={15} /></button></header>
-    <div>
-      <article><span><DoorOpen size={19} /></span><div><small>Phòng chính</small><strong>{mainRooms.length}</strong><em>{slots} lượt phòng cho hai ca</em></div></article>
-      <article><span><School size={19} /></span><div><small>Đã phân ca/phòng</small><strong>{assigned}/{currentClasses.length}</strong><em>{currentClasses.length - assigned} lớp chưa hoàn tất</em></div></article>
-      <article><span><Sparkles size={19} /></span><div><small>Phòng chức năng</small><strong>{functionalRooms.length}</strong><em>Được xếp riêng theo từng tiết</em></div></article>
-      <article className={spare >= 0 ? 'is-safe' : 'is-risk'}><span>{spare >= 0 ? <CheckCircle2 size={19} /> : <AlertTriangle size={19} />}</span><div><small>Dự phòng vận hành</small><strong>{spare >= 0 ? `Dư ${spare}` : `Thiếu ${Math.abs(spare)}`}</strong><em>lượt phòng so với số lớp</em></div></article>
-    </div>
-  </section>;
-}
-
 function AdminCommandDashboard({ firstName, today, data, loading, hasError, onReload, onNavigate }: {
   firstName: string;
   today: string;
@@ -587,12 +550,10 @@ function AdminCommandDashboard({ firstName, today, data, loading, hasError, onRe
 }) {
   const overview = data?.adminOverview;
   const metrics = (data?.metrics ?? []).map(toMetric);
-  const workItems = overview?.workItems ?? [];
+  const workItems = (overview?.workItems ?? []).slice(0, 4);
   const openWorkItems = workItems.filter((item) => item.severity !== 'SUCCESS');
   const attendanceRate = overview && overview.attendanceRecorded > 0
     ? (overview.present / overview.attendanceRecorded) * 100 : null;
-  const collectionRate = overview && overview.totalReceivables > 0
-    ? (overview.collectedAmount / overview.totalReceivables) * 100 : 0;
 
   return (
     <div className="dashboard admin-command-dashboard">
@@ -682,60 +643,6 @@ function AdminCommandDashboard({ firstName, today, data, loading, hasError, onRe
         </aside>
       </section>
 
-      <section className="admin-command-departments">
-        <div className="admin-command-section-heading">
-          <div><span>GIÁM SÁT THEO BỘ PHẬN</span><h3>Sức khỏe vận hành</h3></div>
-          <p>Admin theo dõi kết quả; Giáo vụ và Kế toán chịu trách nhiệm xử lý nghiệp vụ.</p>
-        </div>
-        <div className="admin-department-grid">
-          <AdminDepartmentCard
-            icon={School}
-            title="Giáo vụ"
-            owner="Cơ cấu đào tạo & lịch học"
-            status={departmentStatus((overview?.timetableCoverage ?? 0) >= 100 && (overview?.classesWithoutHomeroom ?? 0) === 0)}
-            progress={overview?.timetableCoverage ?? 0}
-            progressLabel="Tiến độ thời khóa biểu"
-            facts={[
-              `${formatCompact(overview?.scheduledPeriods)}/${formatCompact(overview?.requiredPeriods)} tiết đã xếp`,
-              `${formatCompact(overview?.activeClasses)} lớp · ${formatCompact(overview?.classesWithoutHomeroom)} lớp thiếu chủ nhiệm`,
-              `${formatCompact(overview?.upcomingExams)} kỳ thi sắp tới · ${formatCompact(overview?.draftExams)} bản nháp`,
-            ]}
-            onOpen={() => onNavigate('A8')}
-          />
-          <AdminDepartmentCard
-            icon={WalletCards}
-            title="Kế toán"
-            owner="Khoản thu & công nợ"
-            status={departmentStatus((overview?.overdueInvoices ?? 0) === 0)}
-            progress={collectionRate}
-            progressLabel="Tỷ lệ đã thu"
-            facts={[
-              `${formatCurrency(overview?.collectedAmount)} đã thu`,
-              `${formatCurrency(overview?.outstandingAmount)} còn phải thu`,
-              `${formatCompact(overview?.overdueInvoices)} hóa đơn quá hạn`,
-            ]}
-            onOpen={() => onNavigate('A8')}
-          />
-          <AdminDepartmentCard
-            icon={ShieldCheck}
-            title="Quản trị hệ thống"
-            owner="Người dùng & quyền truy cập"
-            status={departmentStatus((overview?.inactiveAccounts ?? 0) === 0 && (overview?.unassignedStudents ?? 0) === 0)}
-            progress={overview && overview.activeStudents + overview.activeTeachers + overview.activeParents > 0
-              ? 100 * (overview.activeStudents + overview.activeTeachers + overview.activeParents)
-                / (overview.activeStudents + overview.activeTeachers + overview.activeParents + overview.inactiveAccounts)
-              : 0}
-            progressLabel="Tài khoản sẵn sàng"
-            facts={[
-              `${formatCompact(overview?.activeStudents)} học sinh · ${formatCompact(overview?.activeTeachers)} giáo viên`,
-              `${formatCompact(overview?.activeParents)} phụ huynh đang hoạt động`,
-              `${formatCompact(overview?.inactiveAccounts)} tài khoản cần rà soát`,
-            ]}
-            onOpen={() => onNavigate('A1O')}
-          />
-        </div>
-      </section>
-
       {!loading && (data?.charts.length ?? 0) > 0 && (
         <section className="admin-command-analysis">
           <div className="admin-command-section-heading">
@@ -748,12 +655,6 @@ function AdminCommandDashboard({ firstName, today, data, loading, hasError, onRe
         </section>
       )}
 
-      <section className="admin-command-actions" aria-label="Thao tác quản trị nhanh">
-        <div><Clock3 size={18} /><span>Cập nhật gần nhất</span><strong>{formatDashboardTime(overview?.updatedAt)}</strong></div>
-        <button type="button" onClick={() => onNavigate('A1S')}><GraduationCap size={18} /><span><strong>Quản lý học sinh</strong><small>Hồ sơ và xếp lớp</small></span><ArrowRight size={15} /></button>
-        <button type="button" onClick={() => onNavigate('A1O')}><Users size={18} /><span><strong>Nhân sự vận hành</strong><small>Giáo vụ và Kế toán</small></span><ArrowRight size={15} /></button>
-        <button type="button" onClick={() => onNavigate('A9')}><Bell size={18} /><span><strong>Gửi thông báo</strong><small>Thông tin toàn trường</small></span><ArrowRight size={15} /></button>
-      </section>
     </div>
   );
 }
@@ -863,32 +764,8 @@ function AdminWorkItemRow({ item, onNavigate }: { item: DashboardWorkItem; onNav
   );
 }
 
-function AdminDepartmentCard({ icon: Icon, title, owner, status, progress, progressLabel, facts, onOpen }: {
-  icon: LucideIcon;
-  title: string;
-  owner: string;
-  status: { label: string; tone: string };
-  progress: number;
-  progressLabel: string;
-  facts: string[];
-  onOpen: () => void;
-}) {
-  return (
-    <article className="admin-department-card">
-      <header><span><Icon size={20} /></span><div><h4>{title}</h4><small>{owner}</small></div><b className={status.tone}>{status.label}</b></header>
-      <div className="admin-department-progress"><div><span>{progressLabel}</span><strong>{formatNumber(progress, 1)}%</strong></div><i><span style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></i></div>
-      <ul>{facts.map((fact) => <li key={fact}><Check size={14} /> {fact}</li>)}</ul>
-      <button type="button" onClick={onOpen}>Xem chi tiết <ArrowRight size={14} /></button>
-    </article>
-  );
-}
-
 function AdminListSkeleton() {
   return <div className="admin-command-list-skeleton" aria-label="Đang tải danh sách"><i /><i /><i /></div>;
-}
-
-function departmentStatus(healthy: boolean) {
-  return healthy ? { label: 'Ổn định', tone: 'healthy' } : { label: 'Cần theo dõi', tone: 'attention' };
 }
 
 function statusLabel(status?: string) {
@@ -1019,6 +896,8 @@ function DashboardChartCard({ chart }: { chart: DashboardChart }) {
     <ChartCard title={chart.title} subtitle={chart.subtitle}>
       {chart.data.length === 0 ? (
         <div className="chart-empty"><BarChart3 size={24} /><span>Chưa có dữ liệu để hiển thị</span></div>
+      ) : chart.type === 'PIE' ? (
+        <PieChart data={chart.data} suffix={chart.suffix} />
       ) : chart.type === 'COLUMN' ? (
         <ColumnChart data={chart.data} max={max} suffix={chart.suffix} />
       ) : (
@@ -1116,10 +995,6 @@ function formatMetricValue(value: number, format: string) {
 
 function formatCompact(value?: number) {
   return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value ?? 0);
-}
-
-function formatCurrency(value?: number) {
-  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value ?? 0)} ₫`;
 }
 
 function formatNumber(value: number, digits: number) {

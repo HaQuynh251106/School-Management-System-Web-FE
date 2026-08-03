@@ -9,6 +9,7 @@ const AdminTimetableLive = lazy(() => import('./live/AdminTimetableLive').then((
 const ChatLive = lazy(() => import('./live/ChatLive').then((module) => ({ default: module.ChatLive })));
 const AdminUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminUsersLive })));
 const AdminOperationsUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminOperationsUsersLive })));
+const AdminAccountLifecycleLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAccountLifecycleLive })));
 const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
 const AdminNotificationsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminNotificationsLive })));
 const AdminAcademicLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AdminAcademicLive })));
@@ -85,6 +86,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A1T': return <AdminUsersLive fixedRole="TEACHER" />;
     case 'A1P': return <AdminUsersLive fixedRole="PARENT" />;
     case 'A1O': return <AdminOperationsUsersLive />;
+    case 'A1L': return <AdminAccountLifecycleLive />;
     case 'A2': return <AdminAcademicLive />;
     case 'A3': return <AdminTimetableLive />;
     case 'A4': return <AdminExamsLive />;

@@ -129,7 +129,7 @@ export function SidebarMenu({
   collapsed?: boolean;
   teacherContext?: TeacherWorkspaceContext | null;
 }) {
-  const adminUserItems = modules.admin.filter((item) => ['A1S', 'A1T', 'A1P', 'A1O'].includes(item.code));
+  const adminUserItems = modules.admin.filter((item) => ['A1S', 'A1T', 'A1P', 'A1O', 'A1L'].includes(item.code));
   const adminOtherItems = modules.admin.filter((item) => !adminUserItems.some((userItem) => userItem.code === item.code));
   const academicOperations = modules.academic_staff.filter((item) => ['E1', 'E2', 'E3'].includes(item.code));
   const academicRecords = modules.academic_staff.filter((item) => ['E4', 'E5'].includes(item.code));
@@ -175,7 +175,7 @@ export function SidebarMenu({
       </div>}
 
       {role.id === 'admin' && <>
-        <SidebarGroup id="admin-users" label="2. Người dùng" description="4 nhóm tài khoản" Icon={UsersRound} items={adminUserItems} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="admin-users" label="2. Người dùng" description="Tài khoản và vòng đời truy cập" Icon={UsersRound} items={adminUserItems} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         {adminOtherItems.map((item) => <SidebarItemButton key={item.code} item={item} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} displayTitle={adminLabels[item.code] ?? item.title} />)}
       </>}
 

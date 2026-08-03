@@ -35,6 +35,9 @@ export interface ApiUser {
   role: Role;
   status: string;
   passwordChangeRequired: boolean;
+  activationStatus?: 'ACTIVE' | 'PENDING_EMAIL' | 'PENDING_MANUAL' | string;
+  activationSentAt?: string | null;
+  activationCompletedAt?: string | null;
   email?: string | null;
   phone?: string | null;
   avatarUrl?: string | null;
@@ -112,6 +115,22 @@ export interface AcademicYear { id: string; code: string; name: string; status: 
 export interface Semester {
   id: string; academicYearId: string; code: string; name: string; sequence: number; status: string;
   startDate?: string; endDate?: string;
+}
+export interface StudentClassTransferWindow {
+  academicYearId: string; academicYearCode: string; eligible: boolean;
+  boundaryType: 'SEMESTER_END' | 'YEAR_END' | 'NONE'; reason: string;
+  closedSemesterCount: number; activeSemesterCount: number;
+  latestClosedSemesterId?: string | null; latestClosedSemesterName?: string | null;
+  latestClosedSemesterEndDate?: string | null; nextSemesterId?: string | null;
+  nextSemesterName?: string | null; nextSemesterStartDate?: string | null;
+  defaultEffectiveDate: string;
+}
+export interface StudentClassTransfer {
+  id: string; academicYearId: string; studentId: string; studentName: string;
+  sourceClassId: string; sourceClassCode: string; targetClassId: string; targetClassCode: string;
+  effectiveDate: string; reason: string; status: 'APPLIED' | 'ROLLED_BACK';
+  createdAt: string; createdBy: string; createdByName?: string | null;
+  rolledBackAt?: string | null; rolledBackBy?: string | null; rollbackReason?: string | null;
 }
 export interface Room {
   id: string;
@@ -536,6 +555,22 @@ export interface StudentYearlySummary {
   semesterOneAverage?: number | null; semesterTwoAverage?: number | null;
   averageScore?: number | null; conductGrade?: string | null; promotionStatus: string;
   missingRequirements?: string | null; nextClassId?: string | null; finalizedAt?: string | null;
+}
+
+export interface AccountLifecycleSummary {
+  total: number;
+  active: number;
+  locked: number;
+  pendingActivation: number;
+  requiresPasswordChange: number;
+  missingEmail: number;
+}
+
+export interface BulkAccountActionResult {
+  requested: number;
+  succeeded: number;
+  failed: number;
+  errors: Array<{ userId: string; error: string }>;
 }
 
 export type ReportCardStatus = 'DRAFT' | 'HOMEROOM_SUBMITTED' | 'APPROVED' | 'LOCKED' | 'PUBLISHED';

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { AuthProvider } from '../api/auth';
 
@@ -7,7 +7,10 @@ describe('App authentication shell', () => {
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState(null, '', '/');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('shows the login form when no session exists', async () => {
     render(

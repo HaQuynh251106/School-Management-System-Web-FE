@@ -17,13 +17,17 @@ const demos = showDemoAccounts ? [
   { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.pham', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ].filter((account) => account.username && account.password) : [];
 
-type View = 'login' | 'forgot' | 'reset';
+type View = 'login' | 'forgot' | 'reset' | 'activate';
+
+const strongPassword = (value: string) => value.length >= 10
+  && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9]/.test(value);
 
 export function LoginPage() {
   const { login } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const resetToken = new URLSearchParams(window.location.search).get('token');
-  const [view, setView] = useState<View>(resetToken ? 'reset' : 'login');
+  const activationToken = new URLSearchParams(window.location.search).get('activationToken');
+  const [view, setView] = useState<View>(activationToken ? 'activate' : resetToken ? 'reset' : 'login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -49,11 +53,20 @@ export function LoginPage() {
   });
   const submitReset = () => run(async () => {
     if (!resetToken) throw new Error('Liên kết đặt lại mật khẩu không hợp lệ');
-    if (newPassword.length < 10) throw new Error('Mật khẩu phải có ít nhất 10 ký tự');
+    if (!strongPassword(newPassword)) throw new Error('Mật khẩu cần ít nhất 10 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt');
     if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp');
     await api.post('/auth/reset-password', { token: resetToken, newPassword });
     window.history.replaceState({}, '', window.location.pathname);
     setMessage('Đặt lại mật khẩu thành công. Bạn có thể đăng nhập.');
+    setView('login');
+  });
+  const submitActivation = () => run(async () => {
+    if (!activationToken) throw new Error('Liên kết kích hoạt tài khoản không hợp lệ');
+    if (!strongPassword(newPassword)) throw new Error('Mật khẩu cần ít nhất 10 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt');
+    if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp');
+    await api.post('/auth/activate', { token: activationToken, newPassword });
+    window.history.replaceState({}, '', window.location.pathname);
+    setMessage('Kích hoạt tài khoản thành công. Bạn có thể đăng nhập bằng mật khẩu vừa tạo.');
     setView('login');
   });
 
@@ -128,6 +141,17 @@ export function LoginPage() {
                 <label className="login-field"><span>Xác nhận mật khẩu</span><div className="login-input-wrap"><ShieldCheck size={18} /><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={10} autoComplete="new-password" /></div></label>
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}</button>
+              </form>
+            </>}
+
+            {view === 'activate' && <>
+              <div className="login-heading"><span>Kích hoạt an toàn</span><h1>Tạo mật khẩu của bạn</h1><p className="login-sub">Liên kết chỉ dùng một lần. Mật khẩu phải có chữ hoa, chữ thường, số và ký tự đặc biệt.</p></div>
+              <form onSubmit={(event) => { event.preventDefault(); submitActivation(); }}>
+                <label className="login-field"><span>Mật khẩu mới</span><div className="login-input-wrap"><LockKeyhole size={18} /><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={10} autoFocus autoComplete="new-password" /></div></label>
+                <label className="login-field"><span>Xác nhận mật khẩu</span><div className="login-input-wrap"><ShieldCheck size={18} /><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required minLength={10} autoComplete="new-password" /></div></label>
+                <div className="password-policy-hint"><ShieldCheck size={15} /><span>Không dùng mật khẩu được nhà trường cấp làm mật khẩu lâu dài.</span></div>
+                <Feedback error={error} message={message} />
+                <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang kích hoạt...' : 'Kích hoạt tài khoản'}</button>
               </form>
             </>}
           </div>

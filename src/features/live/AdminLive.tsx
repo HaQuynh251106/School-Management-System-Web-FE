@@ -6,6 +6,7 @@ import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
   ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog, ReportCardScopeOverview,
+  AccountLifecycleSummary, BulkAccountActionResult,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, EmptyState, PaginatedData, ServerPagination, useToast, money, fmtDateTime, fmtDate } from './common';
@@ -160,13 +161,15 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     setForm({ ...BLANK_USER, role: fixedRole || BLANK_USER.role });
   };
 
-  const resetPassword = async (u: ApiUser) => {
-    const value = window.prompt(`Nhập mật khẩu mới cho ${u.fullName} (để trống để hệ thống tự sinh):`, '');
-    if (value === null) return;
-    if (value && value.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+  const sendRecovery = async (u: ApiUser) => {
+    if (!u.email) return toast.show('err', 'Hãy bổ sung email trước khi gửi liên kết truy cập');
     try {
-      const result = await api.post<{ password: string }>(`/users/${u.id}/reset-password`, { newPassword: value || null });
-      toast.show('ok', `Mật khẩu tạm thời của ${u.fullName}: ${result.password}`);
+      const pending = u.activationStatus && u.activationStatus !== 'ACTIVE';
+      const result = await api.post<{ delivered: boolean }>(`/users/${u.id}/${pending ? 'send-activation' : 'send-password-reset'}`);
+      toast.show(result.delivered ? 'ok' : 'err', result.delivered
+        ? `Đã gửi ${pending ? 'liên kết kích hoạt' : 'liên kết đặt lại mật khẩu'} cho ${u.fullName}`
+        : 'Liên kết đã được tạo nhưng dịch vụ email chưa gửi được. Hãy kiểm tra cấu hình email.');
+      users.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
@@ -275,15 +278,14 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   };
 
   const saveUser = async () => {
-    if (!form.username.trim() || !form.fullName.trim()) return toast.show('err', 'Vui lòng nhập tên đăng nhập và họ tên');
-    if (!editingUser && form.password.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    if (!form.fullName.trim()) return toast.show('err', 'Vui lòng nhập họ tên');
     const body: Record<string, unknown> = {
       fullName: form.fullName.trim(), email: form.email.trim(), phone: form.phone.trim(), avatarUrl: form.avatarUrl.trim(),
     };
     if (!editingUser) {
-      body.username = form.username.trim();
+      body.username = form.username.trim() || null;
       body.role = form.role;
-      body.password = form.password || 'Sse@123456';
+      body.password = null;
     }
     if (form.role === 'TEACHER') {
       body.teacherCode = form.teacherCode.trim();
@@ -305,8 +307,11 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     setSaving(true);
     try {
       if (editingUser) await api.put(`/users/${editingUser.id}`, body);
-      else await api.post('/users', body);
-      toast.show('ok', editingUser ? 'Đã cập nhật hồ sơ người dùng' : 'Đã tạo người dùng mới');
+      else {
+        const created = await api.post<ApiUser>('/users', body);
+        toast.show('ok', `Đã tạo @${created.username}. ${created.email ? 'Hệ thống đã tạo liên kết kích hoạt.' : 'Cần bổ sung email trong Trung tâm vòng đời tài khoản.'}`);
+      }
+      if (editingUser) toast.show('ok', 'Đã cập nhật hồ sơ người dùng');
       closeEditor();
       users.reload();
     } catch (e: any) {
@@ -387,7 +392,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
                         <button className="live-btn subtle" onClick={() => toggleLock(u)}>
                           {u.status === 'ACTIVE' ? <><Lock size={14} /> Khóa</> : <><Unlock size={14} /> Mở</>}
                         </button>
-                        <button className="live-btn subtle" onClick={() => resetPassword(u)}><KeyRound size={14} /> Đặt lại mật khẩu</button>
+                        <button className="live-btn subtle" onClick={() => sendRecovery(u)}><KeyRound size={14} /> Gửi liên kết truy cập</button>
                       </div>
                     </td>
                   </tr>
@@ -463,16 +468,17 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
                 <Field label="Vai trò">
                   <select value={form.role} disabled={Boolean(editingUser || fixedRole)} onChange={(e) => set('role', e.target.value)}>
                     <option value="STUDENT">Học sinh</option><option value="TEACHER">Giáo viên</option>
-                    <option value="PARENT">Phụ huynh</option><option value="ADMIN">Quản trị viên</option>
+                    <option value="PARENT">Phụ huynh</option><option value="ACADEMIC_STAFF">Giáo vụ</option>
+                    <option value="ACCOUNTANT">Kế toán</option><option value="ADMIN">Quản trị viên</option>
                   </select>
                 </Field>
                 <Field label="Họ và tên *"><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="Nguyễn Văn A" /></Field>
-                <Field label="Tên đăng nhập *"><input value={form.username} disabled={Boolean(editingUser)} onChange={(e) => set('username', e.target.value)} placeholder="vd: hs.vana" /></Field>
-                {!editingUser && <Field label="Mật khẩu *"><input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} /></Field>}
+                <Field label="Tên đăng nhập"><input value={form.username} disabled={Boolean(editingUser)} onChange={(e) => set('username', e.target.value)} placeholder="Để trống để hệ thống tự sinh" /></Field>
                 <Field label="Email"><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="a@sse.edu.vn" /></Field>
                 <Field label="Số điện thoại"><input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="09xxxxxxxx" /></Field>
                 <Field label="Ảnh đại diện (URL)"><input type="url" value={form.avatarUrl} onChange={(e) => set('avatarUrl', e.target.value)} placeholder="https://…" /></Field>
               </div>
+              {!editingUser && <div className="admin-user-privacy-note"><ShieldCheck size={16} /><span>Admin không đặt mật khẩu. Hệ thống tự tạo tài khoản và gửi liên kết để người dùng tự thiết lập mật khẩu.</span></div>}
             </section>
 
             {form.role === 'TEACHER' && (
@@ -570,6 +576,129 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       )}
     </Section>
   );
+}
+
+/* ============ Trung tâm vòng đời tài khoản ============ */
+export function AdminAccountLifecycleLive() {
+  const [role, setRole] = useHashString('role', '');
+  const [accessState, setAccessState] = useHashString('access', '');
+  const [q, setQ] = useHashString('q', '');
+  const [debouncedQ, setDebouncedQ] = useState('');
+  const [pageNumber, setPageNumber] = useHashNumber('page', 1);
+  const [pageSize, setPageSize] = useHashNumber('size', 10);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState('RESEND_ACTIVATION');
+  const [working, setWorking] = useState(false);
+  const toast = useToast();
+  const summary = useApi<AccountLifecycleSummary>(`/users/lifecycle/summary${role ? `?role=${role}` : ''}`);
+  const params = [role && `role=${role}`, accessState && `accessState=${accessState}`,
+    debouncedQ && `q=${encodeURIComponent(debouncedQ)}`, `page=${pageNumber - 1}`, `size=${pageSize}`, 'sort=fullName']
+    .filter(Boolean).join('&');
+  const users = useApi<PageResponse<ApiUser>>(`/users/page?${params}`);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedQ(q.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  useEffect(() => { setPageNumber(1); setSelected([]); }, [role, accessState, debouncedQ, setPageNumber]);
+
+  const rows = users.data?.items ?? [];
+  const allPageSelected = rows.length > 0 && rows.every((user) => selected.includes(user.id));
+  const reload = () => { users.reload(); summary.reload(); };
+  const changeAccessState = (value: string) => {
+    setAccessState(value);
+    if (value === 'PENDING_ACTIVATION') setBulkAction('RESEND_ACTIVATION');
+    if (value === 'REQUIRES_PASSWORD_CHANGE') setBulkAction('SEND_PASSWORD_RESET');
+    if (value === 'LOCKED') setBulkAction('UNLOCK');
+  };
+  const toggleAll = () => setSelected(allPageSelected
+    ? selected.filter((id) => !rows.some((user) => user.id === id))
+    : [...new Set([...selected, ...rows.map((user) => user.id)])]);
+
+  const runBulk = async () => {
+    if (!selected.length) return toast.show('err', 'Hãy chọn ít nhất một tài khoản');
+    setWorking(true);
+    try {
+      const result = await api.post<BulkAccountActionResult>('/users/bulk/access-action', { userIds: selected, action: bulkAction });
+      toast.show(result.failed ? 'err' : 'ok', `Đã xử lý ${result.succeeded}/${result.requested} tài khoản${result.failed ? ` · ${result.failed} lỗi` : ''}`);
+      setSelected([]); reload();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setWorking(false); }
+  };
+
+  const sendLink = async (user: ApiUser) => {
+    if (!user.email) return toast.show('err', 'Tài khoản chưa có email. Hãy mở hồ sơ để bổ sung trước.');
+    setWorking(true);
+    try {
+      const pending = user.activationStatus !== 'ACTIVE';
+      const result = await api.post<{ delivered: boolean }>(`/users/${user.id}/${pending ? 'send-activation' : 'send-password-reset'}`);
+      toast.show(result.delivered ? 'ok' : 'err', result.delivered
+        ? `Đã gửi liên kết tới ${user.email}`
+        : 'Đã tạo liên kết nhưng email chưa gửi được. Kiểm tra cấu hình SMTP.');
+      reload();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setWorking(false); }
+  };
+
+  return <Section title="Trung tâm vòng đời tài khoản" subtitle="Theo dõi kích hoạt, khôi phục và các ngoại lệ truy cập trong một nơi" wide
+    action={<button className="live-btn ghost" onClick={reload}><RefreshCw size={15} /> Làm mới</button>}>
+    {toast.node}
+    <div className="account-lifecycle-flow">
+      <span><strong>1</strong> Import hồ sơ</span><ArrowRight size={16} /><span><strong>2</strong> Tự sinh tài khoản</span><ArrowRight size={16} />
+      <span><strong>3</strong> Gửi kích hoạt</span><ArrowRight size={16} /><span><strong>4</strong> Người dùng tự đặt mật khẩu</span>
+    </div>
+    <Async state={summary}>
+      {(stats) => <div className="account-lifecycle-stats">
+        <button className={accessState === '' ? 'active' : ''} onClick={() => changeAccessState('')}><UsersRound size={19} /><span>Tổng tài khoản<strong>{stats.total}</strong></span></button>
+        <button className={accessState === 'PENDING_ACTIVATION' ? 'active warning' : 'warning'} onClick={() => changeAccessState('PENDING_ACTIVATION')}><Clock3 size={19} /><span>Chờ kích hoạt<strong>{stats.pendingActivation}</strong></span></button>
+        <button className={accessState === 'REQUIRES_PASSWORD_CHANGE' ? 'active' : ''} onClick={() => changeAccessState('REQUIRES_PASSWORD_CHANGE')}><KeyRound size={19} /><span>Cần đổi mật khẩu<strong>{stats.requiresPasswordChange}</strong></span></button>
+        <button className={accessState === 'MISSING_EMAIL' ? 'active danger' : 'danger'} onClick={() => changeAccessState('MISSING_EMAIL')}><AlertTriangle size={19} /><span>Thiếu email<strong>{stats.missingEmail}</strong></span></button>
+        <button className={accessState === 'LOCKED' ? 'active danger' : ''} onClick={() => changeAccessState('LOCKED')}><Lock size={19} /><span>Đã khóa<strong>{stats.locked}</strong></span></button>
+      </div>}
+    </Async>
+    <div className="account-lifecycle-toolbar">
+      <select className="live-select" value={role} onChange={(event) => setRole(event.target.value)} aria-label="Lọc vai trò">
+        <option value="">Tất cả vai trò</option><option value="STUDENT">Học sinh</option><option value="TEACHER">Giáo viên</option>
+        <option value="PARENT">Phụ huynh</option><option value="ACADEMIC_STAFF">Giáo vụ</option><option value="ACCOUNTANT">Kế toán</option>
+      </select>
+      <div className="live-search grow"><Search size={16} /><input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Tìm họ tên, tài khoản, email hoặc mã…" /></div>
+      <select className="live-select" value={accessState} onChange={(event) => changeAccessState(event.target.value)} aria-label="Lọc trạng thái truy cập">
+        <option value="">Tất cả trạng thái</option><option value="PENDING_ACTIVATION">Chờ kích hoạt</option>
+        <option value="REQUIRES_PASSWORD_CHANGE">Cần đổi mật khẩu</option><option value="MISSING_EMAIL">Thiếu email</option><option value="LOCKED">Đã khóa</option><option value="READY">Sẵn sàng sử dụng</option>
+      </select>
+    </div>
+    {selected.length > 0 && <div className="account-bulk-bar">
+      <strong>Đã chọn {selected.length} tài khoản</strong>
+      <select value={bulkAction} onChange={(event) => setBulkAction(event.target.value)}>
+        <option value="RESEND_ACTIVATION">Gửi lại liên kết kích hoạt</option><option value="SEND_PASSWORD_RESET">Gửi liên kết đặt lại mật khẩu</option>
+        <option value="REQUIRE_PASSWORD_CHANGE">Yêu cầu đổi mật khẩu</option><option value="UNLOCK">Mở khóa</option><option value="LOCK">Khóa tài khoản</option>
+      </select>
+      <button className="live-btn" disabled={working} onClick={runBulk}><Send size={15} /> {working ? 'Đang xử lý…' : 'Áp dụng'}</button>
+      <button className="live-btn ghost" onClick={() => setSelected([])}>Bỏ chọn</button>
+    </div>}
+    <Async state={users}>
+      {(pageData) => pageData.items.length === 0 ? <EmptyState label="Không có tài khoản phù hợp bộ lọc" /> : <>
+        <div className="account-lifecycle-table-wrap"><table className="live-table account-lifecycle-table">
+          <thead><tr><th><input type="checkbox" checked={allPageSelected} onChange={toggleAll} aria-label="Chọn toàn bộ trang" /></th><th>Người dùng</th><th>Vai trò</th><th>Email nhận liên kết</th><th>Trạng thái truy cập</th><th>Lần gửi gần nhất</th><th></th></tr></thead>
+          <tbody>{pageData.items.map((user) => {
+            const pending = user.activationStatus && user.activationStatus !== 'ACTIVE';
+            return <tr key={user.id}>
+              <td><input type="checkbox" checked={selected.includes(user.id)} onChange={() => setSelected((value) => value.includes(user.id) ? value.filter((id) => id !== user.id) : [...value, user.id])} aria-label={`Chọn ${user.fullName}`} /></td>
+              <td><strong>{user.fullName}</strong><small>@{user.username}</small></td><td><Badge tone="blue">{viLabel(user.role)}</Badge></td>
+              <td>{user.email ? <span className="account-email"><CheckCircle2 size={14} /> {user.email}</span> : <span className="account-email missing"><AlertTriangle size={14} /> Chưa có email</span>}</td>
+              <td><div className="account-access-state"><StatusPill value={user.status} />{pending
+                ? <Badge tone="orange">Chờ kích hoạt</Badge> : user.passwordChangeRequired ? <Badge tone="blue">Cần đổi mật khẩu</Badge> : <Badge tone="green">Sẵn sàng</Badge>}</div></td>
+              <td>{user.activationSentAt ? fmtDateTime(user.activationSentAt) : '—'}</td>
+              <td><button className="live-btn subtle" disabled={working || !user.email} onClick={() => sendLink(user)}><Send size={14} /> {pending ? 'Gửi kích hoạt' : 'Gửi khôi phục'}</button></td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+        <ServerPagination data={pageData} itemLabel="tài khoản" onPageChange={(next) => setPageNumber(next + 1, 'push')}
+          onPageSizeChange={(size) => { setPageSize(size); setPageNumber(1); }} />
+      </>}
+    </Async>
+    <div className="account-lifecycle-note"><ShieldCheck size={17} /><span><strong>Nguyên tắc bảo mật:</strong> hệ thống không gửi mật khẩu vĩnh viễn. Liên kết chỉ dùng một lần, có thời hạn và mọi thao tác đều được ghi vào Lịch sử hệ thống.</span></div>
+  </Section>;
 }
 
 export function AdminOperationsUsersLive() {

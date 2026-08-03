@@ -40,7 +40,10 @@ export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 
   };
 
   const changePassword = async () => {
-    if (password.newPassword.length < 10) return toast.show('err', 'Mật khẩu mới phải có ít nhất 10 ký tự');
+    if (password.newPassword.length < 10 || !/[A-Z]/.test(password.newPassword) || !/[a-z]/.test(password.newPassword)
+      || !/[0-9]/.test(password.newPassword) || !/[^A-Za-z0-9]/.test(password.newPassword)) {
+      return toast.show('err', 'Mật khẩu cần ít nhất 10 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt');
+    }
     if (password.newPassword !== password.confirmation) return toast.show('err', 'Mật khẩu xác nhận không khớp');
     if (password.currentPassword === password.newPassword) return toast.show('err', 'Mật khẩu mới phải khác mật khẩu hiện tại');
     setBusy(true);

@@ -61,6 +61,41 @@ export function ColumnChart({ data, max, suffix }: { data: Array<{ label: string
   );
 }
 
+export function PieChart({ data, suffix }: { data: Array<{ label: string; value: number }>; suffix: string }) {
+  const colors = ['#2563eb', '#ec4899', '#f59e0b', '#14b8a6'];
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const segments = data.map((item, index) => {
+    const startValue = data.slice(0, index).reduce((sum, current) => sum + current.value, 0);
+    const endValue = startValue + item.value;
+    const start = total > 0 ? (startValue / total) * 360 : 0;
+    const end = total > 0 ? (endValue / total) * 360 : 0;
+    return `${colors[index % colors.length]} ${start}deg ${end}deg`;
+  });
+
+  return (
+    <div className="pie-chart">
+      <div
+        className="pie-chart-visual"
+        role="img"
+        aria-label={data.map((item) => `${item.label}: ${item.value}${suffix}`).join(', ')}
+        style={{ background: `conic-gradient(${segments.join(', ')})` }}
+      >
+        <div><strong>{total}</strong><span>học sinh</span></div>
+      </div>
+      <div className="pie-chart-legend">
+        {data.map((item, index) => (
+          <div key={`${item.label}-${index}`}>
+            <i style={{ background: colors[index % colors.length] }} />
+            <span>{item.label}</span>
+            <strong>{item.value}{suffix}</strong>
+            <small>{total > 0 ? `${Math.round((item.value / total) * 100)}%` : '0%'}</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SplitDashboard() {
   return (
     <div className="split-dashboard">

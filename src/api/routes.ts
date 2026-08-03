@@ -15,6 +15,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A1T: 'giao-vien',
     A1P: 'phu-huynh',
     A1O: 'nhan-su-van-hanh',
+    A1L: 'vong-doi-tai-khoan',
     A6: 'lich-su-he-thong',
     A8: 'bao-cao-thong-ke',
     A9: 'trung-tam-thong-bao',

@@ -14,7 +14,10 @@ export function PasswordChangePage() {
 
   const submit = async () => {
     setError(null);
-    if (newPassword.length < 10) return setError('Mật khẩu mới phải có ít nhất 10 ký tự.');
+    if (newPassword.length < 10 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword)
+      || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      return setError('Mật khẩu cần ít nhất 10 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.');
+    }
     if (newPassword !== confirmation) return setError('Mật khẩu xác nhận không khớp.');
     if (newPassword === currentPassword) return setError('Mật khẩu mới phải khác mật khẩu hiện tại.');
     setBusy(true);
