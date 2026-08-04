@@ -11,14 +11,14 @@ const AdminUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({
 const AdminOperationsUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminOperationsUsersLive })));
 const AdminAccountLifecycleLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAccountLifecycleLive })));
 const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
-const AdminNotificationsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminNotificationsLive })));
+const AdminNotificationsLive = lazy(() => import('./live/AdminNotificationsLive').then((module) => ({ default: module.AdminNotificationsLive })));
 const AdminAcademicLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AdminAcademicLive })));
 const AcademicYearClosureLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AcademicYearClosureLive })));
 const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
 const TeacherAttendanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherAttendanceLive })));
 const TeacherGradesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherGradesLive })));
 const TeacherNotificationsLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherNotificationsLive })));
-const TeacherFinanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherFinanceLive })));
+const TeacherFinanceLive = lazy(() => import('./live/TeacherFinanceLive').then((module) => ({ default: module.TeacherFinanceLive })));
 const StudentProfileLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentProfileLive })));
 const StudentProfileWorkspace = lazy(() => import('./live/StudentProfileWorkspace').then((module) => ({ default: module.StudentProfileWorkspace })));
 const StudentAcademicLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAcademicLive })));

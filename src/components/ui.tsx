@@ -1,5 +1,5 @@
 import type React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock3, Info } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { TabItem } from '../types';
 import { useHashString } from '../api/urlState';
@@ -9,6 +9,18 @@ export function FunctionTabs({ tabs, mode = 'auto' }: { tabs: TabItem[]; mode?: 
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   const workflow = mode === 'workflow' || (mode === 'auto' && tabs.some((tab) => Boolean(tab.description)));
   const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === active.id));
+  const moveTab = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabs.length - 1;
+    if (nextIndex == null) return;
+    event.preventDefault();
+    const next = tabs[nextIndex];
+    setActiveTab(next.id, 'push');
+    window.requestAnimationFrame(() => document.getElementById(`tab-${next.id}`)?.focus());
+  };
 
   return (
     <div className="tabbed-feature">
@@ -30,13 +42,14 @@ export function FunctionTabs({ tabs, mode = 'auto' }: { tabs: TabItem[]; mode?: 
             </select>
           </label>
           <button className="next" type="button" disabled={activeIndex === tabs.length - 1} onClick={() => setActiveTab(tabs[activeIndex + 1].id, 'push')}>Bước tiếp theo <ChevronRight size={18} /></button>
-        </div> : <div className="tab-list" role="tablist">
+        </div> : <div className="tab-list" role="tablist" aria-orientation="horizontal">
           {tabs.map((tab, index) => (
             <button
               key={tab.id}
               id={`tab-${tab.id}`}
               className={active.id === tab.id ? 'active' : ''}
               onClick={() => setActiveTab(tab.id, 'push')}
+              onKeyDown={(event) => moveTab(event, index)}
               type="button"
               role="tab"
               aria-selected={active.id === tab.id}
@@ -181,6 +194,7 @@ export function StatusPill({ value }: { value: string }) {
           ? 'red'
           : 'blue';
 
-  return <Badge tone={tone}>{viLabel(value)}</Badge>;
+  const StatusIcon = tone === 'green' ? CheckCircle2 : tone === 'orange' ? Clock3 : tone === 'red' ? AlertTriangle : Info;
+  return <Badge tone={tone}><StatusIcon size={12} aria-hidden="true" /> {viLabel(value)}</Badge>;
 }
 

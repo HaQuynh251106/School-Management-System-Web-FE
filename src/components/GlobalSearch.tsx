@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { BookOpen, Building2, CalendarClock, FileText, GraduationCap, LoaderCircle, ReceiptText, Search, UserRound, X } from 'lucide-react';
 import { api } from '../api/client';
 import type { GlobalSearchItem, GlobalSearchResponse } from '../api/types';
@@ -30,6 +30,7 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const requestId = useRef(0);
   const root = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -88,6 +89,10 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
     return [...output.entries()];
   }, [results]);
 
+  useEffect(() => {
+    setActiveIndex(results.length ? 0 : -1);
+  }, [results]);
+
   const choose = (item: GlobalSearchItem) => {
     onNavigate(item.pageId);
     setOpen(false);
@@ -99,6 +104,25 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
     window.requestAnimationFrame(() => input.current?.focus());
   };
   const copy = SEARCH_COPY[roleId];
+  const onSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (!open || !results.length) return;
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveIndex((current) => current < results.length - 1 ? current + 1 : 0);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveIndex((current) => current > 0 ? current - 1 : results.length - 1);
+    } else if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault();
+      choose(results[activeIndex]);
+    }
+  };
 
   return (
     <div className={`global-search ${open ? 'open' : ''}`} ref={root}>
@@ -110,14 +134,17 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
         {loading ? <LoaderCircle size={17} className="is-spinning" /> : <Search size={17} />}
         <input ref={input} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
           onFocus={() => query.trim().length >= 2 && setOpen(true)}
-          placeholder={copy.placeholder} aria-label={copy.label} />
+          onKeyDown={onSearchKeyDown}
+          placeholder={copy.placeholder} aria-label={copy.label} role="combobox" aria-autocomplete="list"
+          aria-expanded={open && query.trim().length >= 2} aria-controls="global-search-results"
+          aria-activedescendant={activeIndex >= 0 ? `global-search-option-${activeIndex}` : undefined} />
         {query && <button type="button" aria-label="Xóa tìm kiếm" onClick={() => { setQuery(''); setResults([]); }}>
           <X size={15} />
         </button>}
         {!query && <kbd aria-hidden="true">Ctrl K</kbd>}
       </div>
       {open && query.trim().length >= 2 && (
-        <div className="global-search-panel" role="dialog" aria-label="Kết quả tìm kiếm">
+        <div id="global-search-results" className="global-search-panel" role="listbox" aria-label="Kết quả tìm kiếm">
           {loading && <div className="global-search-state"><LoaderCircle size={18} className="is-spinning" /> Đang tìm kiếm…</div>}
           {!loading && error && <div className="global-search-state error">{error}</div>}
           {!loading && !error && results.length === 0 && <div className="global-search-state">Không tìm thấy kết quả phù hợp</div>}
@@ -126,8 +153,9 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
               <header>{category}<span>{items.length}</span></header>
               {items.map((item) => {
                 const Icon = TYPE_ICON[item.type as keyof typeof TYPE_ICON] || Search;
+                const resultIndex = results.indexOf(item);
                 return (
-                  <button type="button" key={`${item.type}:${item.id}`} onClick={() => choose(item)}>
+                  <button type="button" role="option" aria-selected={activeIndex === resultIndex} id={`global-search-option-${resultIndex}`} className={activeIndex === resultIndex ? 'keyboard-active' : ''} key={`${item.type}:${item.id}`} onMouseEnter={() => setActiveIndex(resultIndex)} onClick={() => choose(item)}>
                     <span><Icon size={17} /></span>
                     <div><strong>{item.title}</strong><small>{item.subtitle || category}</small></div>
                   </button>
@@ -135,7 +163,7 @@ export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigat
               })}
             </section>
           ))}
-          {!loading && results.length > 0 && <footer>{results.length} kết quả · Kết quả được giới hạn theo quyền truy cập</footer>}
+          {!loading && results.length > 0 && <footer>{results.length} kết quả · ↑↓ để chọn · Enter để mở · Esc để đóng</footer>}
         </div>
       )}
     </div>

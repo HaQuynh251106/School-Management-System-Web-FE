@@ -140,12 +140,13 @@ export function SidebarMenu({
   const teacherItems = modules.teacher;
   const teacherToday = teacherItems.filter((item) => ['B2', 'B3', 'B15'].includes(item.code));
   const teacherTeaching = teacherItems.filter((item) => ['B1', 'B4', 'B5'].includes(item.code)
+    || (!teacherContext?.homeroomTeacher && item.code === 'B16')
     || (item.code === 'B14' && teacherContext?.loadRegistrationVisible));
-  const teacherStudentCare = teacherItems.filter((item) => item.code === 'B16'
-    || (teacherContext?.homeroomTeacher && ['B8', 'B9', 'B13'].includes(item.code)));
+  const teacherStudentCare = teacherItems.filter((item) => teacherContext?.homeroomTeacher
+    && ['B8', 'B9', 'B13', 'B16'].includes(item.code));
   const teacherReports = teacherItems.filter((item) => item.code === 'B10'
     || (item.code === 'B12' && teacherContext?.examResponsibilities));
-  const teacherCommunication = teacherItems.filter((item) => item.code === 'B6');
+  const teacherCommunication = teacherItems.filter((item) => ['B6', 'B11'].includes(item.code));
   const studentItems = modules.student;
   const studentLearning = studentItems.filter((item) => ['C2', 'C3', 'C4', 'C10', 'C11'].includes(item.code));
   const studentSupport = studentItems.filter((item) => ['C6', 'C7'].includes(item.code));
@@ -198,11 +199,11 @@ export function SidebarMenu({
       </>}
 
       {role.id === 'teacher' && <>
-        <SidebarGroup id="teacher-today" label="Dạy học hôm nay" description="Lịch dạy, điểm danh và nhật ký tiết" Icon={CalendarCheck2} items={teacherToday} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="teacher-teaching" label="Quản lý giảng dạy" description="Lớp, điểm, bài tập và tải dạy" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="teacher-student-care" label={teacherContext?.homeroomTeacher ? 'Học sinh & chủ nhiệm' : 'Hỗ trợ học sinh'} description={teacherContext?.homeroomTeacher ? `Hỗ trợ và quản lý lớp ${teacherContext.homeroomClasses.map((item) => item.code).join(', ')}` : 'Theo dõi và phối hợp các trường hợp cần quan tâm'} Icon={BookOpenCheck} items={teacherStudentCare} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="teacher-reports" label="Kỳ thi & báo cáo" description="Nhiệm vụ khảo thí và báo cáo giảng dạy" Icon={ClipboardCheck} items={teacherReports} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        {teacherCommunication.map((item) => <SidebarItemButton key={item.code} item={item} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} displayTitle="Trao đổi" />)}
+        <SidebarGroup id="teacher-today" label="Hôm nay" description="Lịch dạy, điểm danh và sổ đầu bài" Icon={CalendarCheck2} items={teacherToday} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-teaching" label="Giảng dạy" description="Lớp, bảng điểm, bài tập và tải dạy" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        {teacherContext?.homeroomTeacher && <SidebarGroup id="teacher-student-care" label="Lớp chủ nhiệm" description={`Học sinh, xin nghỉ, công nợ và học bạ lớp ${teacherContext.homeroomClasses.map((item) => item.code).join(', ')}`} Icon={BookOpenCheck} items={teacherStudentCare} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />}
+        <SidebarGroup id="teacher-reports" label="Khảo thí & báo cáo" description="Nhiệm vụ khảo thí và báo cáo giảng dạy" Icon={ClipboardCheck} items={teacherReports} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-communication" label="Trao đổi & cá nhân" description="Tin nhắn và cấu hình tài khoản" Icon={MessageSquareText} items={teacherCommunication} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
       </>}
 
       {role.id === 'student' && <>

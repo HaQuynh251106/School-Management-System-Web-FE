@@ -17,6 +17,7 @@ import { useHashString } from '../../api/urlState';
 import { canApplyExamOrganizationPlan } from './examOrganizationPlanning';
 import { operationalAcademicYears } from './academicYearSelection';
 import { confirmAction } from '../../components/confirmAction';
+import { AcademicScopeOptions } from '../../components/AcademicScopeOptions';
 
 const today = new Date().toISOString().slice(0, 10);
 const blankSchedule = (date = today) => ({ subjectId: '', classIds: [] as string[], examDate: date, startTime: '07:30', durationMinutes: 90, notes: '' });
@@ -95,7 +96,7 @@ export function AdminExamsLive() {
   const selectedPeriod = selectedSummary?.period;
   const classes = useApi<SchoolClass[]>(selectedPeriod?.academicYearId
     ? `/classes?academicYearId=${encodeURIComponent(selectedPeriod.academicYearId)}` : null);
-  const [scheduleId, setScheduleId] = useState('');
+  const [scheduleId, setScheduleId] = useHashString('exam_schedule', '');
   const schedules = useApi<ExamSchedule[]>(periodId ? `/exam-periods/${periodId}/schedules` : null);
   const graders = useApi<ExamGradingAssignment[]>(scheduleId ? `/exam-schedules/${scheduleId}/graders` : null);
   const eligibleGraders = useApi<EligibleExamGrader[]>(scheduleId ? `/exam-schedules/${scheduleId}/eligible-graders` : null);
@@ -119,7 +120,7 @@ export function AdminExamsLive() {
   }, [periodId, periods.data, setPeriodId]);
   useEffect(() => {
     if (scheduleId && !schedules.data?.some((item) => item.id === scheduleId)) setScheduleId('');
-  }, [scheduleId, schedules.data]);
+  }, [scheduleId, schedules.data, setScheduleId]);
   useEffect(() => {
     setOrganizationForm({ maxCandidatesPerRoom: 20, studentsPerDesk: 1, includeSecondProctor: false });
     setGraderForm({ classId: '', teacherId: '' });
@@ -323,7 +324,7 @@ export function AdminExamsLive() {
           <input className="live-input" placeholder="Mã kỳ thi" value={periodForm.code} onChange={(e) => setPeriodForm({ ...periodForm, code: e.target.value })} />
           <input className="live-input" placeholder="Tên kỳ thi" value={periodForm.name} onChange={(e) => setPeriodForm({ ...periodForm, name: e.target.value })} />
           <select className="live-select" value={periodForm.academicYearId} onChange={(e) => setPeriodForm({ ...periodForm, academicYearId: e.target.value, semesterId: '' })}><option value="">Năm học đang làm việc</option>{workingYears.map((x) => <option key={x.id} value={x.id}>{x.code} · {x.status === 'ACTIVE' ? 'Đang hoạt động' : 'Sắp diễn ra'}</option>)}</select>
-          <select className="live-select" value={periodForm.semesterId} onChange={(e) => setPeriodForm({ ...periodForm, semesterId: e.target.value })}><option value="">Học kỳ</option>{semesterOptions.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          <select className="live-select" aria-label="Học kỳ của kỳ thi" value={periodForm.semesterId} onChange={(e) => setPeriodForm({ ...periodForm, semesterId: e.target.value })}><AcademicScopeOptions semesters={semesterOptions} academicYears={years.data || []} placeholder="Chọn học kỳ" /></select>
           <select className="live-select" value={periodForm.gradeLevel} onChange={(e) => setPeriodForm({ ...periodForm, gradeLevel: e.target.value })}><option value="">Toàn trường</option>{gradeOptions.map((x) => <option key={x} value={x}>Khối {x}</option>)}</select>
           <input className="live-input" type="date" value={periodForm.startDate} onChange={(e) => setPeriodForm({ ...periodForm, startDate: e.target.value })} />
           <input className="live-input" type="date" value={periodForm.endDate} onChange={(e) => setPeriodForm({ ...periodForm, endDate: e.target.value })} />

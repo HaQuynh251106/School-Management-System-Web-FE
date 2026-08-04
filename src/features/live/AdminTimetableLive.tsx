@@ -12,6 +12,7 @@ import type {
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { confirmAction } from '../../components/confirmAction';
+import { AcademicScopeOptions, semesterScopeLabel } from '../../components/AcademicScopeOptions';
 import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { useHashNumber, useHashString } from '../../api/urlState';
@@ -443,7 +444,7 @@ function TeachingAssignmentManager() {
           </select></label>
           <label><span>Học kỳ</span><select className="live-select" value={semesterFilter} onChange={(event) => setSemesterFilter(event.target.value)}>
             <option value="">Tất cả học kỳ</option>
-            {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+            <AcademicScopeOptions semesters={semesterOptions} academicYears={years.data || []} />
           </select></label>
           <button type="button" className="assignment-reset-button" disabled={!hasAssignmentFilters} onClick={resetAssignmentFilters}><RotateCcw size={15} /> Đặt lại</button>
         </div>
@@ -512,7 +513,7 @@ function TeachingAssignmentManager() {
                     return <tr key={item.id}>
                       <td><span className="teacher-class-code">{item.classCode}</span></td>
                       <td><strong>{item.subjectName}</strong></td>
-                      <td>{semester?.name ?? item.semesterId}</td>
+                      <td>{semester ? semesterScopeLabel(semester, years.data || []) : item.semesterId}</td>
                       <td><div className="assignment-manage-load"><strong>{item.weeklyPeriods} tiết/tuần</strong><small>Đã xếp {item.scheduledPeriods}/{item.weeklyPeriods}</small></div></td>
                       <td><span className={`assignment-manage-status ${item.scheduledPeriods > 0 ? 'scheduled' : 'open'}`}>{item.scheduledPeriods > 0 ? 'Đã có lịch' : 'Có thể xóa'}</span></td>
                       <td><div className="assignment-manage-actions"><button className="assignment-row-action edit" onClick={() => openEdit(item)} title="Sửa phân công"><Pencil size={15} /><span>Sửa</span></button><button className="assignment-row-action delete" title={item.scheduledPeriods > 0 ? 'Xóa các tiết trong thời khóa biểu trước' : 'Xóa phân công'} disabled={item.scheduledPeriods > 0 || deletingId === item.id} onClick={() => requestDelete(item)}><Trash2 size={15} /><span>Xóa</span></button></div></td>
@@ -555,7 +556,7 @@ function TeachingAssignmentManager() {
             <Field label="Học kỳ">
               <select disabled={editingHasSchedule} value={form.semesterId} onChange={(event) => setForm((current) => ({ ...current, semesterId: event.target.value }))}>
                 <option value="">— Chọn học kỳ —</option>
-                {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+                <AcademicScopeOptions semesters={semesterOptions} academicYears={years.data || []} />
               </select>
             </Field>
           </div>
@@ -840,7 +841,7 @@ function TimetableEditor() {
         </select>
         <select className="live-select grow" aria-label="Học kỳ xếp thời khóa biểu" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
           <option value="">— Chọn học kỳ —</option>
-          {semesterOptions.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'ACTIVE' ? ' · Đang hoạt động' : item.status === 'PLANNED' ? ' · Sắp diễn ra' : ''}</option>)}
+          <AcademicScopeOptions semesters={semesterOptions} academicYears={years.data || []} />
         </select>
       </div>
 

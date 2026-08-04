@@ -8,6 +8,14 @@ test('Bảng điểm giữ bản nháp qua reload, import xem trước và hoàn
     username: 'gv.nguyenminh', password, landing: 'giao-vien',
   });
 
+  // Mỗi lượt chạy phải bắt đầu từ dữ liệu máy chủ; bản nháp từ lần chạy trước
+  // không được làm thay đổi mốc so sánh của kịch bản hiện tại.
+  await page.evaluate(() => {
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith('gradebook-draft:'))
+      .forEach((key) => localStorage.removeItem(key));
+  });
+
   await page.goto('/#/giao-vien/bang-diem');
   await expect(page.getByRole('heading', { level: 1, name: 'Bảng điểm' })).toBeVisible();
   await expect(page.getByText('Dữ liệu đã đồng bộ')).toBeVisible({ timeout: 15_000 });
@@ -26,8 +34,8 @@ test('Bảng điểm giữ bản nháp qua reload, import xem trước và hoàn
   await expect(page.getByText('Đã khôi phục bản nháp')).toBeVisible({ timeout: 15_000 });
   await expect(firstScore).toHaveValue(replacement);
 
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Hoàn tác chưa lưu' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Hoàn tác thay đổi' }).click();
   await expect(firstScore).toHaveValue(original);
   await expect(page.getByText('Dữ liệu đã đồng bộ')).toBeVisible();
 
@@ -47,8 +55,8 @@ test('Bảng điểm giữ bản nháp qua reload, import xem trước và hoàn
   await page.getByRole('button', { name: 'Áp dụng vào bản nháp' }).click();
   await expect(page.getByText('Có thay đổi chưa lưu')).toBeVisible();
 
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Hoàn tác chưa lưu' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Hoàn tác thay đổi' }).click();
   await expect(page.getByText('Dữ liệu đã đồng bộ')).toBeVisible();
 });
 

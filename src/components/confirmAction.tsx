@@ -23,6 +23,7 @@ export function confirmAction({
     host.className = 'confirm-action-host';
     document.body.appendChild(host);
     const root = createRoot(host);
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     let completed = false;
 
     const finish = (accepted: boolean) => {
@@ -31,10 +32,19 @@ export function confirmAction({
       window.removeEventListener('keydown', onKeyDown);
       root.unmount();
       host.remove();
+      window.requestAnimationFrame(() => previousFocus?.focus());
       resolve(accepted);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') finish(false);
+      if (event.key !== 'Tab') return;
+      const dialog = host.querySelector<HTMLElement>('[role="alertdialog"]');
+      const focusable = dialog ? [...dialog.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])')] : [];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     window.addEventListener('keydown', onKeyDown);
 

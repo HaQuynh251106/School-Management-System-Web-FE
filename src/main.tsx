@@ -10,6 +10,7 @@ import { ThemeProvider } from './api/theme';
 import { AppErrorBoundary } from './components/SystemFeedback';
 import './styles/app.css';
 import './styles/live.css';
+import './styles/finance.css';
 import './styles/modal.css';
 import './styles/theme.css';
 

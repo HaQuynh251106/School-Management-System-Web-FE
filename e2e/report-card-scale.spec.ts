@@ -11,13 +11,13 @@ test('Học bạ dữ liệu lớn tải theo lớp rồi theo học sinh, khôn
   });
 
   await page.goto('/#/giao-vu/hoc-ba-dien-tu');
-  await expect(page.getByRole('heading', { level: 1, name: '5. Học bạ điện tử' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Học bạ điện tử' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Học bạ điện tử toàn trường' })).toBeVisible();
 
   const openClass = page.getByRole('button', { name: /Mở danh sách lớp/ }).first();
   await expect(openClass).toBeVisible({ timeout: 15_000 });
   await openClass.click();
-  await expect(page.getByRole('heading', { level: 3, name: /Danh sách học sinh lớp/ })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { level: 2, name: /Học sinh lớp/ })).toBeVisible({ timeout: 15_000 });
 
   const studentRows = page.locator('.report-student-table tbody tr');
   await expect(studentRows).not.toHaveCount(0);

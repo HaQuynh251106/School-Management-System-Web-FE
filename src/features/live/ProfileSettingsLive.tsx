@@ -7,6 +7,7 @@ import type { ApiUser, NotificationPreference } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
 import { browserPushConfigured, registerBrowserPush } from '../../api/push';
+import { Modal } from './Modal';
 
 const CHANNELS = [
   { id: 'IN_APP', label: 'Trong ứng dụng', description: 'Hiển thị tại hộp thư và dashboard', Icon: BellRing },
@@ -22,6 +23,7 @@ export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 
   const { logout } = useAuth();
   const [busy, setBusy] = useState(false);
   const [registeringPush, setRegisteringPush] = useState(false);
+  const [passwordChanged, setPasswordChanged] = useState(false);
   const [form, setForm] = useState({ email: '', phone: '', avatarUrl: '', address: '' });
   const [password, setPassword] = useState({ currentPassword: '', newPassword: '', confirmation: '' });
 
@@ -49,8 +51,7 @@ export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 
     setBusy(true);
     try {
       await api.put('/me/password', { currentPassword: password.currentPassword, newPassword: password.newPassword });
-      window.alert('Đổi mật khẩu thành công. Vui lòng đăng nhập lại để bảo vệ tài khoản.');
-      logout();
+      setPasswordChanged(true);
     } catch (error: any) { toast.show('err', error.message); }
     finally { setBusy(false); }
   };
@@ -70,6 +71,9 @@ export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 
 
   return <Section title="Hồ sơ & thông báo" subtitle="Quản lý thông tin liên hệ và cách bạn muốn nhận cập nhật" wide>
     {toast.node}
+    {passwordChanged && <Modal title="Đổi mật khẩu thành công" onClose={logout} footer={<button className="live-btn" type="button" autoFocus onClick={logout}><KeyRound size={15} /> Đăng nhập lại</button>}>
+      <div className="profile-password-success"><CheckCircle2 size={30} /><div><strong>Mật khẩu mới đã được lưu an toàn</strong><p>Phiên hiện tại cần kết thúc để bảo vệ tài khoản. Hãy đăng nhập lại bằng mật khẩu mới vừa tạo.</p></div></div>
+    </Modal>}
     <Async state={profile}>{(user) => <div className="profile-settings-page">
       <header className="profile-settings-hero">
         <div className="profile-settings-avatar">{form.avatarUrl ? <img src={form.avatarUrl} alt="Ảnh đại diện" /> : <span>{user.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>}</div>

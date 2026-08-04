@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { AlertCircle, Inbox } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Inbox, RefreshCw, XCircle } from 'lucide-react';
 import type { PageResponse } from '../../api/types';
 import { urlKey, useHashNumber } from '../../api/urlState';
 
@@ -27,15 +27,17 @@ export function LoadingBlock() {
   return (
     <div className="async-state async-state--loading" role="status" aria-live="polite">
       <span className="async-state__spinner" aria-hidden="true" />
-      <div><strong>Đang tải dữ liệu</strong><span>Vui lòng chờ trong giây lát…</span></div>
+      <div className="async-state__loading-copy"><strong>Đang tải dữ liệu</strong><span>Vui lòng chờ trong giây lát…</span></div>
+      <div className="async-state__skeleton" aria-hidden="true"><i /><i /><i /></div>
     </div>
   );
 }
-export function ErrorBlock({ msg }: { msg: string }) {
+export function ErrorBlock({ msg, onRetry }: { msg: string; onRetry?: () => void }) {
   return (
     <div className="async-state async-state--error" role="alert">
       <span className="async-state__icon"><AlertCircle size={21} /></span>
       <div><strong>Chưa thể tải dữ liệu</strong><span>{msg}</span></div>
+      {onRetry && <button type="button" onClick={onRetry}><RefreshCw size={15} /> Thử lại</button>}
     </div>
   );
 }
@@ -43,7 +45,7 @@ export function EmptyState({ label = 'Chưa có dữ liệu' }: { label?: string
   return (
     <div className="empty-state async-state--empty">
       <span className="async-state__icon"><Inbox size={21} /></span>
-      <div><strong>{label}</strong><span>Dữ liệu mới sẽ xuất hiện tại đây khi được cập nhật.</span></div>
+      <div><strong>{label}</strong><span>Hãy kiểm tra phạm vi hoặc tạo dữ liệu mới để bắt đầu.</span></div>
     </div>
   );
 }
@@ -60,7 +62,7 @@ export function Async<T>({
   resetKey,
   urlStateKey,
 }: {
-  state: { data: T | null; loading: boolean; error: string | null };
+  state: { data: T | null; loading: boolean; error: string | null; reload?: () => void | Promise<void> };
   children: (data: T) => ReactNode;
   empty?: string;
   allowEmpty?: boolean;
@@ -71,7 +73,7 @@ export function Async<T>({
   urlStateKey?: string;
 }) {
   if (state.loading) return <LoadingBlock />;
-  if (state.error) return <ErrorBlock msg={state.error} />;
+  if (state.error) return <ErrorBlock msg={state.error} onRetry={state.reload ? () => { void state.reload?.(); } : undefined} />;
   if (state.data == null || (!allowEmpty && Array.isArray(state.data) && state.data.length === 0)) {
     return <EmptyState label={empty} />;
   }
@@ -220,11 +222,18 @@ export function ServerPagination<T>({
 
 export function useToast() {
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const timer = useRef<number | null>(null);
   const show = useCallback((kind: 'ok' | 'err', text: string) => {
+    if (timer.current) window.clearTimeout(timer.current);
     setMsg({ kind, text });
-    setTimeout(() => setMsg(null), 4000);
+    timer.current = window.setTimeout(() => setMsg(null), 6000);
   }, []);
-  const node = msg ? <div className={`live-msg ${msg.kind}`}>{msg.text}</div> : null;
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  const node = msg ? <div className={`live-msg ${msg.kind}`} role="status" aria-live="polite">
+    {msg.kind === 'ok' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
+    <span>{msg.text}</span>
+    <button type="button" aria-label="Đóng thông báo" title="Đóng" onClick={() => setMsg(null)}>×</button>
+  </div> : null;
   return { show, node };
 }
 

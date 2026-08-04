@@ -118,17 +118,17 @@ describe('SidebarMenu giáo viên theo phạm vi được giao', () => {
     render(<SidebarMenu role={teacherRole} activePage="dashboard" onSelect={vi.fn()} teacherContext={subjectTeacherContext} />);
 
     expect(screen.getByText('Giáo viên bộ môn')).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Dạy học hôm nay/i })).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Quản lý giảng dạy/i })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Hỗ trợ học sinh. Theo dõi và phối hợp các trường hợp cần quan tâm' })).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Kỳ thi & báo cáo/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Hôm nay/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Giảng dạy/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Khảo thí & báo cáo/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Trao đổi & cá nhân/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Đăng ký tải dạy' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sổ đầu bài & đổi lịch' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Hỗ trợ học sinh' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Trao đổi' })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Công nợ lớp chủ nhiệm' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Khảo thí giáo viên' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Hồ sơ & cài đặt' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hồ sơ & cài đặt' })).toBeVisible();
   });
 
   it('chỉ mở nhóm chủ nhiệm và khảo thí khi backend xác nhận nhiệm vụ', () => {
@@ -142,7 +142,7 @@ describe('SidebarMenu giáo viên theo phạm vi được giao', () => {
     render(<SidebarMenu role={teacherRole} activePage="dashboard" onSelect={vi.fn()} teacherContext={homeroomContext} />);
 
     expect(screen.getByText('GVCN 10A1')).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Học sinh & chủ nhiệm/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Lớp chủ nhiệm/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Công nợ lớp chủ nhiệm' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Duyệt đơn xin nghỉ' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ lớp chủ nhiệm' })).toBeVisible();

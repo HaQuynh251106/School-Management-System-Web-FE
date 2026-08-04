@@ -13,7 +13,7 @@ type Account = {
 
 const accounts: Account[] = [
   { role: 'Quản trị', username: 'admin', password: process.env.E2E_ADMIN_PASSWORD ?? '', landing: 'quan-tri', corePath: 'quan-tri/hoc-sinh', coreTitle: 'Học sinh' },
-  { role: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', changedPassword: process.env.E2E_ACADEMIC_STAFF_CHANGED_PASSWORD, landing: 'giao-vu', corePath: 'giao-vu/xep-thoi-khoa-bieu', coreTitle: '2. Phân công & xếp lịch' },
+  { role: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', changedPassword: process.env.E2E_ACADEMIC_STAFF_CHANGED_PASSWORD, landing: 'giao-vu', corePath: 'giao-vu/xep-thoi-khoa-bieu', coreTitle: 'Phân công & xếp lịch' },
   { role: 'Kế toán', username: 'ketoan', password: process.env.E2E_ACCOUNTANT_PASSWORD ?? '', changedPassword: process.env.E2E_ACCOUNTANT_CHANGED_PASSWORD, landing: 'ke-toan', corePath: 'ke-toan/tai-chinh-noi-bo', coreTitle: 'Quản lý tài chính' },
   { role: 'Giáo viên', username: 'gv.nguyenminh', password: process.env.E2E_TEACHER_PASSWORD ?? '', landing: 'giao-vien', corePath: 'giao-vien/diem-danh', coreTitle: 'Sổ điểm danh' },
   { role: 'Học sinh', username: 'hs.nguyenminhan', password: process.env.E2E_STUDENT_PASSWORD ?? '', landing: 'hoc-sinh', corePath: 'hoc-sinh/theo-doi-hoc-tap', coreTitle: 'Theo dõi học thuật' },

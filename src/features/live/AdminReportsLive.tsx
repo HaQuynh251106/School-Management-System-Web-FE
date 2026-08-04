@@ -20,6 +20,7 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { AcademicYear, FeePeriod, SchoolClass, Semester, Subject } from '../../api/types';
 import { Badge, Section } from '../../components/ui';
+import { AcademicScopeOptions } from '../../components/AcademicScopeOptions';
 import { Async, money, useToast } from './common';
 import { useHashString } from '../../api/urlState';
 
@@ -204,7 +205,7 @@ export function AdminReportsLive() {
         <label><span>Năm học</span><select value={yearId} onChange={(event) => { setYearId(event.target.value); setGradeLevel(''); setClassId(''); setSemesterId(''); }}><option value="">— Chọn năm học —</option>{yearOptions.map((year) => <option key={year.id} value={year.id}>{year.code} · {year.status === 'ACTIVE' ? 'Đang hoạt động' : year.status === 'PLANNED' ? 'Sắp diễn ra' : 'Lịch sử đã đóng'}</option>)}</select></label>
         <label><span>Khối</span><select value={gradeLevel} onChange={(event) => { setGradeLevel(event.target.value); setClassId(''); }}><option value="">Tất cả khối</option>{gradeOptions.map((grade) => <option key={grade} value={grade}>Khối {grade.replace(/^K/i, '')}</option>)}</select></label>
         <label><span>Lớp</span><select value={classId} onChange={(event) => setClassId(event.target.value)}><option value="">Toàn trường</option>{classOptions.map((item) => <option key={item.id} value={item.id}>{item.code}</option>)}</select></label>
-        <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}><option value="">Tất cả học kỳ</option>{semesterOptions.map((semester) => <option key={semester.id} value={semester.id}>{semester.name || semester.code}{semester.status === 'CLOSED' ? ' · Đã đóng' : ''}</option>)}</select></label>
+        <label><span>Học kỳ</span><select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}><AcademicScopeOptions semesters={semesterOptions} academicYears={years.data || []} placeholder="Tất cả học kỳ trong năm đã chọn" /></select></label>
         <label><span>Môn học</span><select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">Tất cả môn</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label><span>Chuyên cần từ ngày</span><input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></label>
         <label><span>Đến ngày</span><input type="date" value={endDate} min={startDate || undefined} onChange={(event) => setEndDate(event.target.value)} /></label>

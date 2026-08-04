@@ -512,10 +512,15 @@ export interface HomeroomDebtReminderResult {
   classCount: number; recipientCount: number; skippedCount: number; sentAt: string;
 }
 export interface PaymentCallback { txnRef: string; status: 'SUCCESS' | 'FAILED'; amount: number; signature: string; }
+export interface EmailDeliverySummary {
+  channel: 'EMAIL'; status: 'NOT_SENT' | 'PENDING' | 'PROCESSING' | 'RETRYING' | 'DELIVERED' | 'FAILED' | 'SKIPPED' | string;
+  attempts: number; detail?: string | null; updatedAt?: string | null;
+}
 export interface PaymentInitResponse {
   payment: Payment; invoice: Invoice; gatewayStatus: string;
   gateway?: 'VIETQR'; qrImageUrl?: string; bankId?: string; accountNo?: string;
   accountName?: string; transferContent?: string; expiresAt?: string;
+  emailDelivery?: EmailDeliverySummary;
 }
 export type VietQrPendingPayment = PaymentInitResponse;
 

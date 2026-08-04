@@ -1,23 +1,20 @@
 import {
-  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BellRing, BookOpenCheck, CalendarCheck2,
-  CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
+  Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BookOpenCheck, CalendarCheck2,
+  CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
   GraduationCap, HeartHandshake, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
   UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../../api/auth';
-import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import { emitNotificationInboxChanged } from '../../api/liveEvents';
 import { pageHash } from '../../api/routes';
 import type {
   DashboardCalendarItem, DashboardChart, DashboardMetric, DashboardResponse, DashboardWorkItem,
   ExamAgendaItem, Notification, TeacherDashboardOverview, TeacherWorkspaceContext,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard, PieChart } from '../../components/charts';
-import { viLabel } from '../../components/ui';
 import type { Metric, PageId, RoleId } from '../../types';
 
 type RoleIntro = {
@@ -145,7 +142,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
   const examAgendaEnabled = ['teacher', 'student', 'parent'].includes(roleId);
   const examAgenda = useApi<ExamAgendaItem[]>(examAgendaEnabled ? '/me/exam-agenda' : null);
   const teacherWorkspace = useApi<TeacherWorkspaceContext>(roleId === 'teacher' ? '/me/teacher-workspace' : null);
-  const [markingNotificationId, setMarkingNotificationId] = useState<string | null>(null);
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
   const metrics = (dashboard.data?.metrics ?? []).map(toMetric);
@@ -161,9 +157,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     ? { code: 'A8' as PageId, title: 'Mở báo cáo điều hành' }
     : { code: links[0].code, title: links[0].title };
   const focusItems = buildFocusItems(roleId, dashboard.data?.metrics ?? [], notifications.data ?? []);
-  const teacherAnnouncements = roleId === 'teacher'
-    ? (notifications.data ?? []).filter((item) => item.refType === 'ANNOUNCEMENT').slice(0, 4)
-    : [];
 
   const navigate = (page: PageId) => onNavigate?.(page);
   const reloadAll = () => {
@@ -171,18 +164,6 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
     notifications.reload();
     examAgenda.reload();
     teacherWorkspace.reload();
-  };
-  const markNotificationRead = async (id: string) => {
-    setMarkingNotificationId(id);
-    try {
-      await api.post(`/notifications/${id}/read`);
-      notifications.setData((current) => current?.map((item) => item.id === id ? { ...item, read: true } : item) ?? current);
-      emitNotificationInboxChanged();
-      notifications.reload();
-      dashboard.reload();
-    } finally {
-      setMarkingNotificationId(null);
-    }
   };
 
   if (roleId === 'admin') {
@@ -208,13 +189,7 @@ export function GeneralDashboard({ roleId, onNavigate }: { roleId: RoleId; onNav
         data={dashboard.data}
         loading={loading}
         hasError={hasError}
-        notifications={teacherAnnouncements}
-        notificationsLoading={notifications.loading}
-        markingNotificationId={markingNotificationId}
-        examAgenda={examAgenda.data ?? []}
-        examAgendaLoading={examAgenda.loading}
         teacherWorkspace={teacherWorkspace.data}
-        onMarkNotificationRead={markNotificationRead}
         onReload={reloadAll}
         onNavigate={navigate}
       />
@@ -364,8 +339,7 @@ const operationalDashboardConfig: Record<OperationalRole, {
 };
 
 function OperationalRoleDashboard({
-  roleId, firstName, today, data, loading, hasError, notifications, notificationsLoading,
-  markingNotificationId, examAgenda, examAgendaLoading, onMarkNotificationRead, onReload, onNavigate,
+  roleId, firstName, today, data, loading, hasError, onReload, onNavigate,
   teacherWorkspace,
 }: {
   roleId: OperationalRole;
@@ -374,19 +348,15 @@ function OperationalRoleDashboard({
   data?: DashboardResponse | null;
   loading: boolean;
   hasError: boolean;
-  notifications: Notification[];
-  notificationsLoading: boolean;
-  markingNotificationId: string | null;
-  examAgenda: ExamAgendaItem[];
-  examAgendaLoading: boolean;
   teacherWorkspace?: TeacherWorkspaceContext | null;
-  onMarkNotificationRead: (id: string) => Promise<void>;
   onReload: () => void;
   onNavigate: (page: PageId) => void;
 }) {
   const config = operationalDashboardConfig[roleId];
   const overview = data?.roleOverview;
-  const metrics = (data?.metrics ?? []).slice(0, 4).map(toMetric);
+  const metrics = roleId === 'teacher'
+    ? teacherPriorityMetrics(data)
+    : (data?.metrics ?? []).slice(0, 4).map(toMetric);
   const links = (roleId === 'teacher' ? teacherDashboardLinks(teacherWorkspace) : quickLinks[roleId]).slice(0, 3);
   const workItems = (overview?.workItems ?? []).slice(0, 4);
   const openItems = workItems.filter((item) => item.severity !== 'SUCCESS');
@@ -437,15 +407,15 @@ function OperationalRoleDashboard({
         />
       )}
 
-      <section className="role-command-workspace">
+      <section className={`role-command-workspace ${roleId === 'teacher' ? 'teacher-compact' : ''}`}>
         <article className="role-command-worklist">
           <header><div><span>CẦN XỬ LÝ</span><h3>{config.workTitle}</h3><p>{config.workDescription}</p></div><strong className={openItems.length ? 'has-work' : 'is-clear'}>{openItems.length} nhóm việc</strong></header>
           <div>{loading ? <AdminListSkeleton /> : workItems.map((item) => <AdminWorkItemRow key={item.key} item={item} onNavigate={onNavigate} />)}</div>
         </article>
-        <aside className="role-command-shortcuts">
+        {roleId !== 'teacher' && <aside className="role-command-shortcuts">
           <header><span>TRUY CẬP NHANH</span><h3>Công cụ thường dùng</h3></header>
           <div>{links.map(({ code, title, description, Icon }) => <button type="button" key={`${code}-${title}`} onClick={() => onNavigate(code)}><span><Icon size={18} /></span><div><strong>{title}</strong><small>{description}</small></div><ArrowRight size={15} /></button>)}</div>
-        </aside>
+        </aside>}
       </section>
 
       <AdminCalendarWidget
@@ -457,11 +427,8 @@ function OperationalRoleDashboard({
         description={config.calendarDescription}
       />
 
-      {roleId === 'teacher' && <TeacherAnnouncementSpotlight items={notifications} loading={notificationsLoading} markingId={markingNotificationId} onMarkRead={onMarkNotificationRead} onOpenInbox={() => onNavigate('B7')} />}
-      {roleId === 'teacher' && <ExamAgendaSpotlight roleId="teacher" items={examAgenda} loading={examAgendaLoading} onOpen={() => onNavigate('B12')} />}
-
-      {!loading && (data?.charts.length ?? 0) > 0 && <section className="role-command-insights">
-        <header><div><span>PHÂN TÍCH THEO PHẠM VI</span><h3>{roleId === 'accountant' ? 'Tình hình thu và công nợ' : roleId === 'teacher' ? 'Nhịp giảng dạy của tôi' : 'Tiến độ tổ chức đào tạo'}</h3></div><small>Dữ liệu được tổng hợp tự động</small></header>
+      {!loading && roleId !== 'teacher' && (data?.charts.length ?? 0) > 0 && <section className="role-command-insights">
+        <header><div><span>PHÂN TÍCH THEO PHẠM VI</span><h3>{roleId === 'accountant' ? 'Tình hình thu và công nợ' : 'Tiến độ tổ chức đào tạo'}</h3></div><small>Dữ liệu được tổng hợp tự động</small></header>
         <div>{data?.charts.slice(0, 2).map((chart) => <DashboardChartCard key={chart.title} chart={chart} />)}</div>
       </section>}
     </div>
@@ -478,6 +445,49 @@ function teacherDashboardLinks(workspace?: TeacherWorkspaceContext | null): Dash
     links.push({ code: 'B13', title: 'Học bạ lớp chủ nhiệm', description: 'Theo dõi và xác nhận hồ sơ', Icon: GraduationCap });
   }
   return links;
+}
+
+function teacherPriorityMetrics(data?: DashboardResponse | null): Metric[] {
+  const workItems = data?.roleOverview?.workItems ?? [];
+  const lessons = data?.teacherOverview?.todayLessons ?? [];
+  const nextLesson = lessons.find((item) => item.status === 'IN_PROGRESS')
+    ?? lessons.find((item) => item.status === 'UPCOMING');
+  const attendance = workItems.find((item) => item.key === 'attendance')?.value ?? 0;
+  const grading = workItems.find((item) => item.key === 'grading')?.value ?? 0;
+  const dueTasks = workItems
+    .filter((item) => !['attendance', 'grading', 'healthy'].includes(item.key) && item.severity !== 'SUCCESS')
+    .reduce((sum, item) => sum + item.value, 0);
+
+  return [
+    {
+      label: 'Tiết dạy tiếp theo',
+      value: nextLesson?.startTime || 'Đã hoàn tất',
+      hint: nextLesson ? `${nextLesson.subjectName} · Lớp ${nextLesson.classCode}` : 'Không còn tiết dạy trong hôm nay',
+      Icon: Clock3,
+      tone: nextLesson?.status === 'IN_PROGRESS' ? 'green' : 'blue',
+    },
+    {
+      label: 'Tiết chưa điểm danh',
+      value: formatCompact(attendance),
+      hint: attendance > 0 ? 'Cần hoàn tất sổ điểm danh theo từng tiết' : 'Đã hoàn tất điểm danh hôm nay',
+      Icon: CalendarCheck2,
+      tone: attendance > 0 ? 'red' : 'green',
+    },
+    {
+      label: 'Bài chờ chấm',
+      value: formatCompact(grading),
+      hint: grading > 0 ? 'Ưu tiên bài gần hạn trả kết quả' : 'Không còn bài làm chờ xử lý',
+      Icon: BookOpenCheck,
+      tone: grading > 0 ? 'orange' : 'green',
+    },
+    {
+      label: 'Công việc đến hạn',
+      value: formatCompact(dueTasks),
+      hint: dueTasks > 0 ? 'Đơn xin nghỉ, sổ điểm hoặc nhiệm vụ khảo thí' : 'Không có công việc tồn đọng',
+      Icon: AlertTriangle,
+      tone: dueTasks > 0 ? 'orange' : 'green',
+    },
+  ];
 }
 
 function TeacherTodayWorkspace({ overview, loading, onNavigate }: {
@@ -829,56 +839,6 @@ function examPage(roleId: RoleId): PageId {
   return ({ teacher: 'B12', student: 'C10', parent: 'D9', admin: 'A4', academic_staff: 'E3', accountant: 'dashboard' } as Record<RoleId, PageId>)[roleId];
 }
 
-function TeacherAnnouncementSpotlight({ items, loading, markingId, onMarkRead, onOpenInbox }: {
-  items: Notification[];
-  loading: boolean;
-  markingId: string | null;
-  onMarkRead: (id: string) => Promise<void>;
-  onOpenInbox: () => void;
-}) {
-  const unreadCount = items.filter((item) => !item.read).length;
-  return (
-    <section className="teacher-announcement-spotlight" aria-label="Thông báo từ Ban quản trị">
-      <header>
-        <div className="teacher-announcement-title">
-          <span><BellRing size={22} /></span>
-          <div><small>Thông tin điều hành</small><h3>Thông báo từ nhà trường</h3></div>
-        </div>
-        <div className="teacher-announcement-tools">
-          {unreadCount > 0 && <strong>{unreadCount} chưa đọc</strong>}
-          <button type="button" onClick={onOpenInbox}>Xem tất cả <ArrowRight size={15} /></button>
-        </div>
-      </header>
-
-      {loading ? (
-        <div className="teacher-announcement-loading"><i /><i /><i /></div>
-      ) : items.length === 0 ? (
-        <div className="teacher-announcement-empty">
-          <CheckCircle2 size={20} /><div><strong>Không có thông báo mới</strong><small>Các thông tin từ Ban quản trị sẽ xuất hiện nổi bật tại đây.</small></div>
-        </div>
-      ) : (
-        <div className="teacher-announcement-list">
-          {items.map((item, index) => (
-            <article key={item.id} className={`${item.read ? 'is-read' : 'is-unread'} priority-${(item.priority || 'NORMAL').toLowerCase()}`}>
-              <div className="teacher-announcement-icon"><Bell size={18} /></div>
-              <div className="teacher-announcement-content">
-                <div><span>{notificationCategoryLabel(item.type)}</span>{index === 0 && !item.read && <b>Mới nhất</b>}<time>{formatDashboardTime(item.createdAt)}</time></div>
-                <strong>{item.title}</strong>
-                <p>{item.body}</p>
-              </div>
-              {!item.read ? (
-                <button type="button" className="teacher-announcement-read" disabled={markingId === item.id} onClick={() => onMarkRead(item.id)} title="Đánh dấu đã đọc">
-                  <Check size={16} /> <span>{markingId === item.id ? 'Đang lưu…' : 'Đã đọc'}</span>
-                </button>
-              ) : <span className="teacher-announcement-read-state"><CheckCircle2 size={15} /> Đã đọc</span>}
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function DashboardSkeleton() {
   return (
     <section className="metric-grid dashboard-skeleton" aria-label="Đang tải dữ liệu tổng quan">
@@ -996,24 +956,6 @@ function formatCompact(value?: number) {
 
 function formatNumber(value: number, digits: number) {
   return new Intl.NumberFormat('vi-VN', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
-}
-
-function formatDashboardTime(value?: string) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(date);
-}
-
-function notificationCategoryLabel(type: string) {
-  return ({
-    ATTENDANCE_REMINDER: 'Nhắc điểm danh',
-    ATTENDANCE_MISSED: 'Quên điểm danh',
-    GENERAL: 'Thông báo chung',
-    HOLIDAY: 'Lịch nghỉ',
-    EVENT: 'Sự kiện',
-    PARENT_MEETING: 'Họp phụ huynh',
-  } as Record<string, string>)[type] || viLabel(type);
 }
 
 function roleLabel(role: RoleId) {

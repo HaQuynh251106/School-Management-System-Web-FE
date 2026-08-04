@@ -14,6 +14,7 @@ import type {
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
 import { confirmAction } from '../../components/confirmAction';
+import { Field, Modal } from './Modal';
 
 const GRADES = ['K10', 'K11', 'K12'];
 const DAYS = [
@@ -202,11 +203,15 @@ export function AdminWorkloadPlanningLive() {
   const [periods, setPeriods] = useState(2);
   const [plan, setPlan] = useState<AutoAssignmentPlan | null>(null);
   const [busy, setBusy] = useState(false);
-  const [stage, setStage] = useState<'subjects' | 'teachers' | 'review'>('subjects');
+  const [stage, setStage] = useState<'prepare' | 'proposal' | 'warnings' | 'publish'>('prepare');
   const [lastDeleted, setLastDeleted] = useState<CurriculumRequirement | null>(null);
   const [copySourceSemesterId, setCopySourceSemesterId] = useState('');
   const [copySourceGrade, setCopySourceGrade] = useState('K10');
   const [showHistory, setShowHistory] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<TeacherLoadRegistration | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [specializationTarget, setSpecializationTarget] = useState<TeacherLoadRegistration | null>(null);
+  const [specializationValue, setSpecializationValue] = useState('');
   const pending = (registrations.data || []).filter((item) => item.status === 'SUBMITTED').length;
   const approved = (registrations.data || []).filter((item) => ['APPROVED', 'LOCKED'].includes(item.status)).length;
   const assignmentComplete = Boolean(plan && plan.unassignedCount === 0
@@ -228,14 +233,25 @@ export function AdminWorkloadPlanningLive() {
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể lưu định mức'); }
   };
 
-  const review = async (item: TeacherLoadRegistration, status: string) => {
+  const submitReview = async (item: TeacherLoadRegistration, status: string, note?: string) => {
     try {
-      const reviewNote = status === 'REJECTED' ? window.prompt('Lý do cần giáo viên điều chỉnh:') : null;
-      if (status === 'REJECTED' && reviewNote === null) return;
-      await api.put(`/teacher-load-registrations/${item.id}/status`, { status, reviewNote });
+      setBusy(true);
+      await api.put(`/teacher-load-registrations/${item.id}/status`, { status, reviewNote: note || null });
       toast.show('ok', status === 'APPROVED' ? 'Đã duyệt tải dạy' : status === 'DRAFT' ? 'Đã mở lại đăng ký' : 'Đã gửi yêu cầu điều chỉnh');
       await registrations.reload();
+      setReviewTarget(null);
+      setReviewNote('');
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật'); }
+    finally { setBusy(false); }
+  };
+
+  const review = async (item: TeacherLoadRegistration, status: string) => {
+    if (status === 'REJECTED') {
+      setReviewTarget(item);
+      setReviewNote('');
+      return;
+    }
+    await submitReview(item, status);
   };
 
   const editRequirement = (item: CurriculumRequirement) => {
@@ -280,17 +296,24 @@ export function AdminWorkloadPlanningLive() {
   };
 
   const updateSpecialization = async (item: TeacherLoadRegistration) => {
-    const mainSubject = window.prompt(`Chuyên môn chính của ${item.teacherName}:`, item.mainSubject || '');
-    if (mainSubject === null) return;
-    if (!mainSubject.trim()) return toast.show('err', 'Vui lòng nhập chuyên môn chính');
-    try {
-      await api.put(`/users/${item.teacherId}/specialization`, { mainSubject: mainSubject.trim() });
-      toast.show('ok', `Đã chuẩn hóa chuyên môn của ${item.teacherName}`);
-      await registrations.reload();
-    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật chuyên môn'); }
+    setSpecializationTarget(item);
+    setSpecializationValue(item.mainSubject || '');
   };
 
-  const generatePlan = async (apply: boolean) => {
+  const submitSpecialization = async () => {
+    if (!specializationTarget || !specializationValue.trim()) return;
+    try {
+      setBusy(true);
+      await api.put(`/users/${specializationTarget.teacherId}/specialization`, { mainSubject: specializationValue.trim() });
+      toast.show('ok', `Đã chuẩn hóa chuyên môn của ${specializationTarget.teacherName}`);
+      await registrations.reload();
+      setSpecializationTarget(null);
+      setSpecializationValue('');
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật chuyên môn'); }
+    finally { setBusy(false); }
+  };
+
+  const generatePlan = async (apply: boolean): Promise<AutoAssignmentPlan | null> => {
     setBusy(true);
     try {
       const result = await api.post<AutoAssignmentPlan>('/teaching-assignments/auto-plan', {
@@ -304,8 +327,17 @@ export function AdminWorkloadPlanningLive() {
         await registrations.reload();
         updateHashQuery({ tab: 'automatic' }, 'push');
       }
-    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể tạo phương án'); }
+      return result;
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể tạo phương án');
+      return null;
+    }
     finally { setBusy(false); }
+  };
+
+  const createPreviewAndContinue = async () => {
+    const result = await generatePlan(false);
+    if (result) setStage('warnings');
   };
 
   const groupedRequirements = useMemo(() => GRADES.map((item) => ({
@@ -336,18 +368,23 @@ export function AdminWorkloadPlanningLive() {
       <div className="planning-control-shell">
         <div className="planning-control-heading">
           <div><span>PHÂN CÔNG TỰ ĐỘNG</span><strong>Chuẩn bị dữ liệu theo học kỳ</strong><small>Chỉ lưu vào hệ thống sau khi bạn kiểm tra và xác nhận phương án.</small></div>
-          <label className="semester-focus"><span>Học kỳ đang lập kế hoạch</span><select aria-label="Học kỳ đang lập kế hoạch" value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setStage('subjects'); }}>
+          <label className="semester-focus"><span>Học kỳ đang lập kế hoạch</span><select aria-label="Học kỳ đang lập kế hoạch" value={semesterId} onChange={(event) => { setSemesterId(event.target.value); setPlan(null); setStage('prepare'); }}>
             {semesterOptions.map((item) => <option key={item.id} value={item.id}>{semesterLabel(item)}</option>)}
           </select></label>
         </div>
         <div className="planning-stepper planning-stepper-buttons">
-          <button type="button" className={`${stage === 'subjects' ? 'active' : ''} ${curriculumComplete ? 'done' : ''}`} onClick={() => setStage('subjects')}><span>1</span><strong>Khai báo số tiết</strong><small>{curriculumComplete ? 'Đã đủ định mức cho mọi khối' : 'Cần hoàn thiện đủ môn trước'}</small></button>
-          <button type="button" disabled={!curriculumComplete} className={`${stage === 'teachers' ? 'active' : ''} ${approved ? 'done' : ''}`} onClick={() => setStage('teachers')}><span>2</span><strong>Kiểm tra giáo viên</strong><small>{curriculumComplete ? `${pending} chờ duyệt · ${approved} có thể phân công` : 'Đang khóa vì thiếu định mức'}</small></button>
-          <button type="button" disabled={!curriculumComplete || !approved} className={`${stage === 'review' ? 'active' : ''} ${plan ? 'done' : ''}`} onClick={() => setStage('review')}><span>3</span><strong>Xem và xác nhận</strong><small>{!curriculumComplete ? 'Hoàn thiện bước 1 trước' : approved ? 'Kiểm tra kết quả trước khi lưu' : 'Cần duyệt giáo viên ở bước 2'}</small></button>
+          <button type="button" className={`${stage === 'prepare' ? 'active' : ''} ${curriculumComplete ? 'done' : ''}`} onClick={() => setStage('prepare')}><span>1</span><strong>Chuẩn bị dữ liệu</strong><small>{curriculumComplete ? 'Định mức môn học đã đầy đủ' : 'Bổ sung định mức còn thiếu'}</small></button>
+          <button type="button" disabled={!curriculumComplete} className={`${stage === 'proposal' ? 'active' : ''} ${plan ? 'done' : ''}`} onClick={() => setStage('proposal')}><span>2</span><strong>Tạo phương án</strong><small>{curriculumComplete ? `${pending} chờ duyệt · ${approved} giáo viên sẵn sàng` : 'Đang khóa vì thiếu dữ liệu'}</small></button>
+          <button type="button" disabled={!plan} className={`${stage === 'warnings' ? 'active' : ''} ${plan && plan.unassignedCount === 0 ? 'done' : ''}`} onClick={() => setStage('warnings')}><span>3</span><strong>Kiểm tra cảnh báo</strong><small>{plan ? `${plan.unassignedCount} môn–lớp cần xử lý` : 'Tạo phương án ở bước 2'}</small></button>
+          <button type="button" disabled={!plan || plan.unassignedCount > 0} className={`${stage === 'publish' ? 'active' : ''} ${assignmentComplete ? 'done' : ''}`} onClick={() => setStage('publish')}><span>4</span><strong>Xác nhận &amp; phát hành</strong><small>{assignmentComplete ? 'Phân công đã được lưu' : 'Chỉ mở khi hết cảnh báo'}</small></button>
         </div>
+        <details className="workflow-help-drawer">
+          <summary>Xem cách thực hiện</summary>
+          <ol><li>Hoàn thiện định mức môn học theo từng khối.</li><li>Duyệt tải dạy và tạo phương án xem trước.</li><li>Kiểm tra toàn bộ cảnh báo, tải giáo viên và môn–lớp chưa được phân công.</li><li>Xác nhận để lưu phương án và chuyển sang tạo thời khóa biểu.</li></ol>
+        </details>
       </div>
 
-      {stage === 'subjects' && (
+      {stage === 'prepare' && (
       <Section title="Định mức môn học theo khối" subtitle="Hoàn thiện đủ danh mục môn và số tiết mỗi tuần trước khi phân công giáo viên" wide>
         <div className={`curriculum-readiness-banner ${curriculumComplete ? 'is-complete' : 'is-incomplete'}`}>
           {curriculumComplete ? <CheckCircle2 size={22} /> : <AlertTriangle size={22} />}
@@ -424,11 +461,11 @@ export function AdminWorkloadPlanningLive() {
           <b>{item.action === 'CREATED' ? 'Đã thêm' : item.action === 'UPDATED' ? `Đổi ${item.previousWeeklyPeriods} → ${item.newWeeklyPeriods}` : item.action === 'DELETED' ? 'Đã xóa' : 'Đã sao chép'}</b>
         </div>) : <p>Chưa có lịch sử thay đổi trong học kỳ này.</p>}</div>}
 
-        <div className="wizard-footer"><span>{curriculumComplete ? 'Định mức đã hợp lệ' : 'Hoàn thiện đủ môn cho tất cả các khối để mở bước 2'}</span><button className="live-btn primary" disabled={!curriculumComplete} onClick={() => setStage('teachers')}>Tiếp theo: Kiểm tra giáo viên</button></div>
+        <div className="wizard-footer"><span>{curriculumComplete ? 'Định mức đã hợp lệ' : 'Hoàn thiện đủ môn cho tất cả các khối để mở bước 2'}</span><button className="live-btn primary" disabled={!curriculumComplete} onClick={() => setStage('proposal')}>Tiếp theo: Tạo phương án</button></div>
       </Section>
       )}
 
-      {stage === 'teachers' && (
+      {stage === 'proposal' && (
       <Section title="Đăng ký tải dạy của giáo viên" subtitle="Chỉ đăng ký đã duyệt mới được dùng trong thuật toán phân công" wide>
         <div className="plain-language-help"><UserRoundCheck size={20} /><div><strong>Kiểm tra khả năng nhận lớp của giáo viên</strong><span>“Tải tối đa” là số tiết giáo viên đăng ký có thể dạy trong một tuần. Hãy duyệt các đăng ký hợp lệ trước khi sang bước 3.</span></div></div>
         <Async state={registrations} empty="Chưa có giáo viên gửi đăng ký tải dạy" paginate pageSize={10} itemLabel="giáo viên" urlStateKey="teacher-load-review">
@@ -438,13 +475,13 @@ export function AdminWorkloadPlanningLive() {
               {['APPROVED', 'LOCKED', 'REJECTED'].includes(item.status) && <button className="icon-btn" title="Mở lại cho giáo viên sửa" onClick={() => review(item, 'DRAFT')}><LockKeyhole size={16} /></button>}
             </div></td></tr>)}</tbody></table></div>}
         </Async>
-        <div className="wizard-footer"><button className="live-btn subtle" onClick={() => setStage('subjects')}>Quay lại số tiết</button><span>{approved} giáo viên sẵn sàng</span><button className="live-btn primary" disabled={!approved} onClick={() => setStage('review')}>Tiếp theo: Xem phương án</button></div>
+        <div className="wizard-footer"><button className="live-btn subtle" onClick={() => setStage('prepare')}>Quay lại dữ liệu</button><span>{approved} giáo viên sẵn sàng</span><button className="live-btn primary" disabled={busy || !approved} onClick={createPreviewAndContinue}><Sparkles size={16} /> {busy ? 'Đang tạo…' : 'Tạo phương án xem trước'}</button></div>
       </Section>
       )}
 
-      {stage === 'review' && (
-      <Section title="Đề xuất phân công tự động" subtitle="Hệ thống giữ nguyên dữ liệu hiện có, ưu tiên đúng chuyên môn, không vượt tải và cân bằng giữa giáo viên" wide
-        action={<div className="row-actions"><button className="live-btn subtle" disabled={busy || !semesterId || !curriculumComplete} onClick={() => generatePlan(false)}><Sparkles size={16} /> Làm mới bản xem trước</button>{assignmentComplete ? <><button className="live-btn success" disabled><CheckCircle2 size={16} /> Đã lưu phân công</button><button className="live-btn primary" onClick={() => updateHashQuery({ tab: 'automatic' }, 'push')}><CalendarCheck2 size={16} /> Tiếp theo: Tạo thời khóa biểu</button></> : <button className="live-btn primary" disabled={busy || !plan || plan.unassignedCount > 0 || plan.proposedCount === 0 || !curriculumComplete} onClick={() => generatePlan(true)}><UserRoundCheck size={16} /> Lưu các phân công được đề xuất</button>}</div>}>
+      {(stage === 'warnings' || stage === 'publish') && (
+      <Section title={stage === 'warnings' ? 'Kiểm tra cảnh báo của phương án' : 'Xác nhận và phát hành phân công'} subtitle={stage === 'warnings' ? 'Rà soát môn–lớp chưa có giáo viên, chuyên môn và tải dạy trước khi xác nhận' : 'Kiểm tra tóm tắt lần cuối; thao tác phát hành sẽ lưu các phân công vào hệ thống'} wide
+        action={stage === 'warnings' ? <button className="live-btn subtle" disabled={busy || !semesterId || !curriculumComplete} onClick={() => generatePlan(false)}><Sparkles size={16} /> Làm mới kết quả</button> : undefined}>
         {!plan ? <div className="planning-empty"><Sparkles size={30} /><strong>Chưa tạo phương án</strong><span>Hoàn tất định mức và duyệt tải giáo viên, sau đó chọn “Tạo bản xem trước”.</span></div>
           : <>{assignmentComplete && <div className="assignment-applied-confirmation"><CheckCircle2 size={26} /><div><strong>Phân công giáo viên đã hoàn tất</strong><span>{plan.existingCount || plan.proposedCount} môn–lớp đã được lưu. Không cần áp dụng lại; hãy chuyển sang tạo thời khóa biểu.</span></div></div>}
           {!assignmentComplete && <div className="assignment-preview-guide">
@@ -456,7 +493,9 @@ export function AdminWorkloadPlanningLive() {
             <Badge tone="blue">{plan.existingCount} phân công được giữ nguyên</Badge><Badge tone="green">{plan.proposedCount} phân công mới được đề xuất</Badge>
             {plan.unassignedCount > 0 ? <Badge tone="red">{plan.unassignedCount} môn–lớp chưa có giáo viên</Badge> : <Badge tone="green">Tất cả đều trong giới hạn tải</Badge>}
           </div>
-          <div className="teacher-load-table"><table className="live-table assignment-preview-table"><thead><tr><th>Lớp</th><th>Môn học</th><th>Số tiết/tuần</th><th>Giáo viên được đề xuất</th><th>Tổng tải của giáo viên sau phương án</th><th>Kết quả</th></tr></thead><tbody>
+          <details className="assignment-plan-details" open={stage === 'warnings' ? true : undefined}>
+            <summary><span>Chi tiết phương án theo môn–lớp</span><b>{plan.items.length} dòng</b></summary>
+          <div className={`teacher-load-table ${stage === 'publish' ? 'publish-review-table' : ''}`}><table className="live-table assignment-preview-table"><thead><tr><th>Lớp</th><th>Môn học</th><th>Số tiết/tuần</th><th>Giáo viên được đề xuất</th><th>Tổng tải của giáo viên sau phương án</th><th>Kết quả</th></tr></thead><tbody>
             {plan.items.map((item) => {
               const registration = item.teacherId ? registrationByTeacher.get(item.teacherId) : undefined;
               const projected = item.teacherId ? finalProjectedLoad.get(item.teacherId) || item.projectedTeacherPeriods : 0;
@@ -465,10 +504,17 @@ export function AdminWorkloadPlanningLive() {
               const remaining = Math.max(0, limit - projected);
               return <tr key={`${item.classId}-${item.subjectId}`}><td><strong>{item.classCode}</strong></td><td>{item.subjectName}</td><td><strong>{item.weeklyPeriods}</strong> tiết</td><td>{item.teacherName ? <div className="proposed-teacher"><strong>{item.teacherName}</strong><small>{registration?.mainSubject || item.subjectName}</small></div> : <span className="missing-teacher">Chưa có giáo viên phù hợp</span>}</td><td>{item.teacherName && limit ? <div className="projected-load"><div><strong>{projected}/{limit} tiết</strong><span>Còn {remaining} tiết</span></div><span className="projected-load-track"><i style={{ width: `${percent}%` }} /></span></div> : '—'}</td><td>{item.status === 'PROPOSED' ? <Badge tone="green">Có thể phân công</Badge> : item.status === 'EXISTING' ? <Badge tone="blue">Đang phụ trách</Badge> : <Badge tone="red">Cần xử lý</Badge>}</td></tr>;
             })}
-          </tbody></table></div></>}
-        <div className="wizard-footer"><button className="live-btn subtle" onClick={() => setStage('teachers')}>Quay lại giáo viên</button><span>{plan ? 'Đã có kết quả để kiểm tra' : 'Chưa tạo bản xem trước'}</span></div>
+          </tbody></table></div></details></>}
+        {stage === 'warnings' ? <div className="wizard-footer"><button className="live-btn subtle" onClick={() => setStage('proposal')}>Quay lại tạo phương án</button><span>{plan?.unassignedCount ? `Còn ${plan.unassignedCount} môn–lớp cần xử lý` : 'Không còn cảnh báo chặn phát hành'}</span><button className="live-btn primary" disabled={!plan || plan.unassignedCount > 0} onClick={() => setStage('publish')}><CheckCircle2 size={16} /> Tiếp theo: Xác nhận</button></div>
+          : <div className="wizard-footer"><button className="live-btn subtle" onClick={() => setStage('warnings')}>Quay lại cảnh báo</button><span>{assignmentComplete ? 'Phương án đã được phát hành' : `${plan?.proposedCount || 0} phân công mới sẽ được lưu`}</span>{assignmentComplete ? <button className="live-btn primary" onClick={() => updateHashQuery({ tab: 'automatic' }, 'push')}><CalendarCheck2 size={16} /> Tạo thời khóa biểu</button> : <button className="live-btn primary" disabled={busy || !plan || plan.unassignedCount > 0 || plan.proposedCount === 0 || !curriculumComplete} onClick={() => generatePlan(true)}><UserRoundCheck size={16} /> {busy ? 'Đang phát hành…' : 'Xác nhận và phát hành'}</button>}</div>}
       </Section>
       )}
+      {reviewTarget && <Modal title="Yêu cầu giáo viên điều chỉnh tải dạy" onClose={() => !busy && setReviewTarget(null)} footer={<><button className="live-btn ghost" type="button" disabled={busy} onClick={() => setReviewTarget(null)}>Hủy</button><button className="live-btn danger" type="button" disabled={busy || reviewNote.trim().length < 5} onClick={() => submitReview(reviewTarget, 'REJECTED', reviewNote.trim())}><Send size={15} /> {busy ? 'Đang gửi…' : 'Gửi yêu cầu điều chỉnh'}</button></>}>
+        <div className="workflow-decision-modal"><div className="workflow-decision-context"><AlertTriangle size={20} /><div><strong>{reviewTarget.teacherName}</strong><span>{reviewTarget.mainSubject || 'Chưa có chuyên môn'} · đăng ký tối đa {reviewTarget.maxWeeklyPeriods} tiết/tuần</span></div></div><Field label="Lý do cần điều chỉnh *"><textarea autoFocus required minLength={5} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Nêu rõ nội dung giáo viên cần cập nhật…" /></Field><small className={reviewNote.trim().length > 0 && reviewNote.trim().length < 5 ? 'field-validation-error' : 'field-help'}>{reviewNote.trim().length > 0 && reviewNote.trim().length < 5 ? 'Lý do cần ít nhất 5 ký tự.' : 'Phản hồi này sẽ hiển thị trong đăng ký tải dạy của giáo viên.'}</small></div>
+      </Modal>}
+      {specializationTarget && <Modal title="Chuẩn hóa chuyên môn giáo viên" onClose={() => !busy && setSpecializationTarget(null)} footer={<><button className="live-btn ghost" type="button" disabled={busy} onClick={() => setSpecializationTarget(null)}>Hủy</button><button className="live-btn" type="button" disabled={busy || !specializationValue.trim()} onClick={submitSpecialization}><CheckCircle2 size={15} /> {busy ? 'Đang lưu…' : 'Lưu chuyên môn'}</button></>}>
+        <div className="workflow-decision-modal"><div className="workflow-decision-context"><BookOpenCheck size={20} /><div><strong>{specializationTarget.teacherName}</strong><span>{specializationTarget.teacherCode || 'Chưa có mã giáo viên'}</span></div></div><Field label="Chuyên môn chính *"><input autoFocus required value={specializationValue} onChange={(event) => setSpecializationValue(event.target.value)} placeholder="Ví dụ: Toán" /></Field><small className="field-help">Giáo vụ chịu trách nhiệm chuẩn hóa chuyên môn. Giá trị này được dùng để kiểm tra phân công đúng bộ môn.</small></div>
+      </Modal>}
     </div>
   );
 }

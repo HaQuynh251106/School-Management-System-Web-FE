@@ -3,13 +3,14 @@ import { BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, Cl
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import type { ApiUser, Assignment, AttendanceRecord, ExamCategory, Grade, Invoice, PaymentInitResponse, Semester, Submission } from '../../api/types';
+import type { AcademicYear, ApiUser, Assignment, AttendanceRecord, ExamCategory, Grade, Invoice, PaymentInitResponse, Semester, Submission } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
 import { WeeklyTimetable } from './SharedLive';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
 import { useHashString } from '../../api/urlState';
 import { Modal } from './Modal';
+import { AcademicScopeOptions, preferredSemesterId } from '../../components/AcademicScopeOptions';
 
 function useChildren() {
   return useApi<ApiUser[]>('/me/children');
@@ -59,10 +60,11 @@ export function ParentMonitorLive() {
   const { childId } = useActiveChild();
   const children = useChildren();
   const activeChild = (children.data || []).find((child) => child.id === childId);
+  const academicYears = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
   const categories = useApi<ExamCategory[]>('/exam-categories');
   const [semesterId, setSemesterId] = useHashString('semester', '');
-  const effectiveSemesterId = semesterId || semesters.data?.find((item) => item.status === 'ACTIVE')?.id || semesters.data?.[0]?.id || '';
+  const effectiveSemesterId = semesterId || preferredSemesterId(semesters.data || [], academicYears.data || []);
   const grades = useApi<Grade[]>(childId && effectiveSemesterId ? `/grades?studentId=${childId}&semesterId=${effectiveSemesterId}` : null);
   const att = useApi<AttendanceRecord[]>(childId ? `/attendance?studentId=${childId}` : null);
   const assignments = useApi<Assignment[]>(childId ? `/children/${childId}/assignments` : null);
@@ -124,7 +126,7 @@ export function ParentMonitorLive() {
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
         <Section title="Bảng điểm đầy đủ" subtitle="Từng đầu điểm, hệ số và tổng kết học kỳ của con" wide action={
           <select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effectiveSemesterId} onChange={(event) => setSemesterId(event.target.value)}>
-            {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+            <AcademicScopeOptions semesters={semesters.data || []} academicYears={academicYears.data || []} />
           </select>}>
           <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
             {(rows) => <div className="gradebook-shell">
@@ -177,8 +179,34 @@ export function ParentMonitorLive() {
 export function ParentInvoiceLive() {
   const invoices = useApi<Invoice[]>('/invoices');
   const toast = useToast();
+  const reloadInvoices = invoices.reload;
+  const showToast = toast.show;
   const [pendingPayment, setPendingPayment] = useState<{ invoice: Invoice; initiated: PaymentInitResponse } | null>(null);
   const [paying, setPaying] = useState(false);
+
+  useEffect(() => {
+    const paymentId = pendingPayment?.initiated.payment.id;
+    const paymentStatus = pendingPayment?.initiated.payment.status;
+    if (!paymentId || paymentStatus === 'SUCCESS' || paymentStatus === 'FAILED') return;
+    let active = true;
+    const refreshStatus = async () => {
+      try {
+        const latest = await api.get<PaymentInitResponse>(`/payments/${paymentId}/status`);
+        if (!active) return;
+        setPendingPayment((current) => current?.initiated.payment.id === paymentId
+          ? { invoice: latest.invoice, initiated: latest }
+          : current);
+        if (latest.payment.status === 'SUCCESS') {
+          reloadInvoices();
+          showToast('ok', `Hóa đơn ${latest.invoice.code} đã được xác nhận thanh toán.`);
+        }
+      } catch {
+        // Mất mạng tạm thời không đóng cửa sổ QR; lần thăm dò sau sẽ tự thử lại.
+      }
+    };
+    const timer = window.setInterval(() => void refreshStatus(), 4_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [pendingPayment?.initiated.payment.id, pendingPayment?.initiated.payment.status, reloadInvoices, showToast]);
 
   const pay = async (inv: Invoice) => {
     setPaying(true);
@@ -194,10 +222,9 @@ export function ParentInvoiceLive() {
     if (!pendingPayment?.initiated.payment.id) return;
     setPaying(true);
     try {
-      await api.post(`/payments/${pendingPayment.initiated.payment.id}/submitted`);
-      toast.show('ok', `Đã gửi yêu cầu đối soát ${pendingPayment.invoice.code}. Hóa đơn sẽ cập nhật sau khi nhà trường xác nhận.`);
-      setPendingPayment(null);
-      invoices.reload();
+      const latest = await api.post<PaymentInitResponse>(`/payments/${pendingPayment.initiated.payment.id}/submitted`);
+      setPendingPayment({ invoice: latest.invoice, initiated: latest });
+      toast.show('ok', `Đã gửi yêu cầu đối soát ${pendingPayment.invoice.code}. Màn hình sẽ tự cập nhật khi Kế toán xác nhận.`);
     } catch (e: any) { toast.show('err', e.message); }
     finally { setPaying(false); }
   };
@@ -232,10 +259,10 @@ export function ParentInvoiceLive() {
       {pendingPayment?.initiated.qrImageUrl && (
         <Modal title="Quét mã VietQR để thanh toán" onClose={() => { if (!paying) setPendingPayment(null); }}
           footer={<>
-            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>Đóng</button>
-            <button className="live-btn" type="button" disabled={paying} onClick={markTransferred}>
+            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>{pendingPayment.initiated.payment.status === 'SUCCESS' ? 'Hoàn tất' : 'Đóng'}</button>
+            {pendingPayment.initiated.payment.status !== 'SUCCESS' && pendingPayment.initiated.gatewayStatus !== 'AWAITING_CONFIRMATION' && <button className="live-btn" type="button" disabled={paying} onClick={markTransferred}>
               <CheckCircle2 size={15} /> {paying ? 'Đang gửi đối soát…' : 'Tôi đã chuyển khoản'}
-            </button>
+            </button>}
           </>}>
           <div className="vietqr-payment">
             <div className="vietqr-payment-badge"><Landmark size={17} /> Chuyển khoản ngân hàng qua VietQR</div>
@@ -256,7 +283,13 @@ export function ParentInvoiceLive() {
               <span><small>Nội dung chuyển khoản bắt buộc</small><strong>{pendingPayment.initiated.transferContent}</strong></span>
               <Copy size={17} />
             </button>
-            <p className="vietqr-payment-note">Sau khi chuyển khoản, chọn “Tôi đã chuyển khoản”. Hệ thống chỉ cập nhật hóa đơn sau khi nhà trường đối soát giao dịch ngân hàng.</p>
+            {pendingPayment.initiated.payment.status === 'SUCCESS' ? (
+              <div className="vietqr-live-status success"><CheckCircle2 size={20} /><div><strong>Thanh toán đã được xác nhận</strong><span>{pendingPayment.initiated.emailDelivery?.status === 'DELIVERED' ? 'Email biên nhận đã được gửi tới phụ huynh.' : 'Email biên nhận đang được hệ thống gửi và tự thử lại khi có lỗi.'}</span></div></div>
+            ) : pendingPayment.initiated.gatewayStatus === 'AWAITING_CONFIRMATION' ? (
+              <div className="vietqr-live-status waiting"><Clock3 size={20} /><div><strong>Đang chờ Kế toán đối soát</strong><span>Không cần tải lại trang. Trạng thái được kiểm tra tự động mỗi 4 giây.</span></div></div>
+            ) : (
+              <p className="vietqr-payment-note">Sau khi chuyển khoản, chọn “Tôi đã chuyển khoản”. Hệ thống chỉ cập nhật hóa đơn sau khi nhà trường đối soát giao dịch ngân hàng.</p>
+            )}
           </div>
         </Modal>
       )}

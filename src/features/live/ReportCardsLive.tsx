@@ -5,6 +5,7 @@ import {
   Layers3, LockKeyhole, School, Search, Send, ShieldCheck, Sparkles, Unlock, UserCheck, Users,
 } from 'lucide-react';
 import { api } from '../../api/client';
+import { AcademicScopeOptions } from '../../components/AcademicScopeOptions';
 import { useActiveChild } from '../../api/activeChild';
 import { useApi } from '../../api/useApi';
 import { useHashNumber, useHashString } from '../../api/urlState';
@@ -184,6 +185,7 @@ function StudentDirectory({ data, selectedClass, status, query, onStatus, onQuer
 
 function ConductRuleSettings({ academicYearId }: { academicYearId: string }) {
   const toast = useToast();
+  const years = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>(academicYearId ? `/semesters?academicYearId=${encodeURIComponent(academicYearId)}` : null);
   const [scope, setScope] = useState('ANNUAL');
   const suffix = scope === 'ANNUAL' ? '' : `&semesterId=${encodeURIComponent(scope)}`;
@@ -212,7 +214,7 @@ function ConductRuleSettings({ academicYearId }: { academicYearId: string }) {
   };
   return <details className="conduct-rule-settings">{toast.node}<summary><span><ShieldCheck size={18} /><b>Cấu hình bộ tiêu chí rèn luyện</b><small>Phiên bản hóa theo năm học hoặc học kỳ</small></span><Badge tone={Math.abs(weightTotal - 100) < .01 ? 'green' : 'red'}>{weightTotal}%</Badge></summary>
     <div className="conduct-rule-settings-body">
-      <header><label><span>Phạm vi áp dụng</span><select value={scope} onChange={(event) => setScope(event.target.value)}><option value="ANNUAL">Cả năm học</option>{(semesters.data || []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</select></label><div><small>Phiên bản đang dùng</small><strong>v{rules.data?.versionNo || 1}</strong></div></header>
+      <header><label><span>Phạm vi áp dụng</span><select value={scope} onChange={(event) => setScope(event.target.value)}><option value="ANNUAL">Cả năm học</option><AcademicScopeOptions semesters={semesters.data || []} academicYears={years.data || []} /></select></label><div><small>Phiên bản đang dùng</small><strong>v{rules.data?.versionNo || 1}</strong></div></header>
       <div className="conduct-rule-grid">
         {([['attendanceWeight', 'Chuyên cần'], ['disciplineWeight', 'Ý thức và kỷ luật'], ['responsibilityWeight', 'Trách nhiệm học tập'], ['participationWeight', 'Tham gia và đóng góp']] as const).map(([key, label]) => <label key={key}><span>{label}</span><div><input type="number" min="0" max="100" value={form[key]} onChange={(event) => change(key, Number(event.target.value))} /><em>%</em></div></label>)}
       </div>
@@ -231,6 +233,7 @@ function ConductRuleSettings({ academicYearId }: { academicYearId: string }) {
 function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const staff = mode === 'staff';
   const { options, yearId, setYearId, selectedYear } = useReportCardYears();
+  const historicalScope = ['CLOSED', 'COMPLETED', 'ARCHIVED'].includes(String(selectedYear?.status || '').toUpperCase());
   const cohorts = useApi<Cohort[]>('/cohorts');
   const profile = useApi<ApiUser>(staff ? null : '/me');
   const cohortOptions = useMemo(() => (cohorts.data || []).slice().sort((a, b) => b.entryYear - a.entryYear), [cohorts.data]);
@@ -288,6 +291,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const changeYear = (value: string) => { setYearId(value, 'push'); clearToClasses(); };
 
   const transition = async (action: 'approve' | 'lock' | 'publish' | 'reopen') => {
+    if (historicalScope) return toast.show('err', 'Năm học đã đóng. Học bạ lịch sử chỉ được phép xem và tải xuống.');
     if (!studentId) return;
     if (action === 'reopen' && !reason.trim()) { toast.show('err', 'Vui lòng nhập lý do mở lại học bạ'); return; }
     setBusy(true);
@@ -298,6 +302,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
     } catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
   };
   const saveHomeroom = async () => {
+    if (historicalScope) return toast.show('err', 'Năm học đã đóng. Không thể thay đổi học bạ lịch sử.');
     if (!studentId || !conduct || !comment.trim()) { toast.show('err', 'Vui lòng chọn hạnh kiểm và nhập nhận xét'); return; }
     const suggestion = detail.data?.conductEvaluation.suggestedGrade;
     if ((!suggestion || suggestion !== conduct) && !overrideReason.trim()) {
@@ -308,6 +313,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
     catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
   };
   const submit = async () => {
+    if (historicalScope) return toast.show('err', 'Năm học đã đóng. Không thể gửi lại học bạ lịch sử.');
     if (!studentId) return;
     setBusy(true);
     try { await api.post(`/report-cards/${studentId}/submit?academicYearId=${encodeURIComponent(yearId)}`, {}); toast.show('ok', 'Đã gửi học bạ cho Giáo vụ duyệt'); await reloadScope(); }
@@ -317,7 +323,8 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const currentStep = studentId ? 3 : classId ? 2 : 1;
   return <div className={`report-card-page report-card-managed ${mode}`}>{toast.node}{downloadToast.node}
     <header className={`report-card-hero ${staff ? '' : 'teacher'}`}><div><span>{staff ? <FileCheck2 size={16} /> : <UserCheck size={16} />} {staff ? 'TRUNG TÂM HỌC BẠ' : 'KHÔNG GIAN GVCN'}</span><h2>{staff ? 'Học bạ điện tử toàn trường' : 'Học bạ lớp chủ nhiệm'}</h2><p>{staff ? 'Chọn đúng niên khóa và năm học, mở từng lớp rồi mới kiểm tra hồ sơ học sinh.' : 'Theo dõi từng lớp chủ nhiệm, hoàn thiện nhận xét và gửi Giáo vụ duyệt.'}</p></div><div className="report-card-hero-mark"><BookOpenCheck size={31} /><strong>{overview.data?.publishedCount || 0}/{overview.data?.studentCount || 0}</strong><small>học bạ đã phát hành</small></div></header>
-    {staff && yearId && <ConductRuleSettings academicYearId={yearId} />}
+    {staff && yearId && !historicalScope && <ConductRuleSettings academicYearId={yearId} />}
+    {historicalScope && <div className="report-history-readonly" role="status"><LockKeyhole size={18} /><div><strong>Lịch sử — chỉ xem</strong><span>Năm học đã đóng; dữ liệu học bạ được bảo toàn và không thể chỉnh sửa.</span></div></div>}
     <div className="report-hierarchy-steps" aria-label="Các bước tra cứu"><span className={currentStep === 1 ? 'active' : 'done'}><i>1</i><b>Chọn lớp</b><small>Theo niên khóa và năm học</small></span><ChevronRight size={18} /><span className={currentStep === 2 ? 'active' : currentStep > 2 ? 'done' : ''}><i>2</i><b>Chọn học sinh</b><small>Trong đúng lớp đã chọn</small></span><ChevronRight size={18} /><span className={currentStep === 3 ? 'active' : ''}><i>3</i><b>Xem học bạ</b><small>Chi tiết và quy trình xử lý</small></span></div>
     <Section title="Phạm vi dữ liệu" subtitle="Hệ thống chỉ thống kê các lớp thuộc đúng niên khóa và năm học đã chọn" wide>
       <div className="report-scope-selector"><label><span>1. Niên khóa</span><select value={cohortId} onChange={(event) => changeCohort(event.target.value)}>{cohortOptions.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.entryYear}–{item.graduationYear}) · {item.status === 'COMPLETED' ? 'Đã kết thúc' : 'Đang theo học'}</option>)}</select></label><label><span>2. Năm học trong niên khóa</span><select value={yearId} onChange={(event) => changeYear(event.target.value)}>{scopedYears.map((item) => <option key={item.id} value={item.id}>{item.code} · {yearState(item)}</option>)}</select></label><div className="report-scope-note"><ShieldCheck size={18} /><span><strong>Phạm vi hiện tại</strong><small>{selectedCohort?.name || 'Chưa chọn niên khóa'} · {selectedYear?.code || 'Chưa chọn năm học'}</small></span></div></div>
@@ -327,7 +334,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
       <ScopeBreadcrumb cohort={selectedCohort} year={selectedYear} schoolClass={selectedClass} student={detail.data} onClasses={clearToClasses} onStudents={clearToStudents} />
       {currentStep === 1 && <Async state={classSummaries} empty={staff ? 'Không có lớp thuộc phạm vi đã chọn' : 'Bạn không chủ nhiệm lớp nào trong phạm vi đã chọn'}>{(rows) => <ClassDirectory rows={rows} onOpen={(id) => { setClassId(id, 'push'); setPage(1); }} />}</Async>}
       {currentStep === 2 && selectedClass && <Async state={students} allowEmpty>{(data) => <StudentDirectory data={data} selectedClass={selectedClass} status={status} query={query} onStatus={(value) => { setStatus(value, 'push'); setPage(1); }} onQuery={(value) => { setQuery(value); setPage(1); }} onOpen={(id) => setStudentId(id, 'push')} onPage={(value) => setPage(value, 'push')} onPageSize={(value) => { setPageSize(value); setPage(1); }} />}</Async>}
-      {currentStep === 3 && <div className="report-card-detail-page"><button type="button" className="live-btn subtle report-back-button" onClick={clearToStudents}><ArrowLeft size={16} /> Trở lại danh sách lớp {selectedClass?.classCode}</button><Async state={detail}>{(card) => <><div className="report-card-review-panel"><ReportCardDocument card={card} onDownload={download} /></div>{staff ? <div className="report-card-review-actions"><label><span>Ghi chú xử lý / lý do mở lại</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ghi rõ nội dung để lưu vào lịch sử" /></label><div>{card.status === 'HOMEROOM_SUBMITTED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('approve')}><UserCheck size={16} /> Duyệt học bạ</button>}{card.status === 'APPROVED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('lock')}><LockKeyhole size={16} /> Khóa học bạ</button>}{card.status === 'LOCKED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('publish')}><Send size={16} /> Phát hành</button>}{canOpenReportCardRevision(card.status) && <button className="live-btn subtle danger" disabled={busy} onClick={() => transition('reopen')}><Unlock size={16} /> {card.status === 'PUBLISHED' ? 'Tạo bản điều chỉnh' : 'Mở lại'}</button>}</div></div> : card.editableByHomeroom && <div className="homeroom-report-editor"><h4><ClipboardCheck size={18} /> Hoàn thiện phần của giáo viên chủ nhiệm</h4><div className="homeroom-conduct-fields"><label><span>Mức GVCN quyết định</span><select value={conduct} onChange={(event) => setConduct(event.target.value)}><option value="">Chọn mức rèn luyện</option>{CONDUCT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><small>Đề xuất hệ thống: {CONDUCT_LABEL[card.conductEvaluation.suggestedGrade || ''] || 'Chưa đủ căn cứ'}</small></label><label><span>Nhận xét cuối năm</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Nhận xét về học tập, rèn luyện và hướng phát triển của học sinh" /></label>{(!card.conductEvaluation.suggestedGrade || conduct !== card.conductEvaluation.suggestedGrade) && <label className="conduct-override-field"><span>Lý do quyết định khác đề xuất *</span><textarea value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Nêu căn cứ chuyên môn và minh chứng GVCN đã xem xét" /></label>}</div><footer><button className="live-btn subtle" disabled={busy} onClick={saveHomeroom}><FileText size={16} /> Lưu quyết định và nhận xét</button>{card.status === 'DRAFT' && <button className="live-btn primary" disabled={busy || Boolean(card.missingRequirements)} onClick={submit}><Send size={16} /> Gửi Giáo vụ duyệt</button>}</footer></div>}</>}</Async></div>}
+      {currentStep === 3 && <div className="report-card-detail-page"><button type="button" className="live-btn subtle report-back-button" onClick={clearToStudents}><ArrowLeft size={16} /> Trở lại danh sách lớp {selectedClass?.classCode}</button><Async state={detail}>{(card) => <><div className="report-card-review-panel"><ReportCardDocument card={card} onDownload={download} /></div>{historicalScope ? <div className="gradebook-readonly-card"><LockKeyhole size={18} /><div><strong>Hồ sơ lịch sử chỉ xem</strong><small>Bạn vẫn có thể tải học bạ nhưng không thể duyệt, mở lại hoặc sửa nhận xét.</small></div></div> : staff ? <div className="report-card-review-actions"><label><span>Ghi chú xử lý / lý do mở lại</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ghi rõ nội dung để lưu vào lịch sử" /></label><div>{card.status === 'HOMEROOM_SUBMITTED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('approve')}><UserCheck size={16} /> Duyệt học bạ</button>}{card.status === 'APPROVED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('lock')}><LockKeyhole size={16} /> Khóa học bạ</button>}{card.status === 'LOCKED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('publish')}><Send size={16} /> Phát hành</button>}{canOpenReportCardRevision(card.status) && <button className="live-btn subtle danger" disabled={busy} onClick={() => transition('reopen')}><Unlock size={16} /> {card.status === 'PUBLISHED' ? 'Tạo bản điều chỉnh' : 'Mở lại'}</button>}</div></div> : card.editableByHomeroom && <div className="homeroom-report-editor"><h4><ClipboardCheck size={18} /> Hoàn thiện phần của giáo viên chủ nhiệm</h4><div className="homeroom-conduct-fields"><label><span>Mức GVCN quyết định</span><select value={conduct} onChange={(event) => setConduct(event.target.value)}><option value="">Chọn mức rèn luyện</option>{CONDUCT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><small>Đề xuất hệ thống: {CONDUCT_LABEL[card.conductEvaluation.suggestedGrade || ''] || 'Chưa đủ căn cứ'}</small></label><label><span>Nhận xét cuối năm</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Nhận xét về học tập, rèn luyện và hướng phát triển của học sinh" /></label>{(!card.conductEvaluation.suggestedGrade || conduct !== card.conductEvaluation.suggestedGrade) && <label className="conduct-override-field"><span>Lý do quyết định khác đề xuất *</span><textarea value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Nêu căn cứ chuyên môn và minh chứng GVCN đã xem xét" /></label>}</div><footer><button className="live-btn subtle" disabled={busy} onClick={saveHomeroom}><FileText size={16} /> Lưu quyết định và nhận xét</button>{card.status === 'DRAFT' && <button className="live-btn primary" disabled={busy || Boolean(card.missingRequirements)} onClick={submit}><Send size={16} /> Gửi Giáo vụ duyệt</button>}</footer></div>}</>}</Async></div>}
     </Section>
   </div>;
 }

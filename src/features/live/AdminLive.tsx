@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Landmark, Megaphone, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Landmark, BellRing, WalletCards, TrendingUp, AlertTriangle, Clock3, Search, Eye, Trash2, ReceiptText, CircleGauge, ArrowRight, Sparkles, ShieldCheck } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, Payment, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
-  ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog, ReportCardScopeOverview,
+  ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, ReportCardScopeOverview,
   AccountLifecycleSummary, BulkAccountActionResult,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
@@ -1060,6 +1060,14 @@ export function AdminExamCategoriesLive() {
 /* ============ A7 — Tài chính nội bộ ============ */
 const EMPTY_PERIOD_FORM = { code: '', name: '', applyToGrades: '', dueDate: '' };
 
+interface FinanceIntegrationStatus {
+  paymentMode: string;
+  vietQr: { configured: boolean; bankId: string; accountSuffix: string; accountName: string; template: string };
+  notifications: Record<string, boolean>;
+  automaticBankConfirmation: boolean;
+  reconciliationMode: string;
+}
+
 function downloadClassFinanceCsv(rows: FinanceClassSummary[]) {
   const quote = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const data = [
@@ -1085,17 +1093,19 @@ export function AdminFinanceLive() {
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
   const selectedPeriod = periods.data?.find((period) => period.id === selectedPeriodId) || null;
   const items = useApi<FeePeriodItem[]>(selectedPeriodId ? `/fee-periods/${selectedPeriodId}/items` : null);
-  const [periodQuery, setPeriodQuery] = useState('');
-  const [classQuery, setClassQuery] = useState('');
-  const [classStatus, setClassStatus] = useState('ALL');
-  const [invoicePeriod, setInvoicePeriod] = useState('ALL');
-  const [invoiceGrade, setInvoiceGrade] = useState('ALL');
-  const [invoiceClass, setInvoiceClass] = useState('ALL');
+  const [periodQuery, setPeriodQuery] = useHashString('finance_period_q', '');
+  const [classQuery, setClassQuery] = useHashString('finance_debt_q', '');
+  const [classStatus, setClassStatus] = useHashString('finance_status', 'ALL');
+  const [invoicePeriod, setInvoicePeriod] = useHashString('finance_period', 'ALL');
+  const [invoiceGrade, setInvoiceGrade] = useHashString('finance_grade', 'ALL');
+  const [invoiceClass, setInvoiceClass] = useHashString('finance_class', 'ALL');
   const classSummaries = useApi<FinanceClassSummary[]>(invoicePeriod === 'ALL'
     ? '/finance/classes'
     : `/finance/classes?periodId=${encodeURIComponent(invoicePeriod)}`);
   const pendingVietQr = useApi<VietQrPendingPayment[]>('/payments/vietqr/pending');
+  const vietQrReceipts = useApi<VietQrPendingPayment[]>('/payments/vietqr/receipts');
   const payments = useApi<Payment[]>('/payments');
+  const integrations = useApi<FinanceIntegrationStatus>('/finance/integrations');
   const [showPeriodEditor, setShowPeriodEditor] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<FeePeriod | null>(null);
   const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
@@ -1104,13 +1114,18 @@ export function AdminFinanceLive() {
   const [sendingClassId, setSendingClassId] = useState<string | null>(null);
   const [sendingVisible, setSendingVisible] = useState(false);
   const [reconcilingPaymentId, setReconcilingPaymentId] = useState<string | null>(null);
+  const [resendingPaymentId, setResendingPaymentId] = useState<string | null>(null);
+  const [reconcileTarget, setReconcileTarget] = useState<VietQrPendingPayment | null>(null);
+  const [bankTransactionRef, setBankTransactionRef] = useState('');
 
   const refreshFinance = () => {
     periods.reload();
     overview.reload();
     classSummaries.reload();
     pendingVietQr.reload();
+    vietQrReceipts.reload();
     payments.reload();
+    integrations.reload();
     if (selectedPeriodId) items.reload();
   };
 
@@ -1278,6 +1293,11 @@ export function AdminFinanceLive() {
   };
 
   const reconcileVietQr = async (item: VietQrPendingPayment, accepted: boolean) => {
+    if (accepted) {
+      setReconcileTarget(item);
+      setBankTransactionRef('');
+      return;
+    }
     const action = accepted ? 'xác nhận' : 'từ chối';
     if (!await confirmAction({ title: `${accepted ? 'Xác nhận đã nhận' : 'Từ chối'} ${money(item.payment.amount)}?`, description: `Áp dụng cho hóa đơn ${item.invoice.code}.`, confirmLabel: accepted ? 'Xác nhận' : 'Từ chối', tone: accepted ? 'default' : 'danger' })) return;
     setReconcilingPaymentId(item.payment.id);
@@ -1289,6 +1309,36 @@ export function AdminFinanceLive() {
       classSummaries.reload();
     } catch (error: any) { toast.show('err', error.message); }
     finally { setReconcilingPaymentId(null); }
+  };
+
+  const confirmVietQrReceipt = async () => {
+    if (!reconcileTarget) return;
+    const reference = bankTransactionRef.trim();
+    if (!reference) return toast.show('err', 'Vui lòng nhập mã giao dịch trên sao kê ngân hàng');
+    setReconcilingPaymentId(reconcileTarget.payment.id);
+    try {
+      const result = await api.post<VietQrPendingPayment>(`/payments/${reconcileTarget.payment.id}/confirm-vietqr`, { bankTransactionRef: reference });
+      const emailStatus = result.emailDelivery?.status;
+      toast.show('ok', `Đã ghi nhận ${money(result.payment.amount)}. ${emailStatus === 'DELIVERED' ? 'Email biên nhận đã gửi.' : 'Email biên nhận đang được xử lý.'}`);
+      setReconcileTarget(null);
+      setBankTransactionRef('');
+      pendingVietQr.reload();
+      vietQrReceipts.reload();
+      payments.reload();
+      overview.reload();
+      classSummaries.reload();
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setReconcilingPaymentId(null); }
+  };
+
+  const resendReceiptEmail = async (item: VietQrPendingPayment) => {
+    setResendingPaymentId(item.payment.id);
+    try {
+      await api.post(`/payments/${item.payment.id}/resend-receipt`);
+      toast.show('ok', `Đã đưa email biên nhận ${item.invoice.code} vào hàng đợi gửi lại`);
+      window.setTimeout(() => vietQrReceipts.reload(), 1_000);
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setResendingPaymentId(null); }
   };
 
   const collectionRate = Math.min(100, Math.max(0, overview.data?.collectionRate || 0));
@@ -1304,6 +1354,8 @@ export function AdminFinanceLive() {
           <p>Theo dõi thu học phí theo thời gian thực, xử lý khoản thu và chủ động nhắc phụ huynh trên một màn hình.</p>
         </div>
         <div className="finance-hero-actions">
+          <span className={`finance-integration-status ${integrations.data?.vietQr.configured ? 'ready' : 'warning'}`}><Landmark size={14} /> VietQR {integrations.data?.vietQr.configured ? `••${integrations.data.vietQr.accountSuffix}` : 'chưa cấu hình'}</span>
+          <span className={`finance-integration-status ${integrations.data?.notifications.EMAIL ? 'ready' : 'warning'}`}><Send size={14} /> SMTP {integrations.data?.notifications.EMAIL ? 'sẵn sàng' : 'chưa bật'}</span>
           <button className="live-btn ghost" type="button" onClick={refreshFinance}><RefreshCw size={15} /> Đồng bộ</button>
           <button className="live-btn" type="button" onClick={openCreatePeriod}><Plus size={15} /> Tạo đợt thu</button>
         </div>
@@ -1317,7 +1369,7 @@ export function AdminFinanceLive() {
       </section>
 
       <FunctionTabs mode="tabs" tabs={[
-        { id: 'overview', label: 'Báo cáo', description: 'Nắm nhanh thu, nợ và việc cần xử lý', Icon: TrendingUp, content: (
+        { id: 'overview', label: 'Tổng quan', description: 'Nắm nhanh thu, nợ và việc cần xử lý', Icon: TrendingUp, content: (
           <div className="finance-overview-grid">
             <Section title="Tiến độ thu học phí" subtitle="Tỷ lệ thu trên tổng giá trị hóa đơn đã phát hành" wide>
               <div className="finance-progress-summary">
@@ -1429,7 +1481,27 @@ export function AdminFinanceLive() {
             </Async>
           </Section>
         ) },
-        { id: 'invoices', label: 'Hóa đơn & công nợ', description: 'Theo dõi và giao GVCN nhắc hạn', Icon: FileText, content: (
+        { id: 'receipts', label: 'Email biên nhận', description: 'Theo dõi gửi SMTP và xử lý lỗi', Icon: Send, content: (
+          <Section title="Trạng thái email biên nhận" subtitle="Theo dõi tối đa 200 giao dịch VietQR đã xác nhận; email lỗi có thể được gửi lại an toàn" wide
+            action={<button className="live-btn ghost" type="button" onClick={() => vietQrReceipts.reload()}><RefreshCw size={15} /> Làm mới</button>}>
+            <div className="finance-delegation-note"><Send size={20} /><div><strong>Email được gửi qua hàng đợi SMTP, tối đa 3 lần thử</strong><small>Trạng thái “Đang xử lý” sẽ tự chuyển thành “Đã gửi” hoặc “Gửi thất bại”. Chỉ gửi lại khi lần gửi trước không thành công.</small></div></div>
+            <Async state={vietQrReceipts} empty="Chưa có biên nhận VietQR">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="biên nhận" resetKey={rows.map((item) => `${item.payment.id}:${item.emailDelivery?.status}`).join('|')}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table"><thead><tr><th>Hóa đơn</th><th>Học sinh</th><th>Số tiền</th><th>Xác nhận lúc</th><th>Email SMTP</th><th>Thao tác</th></tr></thead><tbody>
+                  {pageRows.map((item) => { const emailStatus = item.emailDelivery?.status || 'NOT_SENT'; const retryable = ['FAILED', 'SKIPPED', 'NOT_SENT'].includes(emailStatus); return <tr key={item.payment.id}>
+                    <td><strong>{item.invoice.code}</strong><small>{item.payment.txnRef}</small></td>
+                    <td><strong>{item.invoice.studentName}</strong><small>{item.invoice.classCode || item.invoice.gradeLevel || '—'}</small></td>
+                    <td><strong>{money(item.payment.amount)}</strong></td>
+                    <td>{fmtDateTime(item.payment.paidAt)}</td>
+                    <td><div className="receipt-delivery-status"><StatusPill value={emailStatus === 'DELIVERED' ? 'Đã gửi' : emailStatus === 'FAILED' ? 'Gửi thất bại' : emailStatus === 'SKIPPED' ? 'Đã bỏ qua' : emailStatus === 'RETRYING' ? 'Đang thử lại' : emailStatus === 'NOT_SENT' ? 'Chưa gửi' : 'Đang xử lý'} /><small>{item.emailDelivery?.attempts || 0} lần thử{item.emailDelivery?.detail ? ` · ${item.emailDelivery.detail}` : ''}</small></div></td>
+                    <td>{retryable ? <button className="live-btn subtle" type="button" disabled={resendingPaymentId === item.payment.id} onClick={() => resendReceiptEmail(item)}><Send size={14} /> {resendingPaymentId === item.payment.id ? 'Đang gửi…' : 'Gửi lại'}</button> : <span className="finance-complete-label"><CheckCircle2 size={14} /> Không cần xử lý</span>}</td>
+                  </tr>; })}
+                </tbody></table></div>}
+              </PaginatedData>}
+            </Async>
+          </Section>
+        ) },
+        { id: 'invoices', label: 'Công nợ', description: 'Theo dõi hóa đơn và giao GVCN nhắc hạn', Icon: FileText, content: (
           <Section title="Tổng thu và công nợ toàn trường" subtitle="Theo dõi tiến độ từng lớp và giao nhiệm vụ nhắc hạn cho giáo viên chủ nhiệm" wide
             action={<div className="finance-section-actions"><button className="live-btn ghost" type="button" onClick={() => downloadClassFinanceCsv(filteredClassSummaries)}><Download size={15} /> Xuất báo cáo lớp</button><button className="live-btn" type="button" disabled={sendingVisible || remindableClasses.length === 0} onClick={remindVisibleHomerooms}><BellRing size={15} /> {sendingVisible ? 'Đang gửi…' : `Nhắc GVCN (${remindableClasses.length})`}</button></div>}>
             <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Kế toán điều hành tổng thể, GVCN chịu trách nhiệm theo sát phụ huynh</strong><small>Kế toán theo dõi tổng thu và công nợ theo lớp. Các lớp chưa hoàn thành sẽ được giao lại cho giáo viên chủ nhiệm kiểm tra và nhắc phụ huynh.</small></div></div>
@@ -1447,6 +1519,7 @@ export function AdminFinanceLive() {
               <select className="live-input" value={classStatus} onChange={(event) => setClassStatus(event.target.value)} aria-label="Lọc trạng thái lớp">
                 <option value="ALL">Tất cả trạng thái</option><option value="INCOMPLETE">Chưa hoàn thành</option><option value="OVERDUE">Có khoản quá hạn</option><option value="IN_PROGRESS">Đang trong hạn</option><option value="COMPLETED">Đã hoàn thành</option><option value="NO_HOMEROOM">Chưa có GVCN</option>
               </select>
+              {(classQuery || classStatus !== 'ALL' || invoicePeriod !== 'ALL' || invoiceGrade !== 'ALL' || invoiceClass !== 'ALL') && <button className="live-btn ghost finance-clear-filters" type="button" onClick={() => { setClassQuery(''); setClassStatus('ALL'); setInvoicePeriod('ALL'); setInvoiceGrade('ALL'); setInvoiceClass('ALL'); }}>Xóa bộ lọc</button>}
               <span>{filteredClassSummaries.length} lớp</span>
             </div>
             <div className="finance-filter-summary">
@@ -1483,175 +1556,14 @@ export function AdminFinanceLive() {
         <div className="finance-guidance"><ReceiptText size={18} /><p>Đợt thu được tạo ở trạng thái nháp. Hãy thêm đầy đủ các khoản trước khi mở và phát hành hóa đơn.</p></div>
       </Modal>}
 
-    </div>
-  );
-}
-
-const ANNOUNCEMENT_CATEGORIES = [
-  { value: 'GENERAL', label: 'Thông báo chung', hint: 'Thông tin điều hành và nhắc nhở chung', title: 'Thông báo từ nhà trường', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường trân trọng thông báo:' },
-  { value: 'HOLIDAY_EVENT', label: 'Nghỉ lễ & sự kiện', hint: 'Lịch nghỉ hoặc hoạt động toàn trường', title: 'Thông báo nghỉ lễ / sự kiện', body: 'Kính gửi quý thầy cô, học sinh và phụ huynh,\n\nNhà trường trân trọng thông báo:' },
-  { value: 'ADMINISTRATIVE', label: 'Hành chính & quy định', hint: 'Quy định, hướng dẫn và thủ tục chung', title: 'Thông báo hành chính', body: 'Nhà trường thông báo quy định và hướng dẫn thực hiện như sau:' },
-  { value: 'MEETING', label: 'Lịch họp chung', hint: 'Lịch họp và nội dung phối hợp toàn trường', title: 'Thông báo lịch họp', body: 'Nhà trường trân trọng thông báo lịch họp chung như sau:' },
-  { value: 'EMERGENCY', label: 'Thông báo khẩn cấp', hint: 'Thông tin cần được chú ý và xử lý ngay', title: 'THÔNG BÁO KHẨN', body: 'Nhà trường thông báo khẩn cấp tới toàn thể cán bộ, giáo viên, học sinh và phụ huynh:' },
-];
-
-const ANNOUNCEMENT_AUDIENCES = [
-  { value: 'ALL', label: 'Toàn trường', hint: 'Giáo viên, học sinh và phụ huynh', Icon: School },
-  { value: 'TEACHER', label: 'Giáo viên', hint: 'Toàn bộ giáo viên đang hoạt động', Icon: UsersRound },
-  { value: 'STUDENT', label: 'Học sinh', hint: 'Toàn bộ học sinh đang hoạt động', Icon: GraduationCap },
-  { value: 'PARENT', label: 'Phụ huynh', hint: 'Toàn bộ phụ huynh đang hoạt động', Icon: UserRound },
-];
-
-const ANNOUNCEMENT_CATEGORY_LABEL: Record<string, string> = {
-  ...Object.fromEntries(ANNOUNCEMENT_CATEGORIES.map((item) => [item.value, item.label])),
-  HOLIDAY: 'Nghỉ lễ (dữ liệu cũ)', EVENT: 'Sự kiện (dữ liệu cũ)', PARENT_MEETING: 'Họp phụ huynh (dữ liệu cũ)',
-};
-const ANNOUNCEMENT_AUDIENCE_LABEL = Object.fromEntries(ANNOUNCEMENT_AUDIENCES.map((item) => [item.value, item.label]));
-const ANNOUNCEMENT_PRIORITY_LABEL: Record<string, string> = { NORMAL: 'Thông thường', IMPORTANT: 'Quan trọng', URGENT: 'Khẩn cấp' };
-
-/* ============ A9 — Trung tâm thông báo ============ */
-export function AdminNotificationsLive() {
-  const announcements = useApi<Announcement[]>('/admin/announcements');
-  const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
-  const deliveryLogs = useApi<NotificationDeliveryLog[]>('/notification-delivery-logs');
-  const toast = useToast();
-  const [sending, setSending] = useState(false);
-  const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '', holidayMode: false, holidayStartDate: '', holidayEndDate: '' });
-  const selectedCategory = ANNOUNCEMENT_CATEGORIES.find((item) => item.value === form.category) || ANNOUNCEMENT_CATEGORIES[0];
-  const recipientCount = audienceCounts.data?.[form.audience] ?? 0;
-
-  const applyCategory = (category: typeof ANNOUNCEMENT_CATEGORIES[number]) => {
-    setForm((current) => ({
-      ...current,
-      category: category.value,
-      audience: category.value === 'EMERGENCY' ? 'ALL' : current.audience,
-      priority: category.value === 'EMERGENCY' ? 'URGENT' : current.priority,
-      title: category.title,
-      body: category.body,
-      holidayMode: category.value === 'HOLIDAY_EVENT' ? current.holidayMode : false,
-      holidayStartDate: category.value === 'HOLIDAY_EVENT' ? current.holidayStartDate : '',
-      holidayEndDate: category.value === 'HOLIDAY_EVENT' ? current.holidayEndDate : '',
-    }));
-  };
-
-  const sendAnnouncement = async () => {
-    if (!form.title.trim() || !form.body.trim()) return toast.show('err', 'Vui lòng nhập tiêu đề và nội dung thông báo');
-    if (form.holidayMode && (!form.holidayStartDate || !form.holidayEndDate)) return toast.show('err', 'Vui lòng chọn đầy đủ thời gian nghỉ');
-    if (form.holidayMode && form.holidayEndDate < form.holidayStartDate) return toast.show('err', 'Ngày kết thúc không được trước ngày bắt đầu');
-    if (!recipientCount) return toast.show('err', 'Phạm vi đã chọn hiện không có người nhận');
-    setSending(true);
-    try {
-      const sent = await api.post<Announcement>('/announcements', {
-        audience: form.audience,
-        category: form.category,
-        priority: form.priority,
-        title: form.title.trim(),
-        body: form.body.trim(),
-        holidayStartDate: form.holidayMode ? form.holidayStartDate : null,
-        holidayEndDate: form.holidayMode ? form.holidayEndDate : null,
-      });
-      toast.show('ok', form.holidayMode
-        ? `Đã thông báo nghỉ và tự động miễn điểm danh trong ${form.holidayStartDate === form.holidayEndDate ? 'ngày đã chọn' : 'khoảng thời gian đã chọn'}`
-        : `Đã gửi thông báo tới ${sent.recipientCount ?? recipientCount} người nhận`);
-      setForm((current) => ({ ...current, title: '', body: '', priority: 'NORMAL', holidayStartDate: '', holidayEndDate: '' }));
-      announcements.reload();
-      deliveryLogs.reload();
-    } catch (error: any) {
-      toast.show('err', error.message);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="admin-notification-center">
-      {toast.node}
-      <Section title="Trung tâm thông báo" subtitle="Soạn và gửi thông tin đúng đối tượng trong toàn trường" wide
-        action={<button className="live-btn ghost" onClick={() => { announcements.reload(); audienceCounts.reload(); deliveryLogs.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
-        <div className="announcement-audience-summary">
-          {ANNOUNCEMENT_AUDIENCES.map(({ value, label, Icon }) => (
-            <article key={value} className={form.audience === value ? 'active' : ''}>
-              <span><Icon size={18} /></span><div><small>{label}</small><strong>{audienceCounts.data?.[value] ?? '—'}</strong><p>người nhận</p></div>
-            </article>
-          ))}
+      {reconcileTarget && <Modal title="Xác nhận tiền đã vào tài khoản" onClose={() => { if (!reconcilingPaymentId) setReconcileTarget(null); }} footer={<><button className="live-btn ghost" type="button" disabled={!!reconcilingPaymentId} onClick={() => setReconcileTarget(null)}>Hủy</button><button className="live-btn" type="button" disabled={!!reconcilingPaymentId || !bankTransactionRef.trim()} onClick={confirmVietQrReceipt}><CheckCircle2 size={15} /> {reconcilingPaymentId ? 'Đang ghi nhận…' : 'Xác nhận và gửi biên nhận'}</button></>}>
+        <div className="vietqr-reconcile-dialog">
+          <div className="finance-delegation-note"><ShieldCheck size={20} /><div><strong>Đối chiếu với sao kê Techcombank trước khi xác nhận</strong><small>Kiểm tra đúng số tiền, nội dung chuyển khoản và nhập mã giao dịch ngân hàng để lưu dấu vết đối soát.</small></div></div>
+          <div className="vietqr-reconcile-summary"><span><small>Hóa đơn</small><strong>{reconcileTarget.invoice.code}</strong></span><span><small>Học sinh</small><strong>{reconcileTarget.invoice.studentName}</strong></span><span><small>Số tiền</small><strong>{money(reconcileTarget.payment.amount)}</strong></span><span><small>Nội dung</small><strong>{reconcileTarget.transferContent}</strong></span></div>
+          <Field label="Mã giao dịch trên sao kê *"><input className="live-input" autoFocus value={bankTransactionRef} onChange={(event) => setBankTransactionRef(event.target.value)} placeholder="Ví dụ: FT26216012345678" maxLength={100} /></Field>
+          <p className="vietqr-reconcile-email-note"><Send size={16} /> Sau khi xác nhận, hóa đơn được cập nhật và email biên nhận được đưa vào hàng đợi SMTP tự động.</p>
         </div>
-
-        <div className="announcement-automation-note">
-          <span><CircleDollarSign size={20} /></span>
-          <div><strong>Thông báo khoản thu được gửi tự động</strong><small>Khi hóa đơn được phát hành, hệ thống tự gửi số tiền, hạn thanh toán và mã hóa đơn tới toàn bộ phụ huynh liên kết với học sinh.</small></div>
-          <Badge tone="green">Tự động</Badge>
-        </div>
-
-        <div className="announcement-compose-layout">
-          <div className="announcement-compose-form">
-            <div className="announcement-compose-heading"><span><Megaphone size={19} /></span><div><strong>Soạn thông báo mới</strong><small>Chọn mẫu tình huống hoặc tự nhập nội dung</small></div></div>
-
-            <div className="announcement-field-group">
-              <label>Loại thông báo</label>
-              <div className="announcement-category-grid">
-                {ANNOUNCEMENT_CATEGORIES.map((category) => (
-                  <button type="button" key={category.value} className={form.category === category.value ? 'active' : ''} onClick={() => applyCategory(category)}>
-                    <strong>{category.label}</strong><small>{category.hint}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="announcement-field-group">
-              <label>Phạm vi nhận</label>
-              <div className="announcement-audience-grid">
-                {ANNOUNCEMENT_AUDIENCES.map(({ value, label, hint, Icon }) => (
-                  <button type="button" key={value} className={form.audience === value ? 'active' : ''} disabled={(form.holidayMode || form.category === 'EMERGENCY') && value !== 'ALL'} onClick={() => setForm({ ...form, audience: value })}>
-                    <span><Icon size={17} /></span><div><strong>{label}</strong><small>{hint}</small></div><b>{audienceCounts.data?.[value] ?? 0}</b>
-                  </button>
-                ))}
-              </div>
-              {(form.holidayMode || form.category === 'EMERGENCY') && <small className="announcement-holiday-help">{form.holidayMode ? 'Thông báo nghỉ áp dụng cho toàn trường và tự động tắt yêu cầu điểm danh trong thời gian đã chọn.' : 'Thông báo khẩn cấp luôn gửi tới toàn trường với mức độ Khẩn cấp.'}</small>}
-            </div>
-
-            <div className="announcement-form-grid">
-              {form.category === 'HOLIDAY_EVENT' && <label className="wide admin-user-exception-confirm"><input type="checkbox" checked={form.holidayMode} onChange={(event) => setForm({ ...form, holidayMode: event.target.checked, audience: event.target.checked ? 'ALL' : form.audience, holidayStartDate: event.target.checked ? form.holidayStartDate : '', holidayEndDate: event.target.checked ? form.holidayEndDate : '' })} /><span>Đây là thông báo ngày nghỉ; tự động miễn điểm danh trong khoảng thời gian bên dưới.</span></label>}
-              {form.holidayMode && <>
-                <label><span>Ngày bắt đầu nghỉ</span><input type="date" value={form.holidayStartDate} onChange={(event) => setForm({ ...form, holidayStartDate: event.target.value, holidayEndDate: form.holidayEndDate && form.holidayEndDate < event.target.value ? event.target.value : form.holidayEndDate })} /></label>
-                <label><span>Ngày kết thúc nghỉ</span><input type="date" min={form.holidayStartDate} value={form.holidayEndDate} onChange={(event) => setForm({ ...form, holidayEndDate: event.target.value })} /></label>
-              </>}
-              <label className="wide"><span>Tiêu đề</span><input maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Nhập tiêu đề rõ ràng, dễ hiểu" /></label>
-              <label><span>Mức độ</span><select value={form.priority} disabled={form.category === 'EMERGENCY'} onChange={(event) => setForm({ ...form, priority: event.target.value })}><option value="NORMAL">Thông thường</option><option value="IMPORTANT">Quan trọng</option><option value="URGENT">Khẩn cấp</option></select></label>
-              <label className="wide"><span>Nội dung</span><textarea maxLength={4000} rows={7} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="Nhập đầy đủ thời gian, địa điểm và hướng dẫn cần thiết…" /><small>{form.body.length}/4000 ký tự</small></label>
-            </div>
-          </div>
-
-          <aside className="announcement-preview">
-            <div className="announcement-preview-heading"><BellRing size={18} /><div><strong>Xem trước thông báo</strong><small>Nội dung người nhận sẽ nhìn thấy</small></div></div>
-            <div className={`announcement-preview-card priority-${form.priority.toLowerCase()}`}>
-              <header><Badge tone={form.priority === 'URGENT' ? 'red' : 'blue'}>{selectedCategory.label}</Badge><span>{ANNOUNCEMENT_PRIORITY_LABEL[form.priority]}</span></header>
-              <strong>{form.title || 'Tiêu đề thông báo'}</strong>
-              <p>{form.body || 'Nội dung thông báo sẽ hiển thị tại đây.'}</p>
-              {form.holidayMode && <small><CalendarDays size={14} /> {form.holidayStartDate || 'Chọn ngày bắt đầu'} → {form.holidayEndDate || 'Chọn ngày kết thúc'}</small>}
-              <small>Vừa xong · Từ Ban quản trị nhà trường</small>
-            </div>
-            <div className="announcement-send-summary"><span>Đối tượng</span><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[form.audience]}</strong><span>Dự kiến nhận</span><strong>{recipientCount} người</strong></div>
-            <p className="announcement-send-note">Thông báo được lưu vào hộp thư trong ứng dụng và gửi thêm qua email/push nếu người dùng đã bật kênh tương ứng.</p>
-            <button type="button" className="live-btn announcement-send-button" disabled={sending || !recipientCount || !form.title.trim() || !form.body.trim()} onClick={sendAnnouncement}><Send size={16} /> {sending ? 'Đang gửi…' : `Gửi ngay tới ${recipientCount} người`}</button>
-          </aside>
-        </div>
-      </Section>
-
-      <Section title="Lịch sử gửi thông báo" subtitle="Theo dõi phạm vi, nội dung và số lượng người nhận" wide>
-        <Async paginate state={announcements} empty="Chưa có thông báo nào được gửi" itemLabel="thông báo">
-          {(items) => <div className="admin-table-scroll"><table className="live-table announcement-history-table"><thead><tr><th>Thời gian</th><th>Loại</th><th>Đối tượng</th><th>Nội dung</th><th>Mức độ</th><th>Người nhận</th><th>Trạng thái</th></tr></thead>
-            <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small>{['HOLIDAY', 'HOLIDAY_EVENT'].includes(item.category || '') && item.holidayStartDate && <small>Thời gian nghỉ: {item.holidayStartDate} → {item.holidayEndDate}</small>}</td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
-          </table></div>}
-        </Async>
-      </Section>
-
-      <Section title="Nhật ký chuyển phát" subtitle="Kiểm tra kênh nào đã nhận, bị bỏ qua hoặc gửi thất bại" wide>
-        <Async paginate state={deliveryLogs} empty="Chưa có lượt chuyển phát" itemLabel="lượt chuyển phát">
-          {(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Thời gian</th><th>Kênh</th><th>Người nhận</th><th>Trạng thái</th><th>Số lần</th><th>Chi tiết</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}>
-            <td>{fmtDateTime(item.createdAt)}</td><td><strong>{{ IN_APP: 'Trong ứng dụng', EMAIL: 'Email', PUSH: 'Thông báo đẩy' }[item.channel]}</strong></td><td>{item.recipientId}</td><td><StatusPill value={item.status} /></td><td>{item.attempts}</td><td>{item.detail || 'Đã chuyển phát thành công'}</td>
-          </tr>)}</tbody></table></div>}
-        </Async>
-      </Section>
+      </Modal>}
 
     </div>
   );

@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
-import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass } from '../../api/types';
+import type { AcademicYear, Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
 import { BarChart3, BookOpen, CalendarDays, CheckCircle2, GraduationCap, IdCard, MapPin, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { AcademicScopeOptions, preferredSemesterId } from '../../components/AcademicScopeOptions';
+import { useHashString } from '../../api/urlState';
 
 /* ===== C1 — Hồ sơ ===== */
 export function StudentProfileLive() {
@@ -122,10 +124,11 @@ function genderLabel(value?: string | null) {
 
 /* ===== C2 — Theo dõi học thuật ===== */
 export function StudentAcademicLive() {
+  const academicYears = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
   const categories = useApi<ExamCategory[]>('/exam-categories');
-  const [sem, setSem] = useState('');
-  const effSem = sem || semesters.data?.[0]?.id || '';
+  const [sem, setSem] = useHashString('semester', '');
+  const effSem = sem || preferredSemesterId(semesters.data || [], academicYears.data || []);
   const grades = useApi<Grade[]>(effSem ? `/grades?semesterId=${effSem}` : null);
 
   const categoryList = useMemo<ExamCategory[]>(() => {
@@ -167,7 +170,7 @@ export function StudentAcademicLive() {
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
         <Section title="Bảng điểm học kỳ" subtitle="Tổng hợp theo từng đầu điểm và hệ số đã cấu hình" wide
           action={<select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effSem} onChange={(e) => setSem(e.target.value)}>
-            {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+            <AcademicScopeOptions semesters={semesters.data || []} academicYears={academicYears.data || []} />
           </select>}>
           <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
             {(pagedSubjectRows) => (
