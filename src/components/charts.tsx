@@ -1,5 +1,4 @@
 import type React from 'react';
-import { eventFlow, invoiceStatus } from '../data/mockData';
 import type { Metric } from '../types';
 
 export function MetricCard({ metric }: { metric: Metric }) {
@@ -14,7 +13,6 @@ export function MetricCard({ metric }: { metric: Metric }) {
     </article>
   );
 }
-
 export function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <section className="chart-card">
@@ -28,7 +26,6 @@ export function ChartCard({ title, subtitle, children }: { title: string; subtit
     </section>
   );
 }
-
 export function BarList({ data, max, suffix }: { data: Array<{ label: string; value: number }>; max: number; suffix: string }) {
   return (
     <div className="bar-list">
@@ -44,7 +41,6 @@ export function BarList({ data, max, suffix }: { data: Array<{ label: string; va
     </div>
   );
 }
-
 export function ColumnChart({ data, max, suffix }: { data: Array<{ label: string; value: number }>; max: number; suffix: string }) {
   return (
     <div className="column-chart">
@@ -60,7 +56,6 @@ export function ColumnChart({ data, max, suffix }: { data: Array<{ label: string
     </div>
   );
 }
-
 export function PieChart({ data, suffix }: { data: Array<{ label: string; value: number }>; suffix: string }) {
   const colors = ['#2563eb', '#ec4899', '#f59e0b', '#14b8a6'];
   const total = data.reduce((sum, item) => sum + item.value, 0);
@@ -89,35 +84,6 @@ export function PieChart({ data, suffix }: { data: Array<{ label: string; value:
             <span>{item.label}</span>
             <strong>{item.value}{suffix}</strong>
             <small>{total > 0 ? `${Math.round((item.value / total) * 100)}%` : '0%'}</small>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export function SplitDashboard() {
-  return (
-    <div className="split-dashboard">
-      <div className="status-donut" aria-label="Trạng thái hóa đơn">
-        <div>
-          <strong>68%</strong>
-          <span>Paid</span>
-        </div>
-      </div>
-      <div className="mini-stats">
-        {invoiceStatus.map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}%</strong>
-          </div>
-        ))}
-      </div>
-      <div className="event-list">
-        {eventFlow.map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value.toLocaleString('vi-VN')}</strong>
           </div>
         ))}
       </div>

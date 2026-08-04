@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, PanelLeftClose, PanelLeftOpen, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
-import { roles, modules } from '../data/mockData';
+import { roles, modules } from '../data/navigation';
 import type { PageId, RoleId } from '../types';
 import { SessionCard, SidebarMenu } from '../components/layout';
 import { useAuth } from '../api/auth';

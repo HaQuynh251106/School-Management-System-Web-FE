@@ -1,12 +1,14 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { roles } from '../data/mockData';
+import { roles } from '../data/navigation';
 import type { TeacherWorkspaceContext } from '../api/types';
 import { SidebarMenu } from './layout';
 
 const adminRole = roles.find((role) => role.id === 'admin')!;
 const academicStaffRole = roles.find((role) => role.id === 'academic_staff')!;
 const teacherRole = roles.find((role) => role.id === 'teacher')!;
+const studentRole = roles.find((role) => role.id === 'student')!;
+const parentRole = roles.find((role) => role.id === 'parent')!;
 
 const subjectTeacherContext: TeacherWorkspaceContext = {
   homeroomTeacher: false,
@@ -57,25 +59,50 @@ describe('SidebarMenu giáo vụ', () => {
   beforeEach(() => localStorage.clear());
   afterEach(cleanup);
 
-  it('chia chức năng thành hai nhóm theo quy trình nghiệp vụ', () => {
+  it('chia chức năng thành bốn giai đoạn nghiệp vụ rõ ràng', () => {
     render(<SidebarMenu role={academicStaffRole} activePage="dashboard" onSelect={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: /2\. Vận hành học vụ/i })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /3\. Tổng kết & học bạ/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /2\. Chuẩn bị năm học/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /3\. Vận hành năm học/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /4\. Tổng kết & chuyển năm/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /5\. Kho lưu trữ niên khóa/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: 'Chuẩn bị năm học' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Phân công & xếp lịch' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Tổ chức kỳ thi' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Kết thúc niên khóa' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Tổng kết & chuyển năm' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Kho lưu trữ niên khóa' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
   });
 
   it('ghi nhớ trạng thái đóng mở độc lập của từng nhóm', () => {
     render(<SidebarMenu role={academicStaffRole} activePage="dashboard" onSelect={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /2\. Vận hành học vụ/i }));
+    fireEvent.click(screen.getByRole('button', { name: /3\. Vận hành năm học/i }));
     expect(localStorage.getItem('school.sidebar.group.academic-operations.open')).toBe('false');
-    expect(screen.queryByRole('button', { name: 'Chuẩn bị năm học' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Phân công & xếp lịch' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Chuẩn bị năm học' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
+  });
+});
+
+describe('SidebarMenu học sinh và phụ huynh', () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(cleanup);
+
+  it('gom chức năng học sinh theo học tập, hỗ trợ và cá nhân', () => {
+    render(<SidebarMenu role={studentRole} activePage="dashboard" onSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^Học tập/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Kết nối & hỗ trợ/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Cá nhân/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
+  });
+
+  it('gom chức năng phụ huynh theo theo dõi, phối hợp và dịch vụ', () => {
+    render(<SidebarMenu role={parentRole} activePage="dashboard" onSelect={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /^Theo dõi con/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Phối hợp nhà trường/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Tài chính & cá nhân/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Học bạ của con' })).toBeVisible();
   });
 });
 

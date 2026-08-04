@@ -13,6 +13,7 @@ const AdminAccountLifecycleLive = lazy(() => import('./live/AdminLive').then((mo
 const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
 const AdminNotificationsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminNotificationsLive })));
 const AdminAcademicLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AdminAcademicLive })));
+const AcademicYearClosureLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AcademicYearClosureLive })));
 const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
 const TeacherAttendanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherAttendanceLive })));
 const TeacherGradesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherGradesLive })));
@@ -57,8 +58,9 @@ const WORKSPACE_STEPS: Record<string, string[]> = {
   E1: ['Tạo năm học và học kỳ', 'Chuẩn hóa lớp, môn, phòng', 'Phân lớp và kiểm tra dữ liệu'],
   E2: ['Tiếp nhận đăng ký tiết dạy', 'Phân công đúng chuyên môn', 'Tạo và duyệt thời khóa biểu'],
   E3: ['Tạo kỳ thi', 'Xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
-  E4: ['Chọn niên khóa', 'Tra cứu học sinh đã tốt nghiệp', 'Mở hồ sơ lịch sử khi cần'],
-  E5: ['Nhận học bạ GVCN đã gửi', 'Kiểm tra đủ 12 môn và hạnh kiểm', 'Duyệt, khóa rồi phát hành'],
+  E4: ['Kiểm tra dữ liệu hai học kỳ', 'Duyệt kết quả lên lớp', 'Khóa năm và tạo năm kế tiếp'],
+  E5: ['Chọn niên khóa', 'Chọn lớp đã hoàn thành', 'Mở hồ sơ lịch sử khi cần'],
+  E6: ['Nhận học bạ GVCN đã gửi', 'Kiểm tra đủ 12 môn và hạnh kiểm', 'Duyệt, khóa rồi phát hành'],
   F1: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
 };
 
@@ -98,8 +100,9 @@ export function FeatureBody({ code }: { code: string }) {
     case 'E1': return <AdminAcademicLive />;
     case 'E2': return <AdminTimetableLive />;
     case 'E3': return <AdminExamsLive />;
-    case 'E4': return <AlumniLive />;
-    case 'E5': return <AcademicStaffReportCardsLive />;
+    case 'E4': return <AcademicYearClosureLive />;
+    case 'E5': return <AlumniLive />;
+    case 'E6': return <AcademicStaffReportCardsLive />;
     // ---- Kế toán ----
     case 'F1': return <AdminFinanceLive />;
     // ---- Teacher ----

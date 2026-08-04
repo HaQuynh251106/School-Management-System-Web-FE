@@ -24,8 +24,9 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     E1: 'co-cau-dao-tao',
     E2: 'xep-thoi-khoa-bieu',
     E3: 'tao-ky-thi',
-    E4: 'cuu-hoc-sinh',
-    E5: 'hoc-ba-dien-tu',
+    E4: 'tong-ket-chuyen-nam',
+    E5: 'kho-luu-tru-nien-khoa',
+    E6: 'hoc-ba-dien-tu',
   },
   accountant: {
     F1: 'tai-chinh-noi-bo',

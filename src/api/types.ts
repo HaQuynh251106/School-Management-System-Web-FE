@@ -488,7 +488,7 @@ export interface Invoice {
   classId?: string | null; classCode?: string | null; gradeLevel?: string | null;
   totalAmount: number; paidAmount: number; status: string; issuedAt?: string; dueDate?: string;
 }
-export interface Payment { id: string; invoiceId: string; amount: number; method: string; status: string; txnRef?: string; paidAt?: string; }
+export interface Payment { id: string; invoiceId: string; amount: number; method: string; status: string; txnRef?: string; createdAt?: string; paidAt?: string; }
 export interface InvoiceDetail { invoice: Invoice; items: Array<{ id: string; invoiceId: string; name: string; amount: number }>; payments: Payment[]; }
 export interface FinancePeriodSummary {
   periodId: string; code: string; name?: string; status: string; invoiceCount: number;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAGE_PATHS, pageHash, pagePath, resolvePageRoute, ROLE_PATHS } from './routes';
 import type { RoleId } from '../types';
-import { modules } from '../data/mockData';
+import { modules } from '../data/navigation';
 
 describe('semantic website routes', () => {
   it('covers every function displayed in the role menus', () => {

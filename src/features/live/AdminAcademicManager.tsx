@@ -311,7 +311,6 @@ export function AdminAcademicLive() {
             <Async paginate resetKey={query.subjects} state={{ ...subjects, data: subjects.data ? filteredSubjects : null }} itemLabel="môn học">{(list) => <table className="live-table academic-table"><thead><tr><th>Mã</th><th>Tên môn</th><th>Hệ số tổng kết</th><th>Thao tác</th></tr></thead><tbody>{list.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{subject.coefficient || 1}</td><td>{tableActions('subject', subject)}</td></tr>)}</tbody></table>}</Async>
           </Section>
         ) },
-        { id: 'year-end', label: 'Tổng kết & chuyển năm', description: 'Khóa dữ liệu và tạo năm kế tiếp', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} onChanged={(result) => { if (result?.nextYearId) setClassYear(result.nextYearId); years.reload(); semesters.reload(); classes.reload(); }} /> },
       ]} />
 
       {editor && <Modal title="Chỉnh sửa cơ cấu đào tạo" onClose={() => setEditor(null)} footer={<><button className="live-btn ghost" disabled={busy} onClick={() => setEditor(null)}>Hủy</button><button className="live-btn" disabled={busy} onClick={saveEditor}><Save size={16} /> Lưu thay đổi</button></>}>
@@ -327,4 +326,11 @@ export function AdminAcademicLive() {
       </Modal>}
     </>
   );
+}
+
+export function AcademicYearClosureLive() {
+  const years = useApi<AcademicYear[]>('/academicYears');
+  return <Async state={years} empty="Chưa có năm học để tổng kết">
+    {(items) => <YearEndManager years={items} onChanged={() => years.reload()} />}
+  </Async>;
 }

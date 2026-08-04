@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, Payment, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
   ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog, ReportCardScopeOverview,
   AccountLifecycleSummary, BulkAccountActionResult,
 } from '../../api/types';
@@ -1094,6 +1094,7 @@ export function AdminFinanceLive() {
     ? '/finance/classes'
     : `/finance/classes?periodId=${encodeURIComponent(invoicePeriod)}`);
   const pendingVietQr = useApi<VietQrPendingPayment[]>('/payments/vietqr/pending');
+  const payments = useApi<Payment[]>('/payments');
   const [showPeriodEditor, setShowPeriodEditor] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<FeePeriod | null>(null);
   const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
@@ -1108,6 +1109,7 @@ export function AdminFinanceLive() {
     overview.reload();
     classSummaries.reload();
     pendingVietQr.reload();
+    payments.reload();
     if (selectedPeriodId) items.reload();
   };
 
@@ -1385,6 +1387,25 @@ export function AdminFinanceLive() {
                 <button className="live-btn" type="button" disabled={busy} onClick={() => generateInvoices(selectedPeriod)}><Send size={15} /> {busy ? 'Đang phát hành…' : 'Phát hành hóa đơn'}</button>
               </div>}
             </div>}
+          </Section>
+        ) },
+        { id: 'payments', label: 'Thanh toán', description: 'Tra cứu toàn bộ giao dịch đã ghi nhận', Icon: WalletCards, content: (
+          <Section title="Lịch sử thanh toán" subtitle="Theo dõi giao dịch tiền mặt, VietQR và trạng thái xử lý" wide
+            action={<button className="live-btn ghost" type="button" onClick={() => payments.reload()}><RefreshCw size={15} /> Làm mới</button>}>
+            <Async state={payments} empty="Chưa có giao dịch thanh toán">
+              {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="giao dịch" resetKey={rows.length}>
+                {(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table"><thead><tr><th>Mã giao dịch</th><th>Hóa đơn</th><th>Phương thức</th><th>Số tiền</th><th>Thời gian</th><th>Trạng thái</th></tr></thead><tbody>
+                  {pageRows.map((payment) => <tr key={payment.id}>
+                    <td><strong>{payment.txnRef || payment.id}</strong></td>
+                    <td>{payment.invoiceId}</td>
+                    <td>{payment.method === 'VIETQR' ? 'VietQR' : payment.method === 'CASH' ? 'Tiền mặt' : payment.method}</td>
+                    <td><strong>{money(payment.amount)}</strong></td>
+                    <td>{fmtDateTime(payment.paidAt || payment.createdAt)}</td>
+                    <td><StatusPill value={payment.status} /></td>
+                  </tr>)}
+                </tbody></table></div>}
+              </PaginatedData>}
+            </Async>
           </Section>
         ) },
         { id: 'vietqr', label: `Đối soát VietQR${pendingVietQr.data?.length ? ` (${pendingVietQr.data.length})` : ''}`, description: 'Xác minh tiền về trước khi ghi nhận', Icon: Landmark, content: (

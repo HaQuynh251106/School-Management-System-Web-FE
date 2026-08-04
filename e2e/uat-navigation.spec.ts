@@ -13,11 +13,11 @@ type UatRole = {
 const roles: UatRole[] = [
   {
     label: 'Quản trị', username: 'admin', password: process.env.E2E_ADMIN_PASSWORD ?? '', landing: 'quan-tri',
-    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'nhan-su-van-hanh', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
+    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'nhan-su-van-hanh', 'vong-doi-tai-khoan', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
   },
   {
     label: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', changedPassword: process.env.E2E_ACADEMIC_STAFF_CHANGED_PASSWORD, landing: 'giao-vu',
-    pages: ['tong-quan', 'co-cau-dao-tao', 'xep-thoi-khoa-bieu', 'tao-ky-thi', 'cuu-hoc-sinh'],
+    pages: ['tong-quan', 'co-cau-dao-tao', 'xep-thoi-khoa-bieu', 'tao-ky-thi', 'tong-ket-chuyen-nam', 'kho-luu-tru-nien-khoa', 'hoc-ba-dien-tu'],
   },
   {
     label: 'Kế toán', username: 'ketoan', password: process.env.E2E_ACCOUNTANT_PASSWORD ?? '', changedPassword: process.env.E2E_ACCOUNTANT_CHANGED_PASSWORD, landing: 'ke-toan',

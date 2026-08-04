@@ -1,7 +1,6 @@
 import type React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { permissionRows } from '../data/mockData';
 import type { TabItem } from '../types';
 import { useHashString } from '../api/urlState';
 
@@ -100,25 +99,6 @@ export function FormPreview({ rows }: { rows: Array<[string, string]> }) {
           <strong>{value}</strong>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function PermissionMatrix() {
-  return (
-    <div className="permission-matrix">
-      <div className="matrix-head">Quyền</div>
-      <div className="matrix-head">Quản trị</div>
-      <div className="matrix-head">Giáo viên</div>
-      <div className="matrix-head">Học sinh</div>
-      <div className="matrix-head">Phụ huynh</div>
-      {permissionRows.map((row) => [
-        <strong key={`${row.permission}-name`}>{row.permission}</strong>,
-        <span key={`${row.permission}-admin`}>{row.admin ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-teacher`}>{row.teacher ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-student`}>{row.student ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-parent`}>{row.parent ? '✓' : '-'}</span>,
-      ])}
     </div>
   );
 }
