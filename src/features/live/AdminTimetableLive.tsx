@@ -11,6 +11,7 @@ import type {
   TimetableChangeRequestView,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
+import { confirmAction } from '../../components/confirmAction';
 import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { useHashNumber, useHashString } from '../../api/urlState';
@@ -803,7 +804,12 @@ function TimetableEditor() {
   };
 
   const removeSlot = async (slot: TimetableSlot) => {
-    if (!confirm(`Xóa tiết ${slot.subjectName} (${DAY_LABEL[slot.dayOfWeek]} tiết ${slot.periodNo})?`)) return;
+    if (!await confirmAction({
+      title: `Xóa tiết ${slot.subjectName}?`,
+      description: `${DAY_LABEL[slot.dayOfWeek]}, tiết ${slot.periodNo}. Thao tác này không thể hoàn tác.`,
+      confirmLabel: 'Xóa tiết',
+      tone: 'danger',
+    })) return;
     try {
       await api.del(`/timetableSlots/${slot.id}`);
       toast.show('ok', 'Đã xóa tiết');

@@ -109,11 +109,11 @@ export function ParentMonitorLive() {
 
   if (!childId) {
     return <Section title="Theo dõi học tập" subtitle="Bạn chưa chọn học sinh" wide>
-      <div className="live-loading">Hãy vào mục “Chọn học sinh” để tiếp tục.</div></Section>;
+      <div className="live-loading">Chọn học sinh cần theo dõi trên thanh công cụ phía trên để tiếp tục.</div></Section>;
   }
 
   return (
-    <>{toast.node}<div className="parent-child-context"><Users size={17} /><span>Đang theo dõi</span><strong>{activeChild?.fullName || 'Học sinh'}</strong><small>{activeChild?.className || 'Chưa xếp lớp'}</small></div><FunctionTabs tabs={[
+    <>{toast.node}<FunctionTabs tabs={[
       { id: 'timetable', label: 'Thời khóa biểu', Icon: CalendarDays, content: (
         <Section title="Thời khóa biểu của con" subtitle={`Lịch học trong tuần của ${activeChild?.fullName || 'học sinh'}`} wide>
           {activeChild?.classId

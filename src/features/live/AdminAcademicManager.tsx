@@ -14,6 +14,7 @@ import { RoomAllocationPlanner } from './RoomAllocationPlanner';
 import { SubjectRoomRequirements } from './SubjectRoomRequirements';
 import { StudentClassTransferLive } from './StudentClassTransferLive';
 import { closedAcademicYears, operationalAcademicYears } from './academicYearSelection';
+import { confirmAction } from '../../components/confirmAction';
 
 type EditorKind = 'year' | 'semester' | 'class' | 'subject' | 'room';
 type EditorState = { kind: EditorKind; id: string; data: Record<string, string | number> };
@@ -139,13 +140,17 @@ export function AdminAcademicLive() {
 
   const changeStatus = async (kind: 'year' | 'semester', item: AcademicYear | Semester, status: 'ACTIVE' | 'CLOSED') => {
     const noun = kind === 'year' ? 'năm học' : 'học kỳ';
-    if (!window.confirm(`${status === 'ACTIVE' ? 'Kích hoạt' : 'Đóng'} ${noun} ${item.name}?`)) return;
+    if (!await confirmAction({
+      title: `${status === 'ACTIVE' ? 'Kích hoạt' : 'Đóng'} ${noun}`,
+      description: `${status === 'ACTIVE' ? 'Kích hoạt' : 'Đóng'} ${noun} ${item.name}? Thay đổi này sẽ ảnh hưởng đến phạm vi dữ liệu đang vận hành.`,
+      confirmLabel: status === 'ACTIVE' ? 'Kích hoạt' : 'Đóng', tone: status === 'ACTIVE' ? 'default' : 'warning',
+    })) return;
     const base = kind === 'year' ? '/academicYears' : '/semesters';
     await run(() => api.put(`${base}/${item.id}/status`, { status }), `Đã chuyển ${noun} sang ${viLabel(status).toLowerCase()}`, [years.reload, semesters.reload]);
   };
 
   const remove = async (kind: EditorKind, id: string, label: string) => {
-    if (!window.confirm(`Xóa ${label}? Dữ liệu đang được sử dụng sẽ được hệ thống bảo vệ và không cho xóa.`)) return;
+    if (!await confirmAction({ title: `Xóa ${label}?`, description: 'Dữ liệu đang được sử dụng sẽ được hệ thống bảo vệ và không cho xóa. Thao tác hợp lệ không thể hoàn tác.', confirmLabel: 'Xóa dữ liệu', tone: 'danger' })) return;
     const routes: Record<EditorKind, string> = { year: 'academicYears', semester: 'semesters', class: 'classes', subject: 'subjects', room: 'rooms' };
     const reloads: Record<EditorKind, Array<() => void>> = {
       year: [years.reload], semester: [semesters.reload], class: [classes.reload], subject: [subjects.reload], room: [rooms.reload],

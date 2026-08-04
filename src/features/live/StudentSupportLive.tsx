@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, CircleDot, HeartHandshake,
   History, MessageCircleMore, PencilLine, Plus, RefreshCw, Search,
-  ShieldCheck, UserRound, UsersRound,
+  ShieldCheck, Sparkles, UserRound, UsersRound,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
@@ -27,6 +27,11 @@ const labelOf = (options: readonly (readonly [string, string])[], value: string)
 type InterventionForm = {
   studentId: string; category: string; severity: string; title: string;
   description: string; actionTaken: string; followUpDate: string; status: string;
+};
+
+type ConductEvidenceForm = {
+  studentId: string; category: 'DISCIPLINE' | 'RESPONSIBILITY' | 'PARTICIPATION';
+  impactPoints: number; title: string; description: string; occurredOn: string; externalKey: string;
 };
 
 const emptyForm: InterventionForm = {
@@ -62,6 +67,7 @@ export function StudentSupportLive() {
   const [saving, setSaving] = useState(false);
   const [contacting, setContacting] = useState<StudentIntervention | null>(null);
   const [message, setMessage] = useState('');
+  const [evidenceForm, setEvidenceForm] = useState<ConductEvidenceForm | null>(null);
 
   useEffect(() => {
     if (!classId && classes.data?.length) setClassId(classes.data[0].id, 'replace');
@@ -80,6 +86,24 @@ export function StudentSupportLive() {
     const initialStudent = studentId !== 'ALL' ? studentId : students.data?.[0]?.id || '';
     setForm({ ...emptyForm, studentId: initialStudent, category: homeroom ? 'ACADEMIC' : 'ACADEMIC' });
     setEditing(null);
+  };
+
+  const openEvidence = () => setEvidenceForm({
+    studentId: studentId !== 'ALL' ? studentId : students.data?.[0]?.id || '',
+    category: 'RESPONSIBILITY', impactPoints: 0, title: '', description: '',
+    occurredOn: new Date().toISOString().slice(0, 10), externalKey: '',
+  });
+
+  const saveEvidence = async () => {
+    if (!evidenceForm || !selectedClass || !evidenceForm.studentId) return;
+    if (!evidenceForm.title.trim()) return toast.show('err', 'Vui lòng nhập nội dung minh chứng');
+    setSaving(true);
+    try {
+      await api.post('/conduct/evidence', { ...evidenceForm, academicYearId: selectedClass.academicYearId,
+        classId: selectedClass.id, description: evidenceForm.description.trim() || null,
+        title: evidenceForm.title.trim(), externalKey: evidenceForm.externalKey.trim() || null });
+      toast.show('ok', 'Đã lưu minh chứng vào hồ sơ rèn luyện của học sinh'); setEvidenceForm(null);
+    } catch (error: any) { toast.show('err', error.message); } finally { setSaving(false); }
   };
 
   const openEdit = (item: StudentIntervention) => {
@@ -154,8 +178,9 @@ export function StudentSupportLive() {
     </div>
 
     <section className="student-support-workspace">
-      <header><div><strong>2. Lịch sử hỗ trợ</strong><span>Các ghi nhận mới nhất hiển thị trước</span></div>
-        <button className="live-btn primary" onClick={openCreate} disabled={!classId || !students.data?.length}><Plus size={16} /> Thêm ghi nhận</button></header>
+      <header><div><strong>2. Lịch sử hỗ trợ</strong><span>Các ghi nhận mới nhất hiển thị trước</span></div><div className="student-support-head-actions">
+        <button className="live-btn subtle" onClick={openEvidence} disabled={!classId || !students.data?.length}><Sparkles size={16} /> Minh chứng rèn luyện</button>
+        <button className="live-btn primary" onClick={openCreate} disabled={!classId || !students.data?.length}><Plus size={16} /> Thêm ghi nhận</button></div></header>
       <div className="student-support-filters">
         <label className="student-support-search"><Search size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Tìm nội dung, biện pháp hỗ trợ..." /></label>
         <select value={studentId} onChange={(event) => { setStudentId(event.target.value, 'push'); setPage(1); }}><option value="ALL">Tất cả học sinh</option>{(students.data || []).map((item) => <option key={item.id} value={item.id}>{item.fullName} · {item.studentCode || 'Chưa có mã'}</option>)}</select>
@@ -193,6 +218,20 @@ export function StudentSupportLive() {
       <button className="live-btn primary" onClick={contactFamily} disabled={saving || !message.trim()}><MessageCircleMore size={16} /> Gửi thông báo</button>
     </>}><div className="student-support-contact"><p>Thông báo được gửi cho học sinh và các phụ huynh đã liên kết. Nội dung gửi được lưu theo mã ghi nhận để đối soát.</p>
       <Field label="Nội dung trao đổi"><textarea value={message} maxLength={2000} onChange={(event) => setMessage(event.target.value)} placeholder="Nêu tình hình, biện pháp đang áp dụng và đề nghị gia đình phối hợp..." /></Field>
+    </div></Modal>}
+
+    {evidenceForm && <Modal title="Ghi nhận minh chứng rèn luyện" onClose={() => setEvidenceForm(null)} footer={<>
+      <button className="live-btn subtle" onClick={() => setEvidenceForm(null)}>Hủy</button>
+      <button className="live-btn primary" onClick={saveEvidence} disabled={saving}><Sparkles size={16} /> Lưu minh chứng</button>
+    </>}><div className="conduct-evidence-form">
+      <p><ShieldCheck size={16} /> Minh chứng được đưa vào mức đề xuất tự động và luôn hiển thị người ghi nhận, ngày xảy ra, điểm cộng/trừ.</p>
+      <Field label="Học sinh"><select value={evidenceForm.studentId} onChange={(event) => setEvidenceForm({ ...evidenceForm, studentId: event.target.value })}>{(students.data || []).map((item) => <option key={item.id} value={item.id}>{item.fullName} · {item.studentCode || 'Chưa có mã'}</option>)}</select></Field>
+      <Field label="Nhóm tiêu chí"><select value={evidenceForm.category} onChange={(event) => setEvidenceForm({ ...evidenceForm, category: event.target.value as ConductEvidenceForm['category'] })}><option value="DISCIPLINE">Ý thức và kỷ luật</option><option value="RESPONSIBILITY">Trách nhiệm học tập</option><option value="PARTICIPATION">Tham gia và đóng góp</option></select></Field>
+      <Field label="Điểm tác động (-30 đến +30)"><input type="number" min="-30" max="30" value={evidenceForm.impactPoints} onChange={(event) => setEvidenceForm({ ...evidenceForm, impactPoints: Number(event.target.value) })} /></Field>
+      <Field label="Ngày ghi nhận"><input type="date" value={evidenceForm.occurredOn} onChange={(event) => setEvidenceForm({ ...evidenceForm, occurredOn: event.target.value })} /></Field>
+      <Field label="Nội dung minh chứng"><input maxLength={300} value={evidenceForm.title} onChange={(event) => setEvidenceForm({ ...evidenceForm, title: event.target.value })} placeholder="Ví dụ: Chủ động hỗ trợ nhóm hoàn thành dự án" /></Field>
+      <Field label="Mô tả và căn cứ"><textarea maxLength={3000} value={evidenceForm.description} onChange={(event) => setEvidenceForm({ ...evidenceForm, description: event.target.value })} placeholder="Nêu sự việc có thể kiểm chứng, tránh nhận xét cảm tính" /></Field>
+      <Field label="Mã đối soát (không bắt buộc)"><input maxLength={120} value={evidenceForm.externalKey} onChange={(event) => setEvidenceForm({ ...evidenceForm, externalKey: event.target.value })} placeholder="Dùng cùng mã để hệ thống ngăn ghi trùng" /></Field>
     </div></Modal>}
   </div>;
 }

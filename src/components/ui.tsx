@@ -4,10 +4,10 @@ import type { LucideIcon } from 'lucide-react';
 import type { TabItem } from '../types';
 import { useHashString } from '../api/urlState';
 
-export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
+export function FunctionTabs({ tabs, mode = 'auto' }: { tabs: TabItem[]; mode?: 'auto' | 'tabs' | 'workflow' }) {
   const [activeTab, setActiveTab] = useHashString('tab', tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
-  const workflow = tabs.some((tab) => Boolean(tab.description));
+  const workflow = mode === 'workflow' || (mode === 'auto' && tabs.some((tab) => Boolean(tab.description)));
   const activeIndex = Math.max(0, tabs.findIndex((tab) => tab.id === active.id));
 
   return (
@@ -44,7 +44,7 @@ export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
               tabIndex={active.id === tab.id ? 0 : -1}
             >
               {workflow ? <span className="workflow-step-number">{index + 1}</span> : <tab.Icon size={17} />}
-              <span className="tab-label-copy"><strong>{tab.label}</strong>{workflow && tab.description && <small>{tab.description}</small>}</span>
+              <span className="tab-label-copy"><strong>{tab.label}</strong>{tab.description && <small>{tab.description}</small>}</span>
             </button>
           ))}
         </div>}

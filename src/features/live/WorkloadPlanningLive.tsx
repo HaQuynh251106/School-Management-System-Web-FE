@@ -13,6 +13,7 @@ import type {
 } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast } from './common';
+import { confirmAction } from '../../components/confirmAction';
 
 const GRADES = ['K10', 'K11', 'K12'];
 const DAYS = [
@@ -244,7 +245,7 @@ export function AdminWorkloadPlanningLive() {
   };
 
   const deleteRequirement = async (item: CurriculumRequirement) => {
-    if (!window.confirm(`Xóa định mức ${item.subjectName} của ${item.gradeLevel.replace('K', 'Khối ')}?`)) return;
+    if (!await confirmAction({ title: `Xóa định mức ${item.subjectName}?`, description: `Định mức của ${item.gradeLevel.replace('K', 'Khối ')} sẽ bị xóa và ảnh hưởng đến lần phân công, xếp lịch tiếp theo.`, confirmLabel: 'Xóa định mức', tone: 'danger' })) return;
     try {
       await api.del(`/curriculum-requirements/${item.id}`);
       setLastDeleted(item);

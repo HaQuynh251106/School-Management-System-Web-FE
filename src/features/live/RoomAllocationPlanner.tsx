@@ -5,6 +5,7 @@ import { useApi } from '../../api/useApi';
 import type { AcademicYear, Room, RoomAllocationPlan, SchoolClass } from '../../api/types';
 import { Badge } from '../../components/ui';
 import { useToast } from './common';
+import { confirmAction } from '../../components/confirmAction';
 
 export function RoomAllocationPlanner({ years, classes, rooms, onApplied }: {
   years: AcademicYear[]; classes: SchoolClass[]; rooms: Room[]; onApplied: () => void;
@@ -62,7 +63,7 @@ export function RoomAllocationPlanner({ years, classes, rooms, onApplied }: {
   };
 
   const apply = async () => {
-    if (!plan || !window.confirm(`Áp dụng phương án cho ${plan.totalClasses} lớp?`)) return;
+    if (!plan || !await confirmAction({ title: `Áp dụng phương án cho ${plan.totalClasses} lớp?`, description: 'Ca học và phòng chủ nhiệm sẽ được cập nhật theo bản xem trước hiện tại.', confirmLabel: 'Áp dụng phương án' })) return;
     setBusy(true);
     try {
       const value = await api.post<RoomAllocationPlan>(`/room-allocation-plans/${plan.id}/apply`, {});
@@ -73,7 +74,7 @@ export function RoomAllocationPlanner({ years, classes, rooms, onApplied }: {
   };
 
   const undo = async (value: RoomAllocationPlan) => {
-    if (!window.confirm('Hoàn tác phương án này và khôi phục phân phòng trước đó?')) return;
+    if (!await confirmAction({ title: 'Hoàn tác phương án phân phòng?', description: 'Hệ thống sẽ khôi phục ca học và phòng chủ nhiệm trước thời điểm áp dụng phương án này.', confirmLabel: 'Hoàn tác', tone: 'warning' })) return;
     setBusy(true);
     try {
       const restored = await api.post<RoomAllocationPlan>(`/room-allocation-plans/${value.id}/undo`, {});

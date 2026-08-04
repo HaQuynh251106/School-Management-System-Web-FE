@@ -64,7 +64,7 @@ describe('SidebarMenu giáo vụ', () => {
 
     expect(screen.getByRole('button', { name: /2\. Chuẩn bị năm học/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /3\. Vận hành năm học/i })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /4\. Tổng kết & chuyển năm/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /4\. Tổng kết & học bạ/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /5\. Kho lưu trữ niên khóa/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: 'Chuẩn bị năm học' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Phân công & xếp lịch' })).toBeVisible();
@@ -95,6 +95,8 @@ describe('SidebarMenu học sinh và phụ huynh', () => {
     expect(screen.getByRole('button', { name: /^Kết nối & hỗ trợ/i })).toBeVisible();
     expect(screen.getByRole('button', { name: /^Cá nhân/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Thông báo' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Hồ sơ cá nhân' })).toHaveLength(1);
   });
 
   it('gom chức năng phụ huynh theo theo dõi, phối hợp và dịch vụ', () => {
@@ -103,6 +105,8 @@ describe('SidebarMenu học sinh và phụ huynh', () => {
     expect(screen.getByRole('button', { name: /^Phối hợp nhà trường/i })).toBeVisible();
     expect(screen.getByRole('button', { name: /^Tài chính & cá nhân/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ của con' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Chọn học sinh' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thông báo' })).not.toBeInTheDocument();
   });
 });
 
@@ -114,11 +118,15 @@ describe('SidebarMenu giáo viên theo phạm vi được giao', () => {
     render(<SidebarMenu role={teacherRole} activePage="dashboard" onSelect={vi.fn()} teacherContext={subjectTeacherContext} />);
 
     expect(screen.getByText('Giáo viên bộ môn')).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Giảng dạy/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Dạy học hôm nay/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Quản lý giảng dạy/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Hỗ trợ học sinh. Theo dõi và phối hợp các trường hợp cần quan tâm' })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Kỳ thi & báo cáo/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Đăng ký tải dạy' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sổ đầu bài & đổi lịch' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Hỗ trợ học sinh' })).toBeVisible();
-    expect(screen.queryByRole('button', { name: /^Lớp chủ nhiệm/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Trao đổi' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Công nợ lớp chủ nhiệm' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Khảo thí giáo viên' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Hồ sơ & cài đặt' })).not.toBeInTheDocument();
   });
@@ -134,7 +142,7 @@ describe('SidebarMenu giáo viên theo phạm vi được giao', () => {
     render(<SidebarMenu role={teacherRole} activePage="dashboard" onSelect={vi.fn()} teacherContext={homeroomContext} />);
 
     expect(screen.getByText('GVCN 10A1')).toBeVisible();
-    expect(screen.getByRole('button', { name: /^Lớp chủ nhiệm/i })).toBeVisible();
+    expect(screen.getByRole('button', { name: /^Học sinh & chủ nhiệm/i })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Công nợ lớp chủ nhiệm' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Duyệt đơn xin nghỉ' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Học bạ lớp chủ nhiệm' })).toBeVisible();

@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { Subject, SubjectRoomRequirement } from '../../api/types';
 import { useToast } from './common';
+import { confirmAction } from '../../components/confirmAction';
 
 const ROOM_TYPES = [
   ['LAB', 'Phòng thí nghiệm'], ['COMPUTER', 'Phòng máy tính'], ['LANGUAGE', 'Phòng ngoại ngữ'],
@@ -23,7 +24,7 @@ export function SubjectRoomRequirements({ subjects }: { subjects: Subject[] }) {
     finally { setBusy(false); }
   };
   const remove = async (id: string) => {
-    if (!window.confirm('Xóa yêu cầu phòng chức năng này?')) return;
+    if (!await confirmAction({ title: 'Xóa yêu cầu phòng chức năng?', description: 'Thuật toán xếp lịch sẽ không còn bắt buộc áp dụng yêu cầu này cho môn học.', confirmLabel: 'Xóa yêu cầu', tone: 'danger' })) return;
     setBusy(true);
     try { await api.del(`/subject-room-requirements/${id}`); requirements.reload(); toast.show('ok', 'Đã xóa yêu cầu'); }
     catch (error: any) { toast.show('err', error.message); }

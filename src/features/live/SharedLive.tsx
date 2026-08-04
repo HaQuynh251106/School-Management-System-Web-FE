@@ -9,6 +9,7 @@ import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, ServerPagination } from './common';
 import { NOTIFICATION_TYPE_LABEL, type NotificationPriorityFilter, type NotificationReadFilter } from './notifications';
 import { useHashNumber, useHashString } from '../../api/urlState';
+import { confirmAction } from '../../components/confirmAction';
 
 /* ===== TKB tuần (B2/C2) ===== */
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
@@ -288,7 +289,7 @@ export function AssignmentsLive({ actor }: { actor: 'teacher' | 'student' }) {
   };
 
   const remove = async (assignment: Assignment) => {
-    if (!window.confirm(`Xóa bài tập “${assignment.title}”?`)) return;
+    if (!await confirmAction({ title: `Xóa bài tập “${assignment.title}”?`, description: 'Bài tập và tệp đính kèm sẽ bị xóa. Các bài nộp liên quan được hệ thống xử lý theo quy tắc lưu trữ hiện hành.', confirmLabel: 'Xóa bài tập', tone: 'danger' })) return;
     setBusy(true);
     try { await api.del(`/assignments/${assignment.id}`); toast.show('ok', 'Đã xóa bài tập'); list.reload(); }
     catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }

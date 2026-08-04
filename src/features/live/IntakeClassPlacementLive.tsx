@@ -14,6 +14,7 @@ import {
   closedAcademicYears, operationalAcademicYears, operationalYearLabel,
   resolveOperationalAcademicYearId,
 } from './academicYearSelection';
+import { confirmAction } from '../../components/confirmAction';
 
 const genderLabel = (gender?: string | null) => gender === 'MALE' ? 'Nam' : gender === 'FEMALE' ? 'Nữ' : 'Khác';
 
@@ -73,7 +74,7 @@ export function IntakeClassPlacementLive() {
 
   const apply = async () => {
     if (!preview || preview.unassignedCount > 0) return;
-    if (!window.confirm(`Xác nhận phân lớp ${preview.assignedCount} học sinh? Hệ thống sẽ cập nhật hồ sơ và lịch sử nhập học.`)) return;
+    if (!await confirmAction({ title: `Phân lớp ${preview.assignedCount} học sinh?`, description: 'Hệ thống sẽ cập nhật hồ sơ, lớp hiện tại và lịch sử nhập học theo phương án đang xem.', confirmLabel: 'Xác nhận phân lớp' })) return;
     setBusy(true);
     try {
       const result = await api.post<{ assignedCount: number; createdClassCount: number }>('/intake-class-placement/apply', payload());
@@ -84,7 +85,7 @@ export function IntakeClassPlacementLive() {
   };
 
   const undo = async () => {
-    if (!window.confirm('Hoàn tác lần phân lớp gần nhất? Học sinh sẽ trở về lớp trước đó hoặc trạng thái chưa phân lớp.')) return;
+    if (!await confirmAction({ title: 'Hoàn tác lần phân lớp gần nhất?', description: 'Học sinh sẽ trở về lớp trước đó hoặc trạng thái chưa phân lớp; các lớp tự tạo trong lần chạy này có thể bị gỡ.', confirmLabel: 'Hoàn tác', tone: 'warning' })) return;
     setBusy(true);
     try {
       const result = await api.post<{ restoredStudents: number; removedClasses: number }>('/intake-class-placement/undo-last', { academicYearId, gradeLevel });

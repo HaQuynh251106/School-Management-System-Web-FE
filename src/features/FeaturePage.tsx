@@ -20,6 +20,7 @@ const TeacherGradesLive = lazy(() => import('./live/TeacherLive').then((module) 
 const TeacherNotificationsLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherNotificationsLive })));
 const TeacherFinanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherFinanceLive })));
 const StudentProfileLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentProfileLive })));
+const StudentProfileWorkspace = lazy(() => import('./live/StudentProfileWorkspace').then((module) => ({ default: module.StudentProfileWorkspace })));
 const StudentAcademicLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAcademicLive })));
 const StudentAttendanceLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAttendanceLive })));
 const ParentSwitchLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentSwitchLive })));
@@ -131,7 +132,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'C7': return <ChatLive />;
     case 'C6': return <LeaveRequestsLive actor="student" />;
     case 'C8': return <PersonalReportsLive actor="student" />;
-    case 'C9': return <ProfileSettingsLive actor="student" />;
+    case 'C9': return <StudentProfileWorkspace />;
     case 'C10': return <MyExamsLive actor="student" />;
     case 'C11': return <StudentReportCardLive />;
     // ---- Parent ----

@@ -13,6 +13,7 @@ import { Async, EmptyState, PaginatedData, ServerPagination, useToast, money, fm
 import { Modal, Field } from './Modal';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
 import { useHashNumber, useHashString } from '../../api/urlState';
+import { confirmAction } from '../../components/confirmAction';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
@@ -916,7 +917,7 @@ export function YearEndManager({ years, onChanged }: { years: AcademicYear[]; on
     if (!yearId || !selectedYear || !rolloverPreview.data) return;
     if (rolloverPreview.data.blockers.length) return toast.show('err', rolloverPreview.data.blockers[0]);
     if (!rolloverForm.nextYearCode || !rolloverForm.startDate || !rolloverForm.endDate) return toast.show('err', 'Nhập đầy đủ thông tin năm học mới');
-    if (!window.confirm(`Hệ thống sẽ tổng kết ${selectedYear.code}, tạo cơ cấu ${rolloverForm.nextYearCode}, xếp lớp và khóa dữ liệu cũ. Bạn muốn tiếp tục?`)) return;
+    if (!await confirmAction({ title: `Chuyển sang năm học ${rolloverForm.nextYearCode}?`, description: `Hệ thống sẽ tổng kết ${selectedYear.code}, tạo cơ cấu năm mới, xếp lớp và khóa dữ liệu cũ. Đây là thao tác nghiệp vụ quan trọng.`, confirmLabel: 'Tổng kết và chuyển năm', tone: 'warning' })) return;
     setFinalizing(true);
     try {
       const result = await api.post<YearRolloverResult>(`/academic-years/${yearId}/rollover`, rolloverForm);
@@ -1033,7 +1034,7 @@ export function AdminExamCategoriesLive() {
     setF({ code: category.code, name: category.name, weight: category.weight, requiredCount: category.requiredCount || 1 });
   };
   const remove = async (category: ExamCategory) => {
-    if (!window.confirm(`Xóa đầu điểm “${category.name}”?`)) return;
+    if (!await confirmAction({ title: `Xóa đầu điểm “${category.name}”?`, description: 'Cấu hình tính điểm liên quan sẽ thay đổi. Dữ liệu đang được sử dụng có thể được backend bảo vệ và từ chối xóa.', confirmLabel: 'Xóa đầu điểm', tone: 'danger' })) return;
     try { await api.del(`/exam-categories/${category.id}`); toast.show('ok', 'Đã xóa đầu điểm'); if (editingId === category.id) reset(); cats.reload(); }
     catch (error: any) { toast.show('err', error.message); }
   };
@@ -1188,7 +1189,7 @@ export function AdminFinanceLive() {
   };
 
   const deletePeriod = async (period: FeePeriod) => {
-    if (!confirm(`Xóa đợt thu nháp “${period.name || period.code}” và toàn bộ khoản thu bên trong?`)) return;
+    if (!await confirmAction({ title: `Xóa đợt thu “${period.name || period.code}”?`, description: 'Toàn bộ khoản thu bên trong cũng sẽ bị xóa và không thể khôi phục.', confirmLabel: 'Xóa đợt thu', tone: 'danger' })) return;
     try {
       await api.del(`/fee-periods/${period.id}`);
       if (selectedPeriodId === period.id) setSelectedPeriodId(null);
@@ -1210,7 +1211,7 @@ export function AdminFinanceLive() {
   };
 
   const deleteItem = async (item: FeePeriodItem) => {
-    if (!selectedPeriodId || !confirm(`Xóa khoản “${item.name}”?`)) return;
+    if (!selectedPeriodId || !await confirmAction({ title: `Xóa khoản “${item.name}”?`, description: 'Khoản thu này sẽ bị xóa khỏi đợt thu hiện tại.', confirmLabel: 'Xóa khoản thu', tone: 'danger' })) return;
     try {
       await api.del(`/fee-periods/${selectedPeriodId}/items/${item.id}`);
       toast.show('ok', 'Đã xóa khoản thu');
@@ -1238,7 +1239,7 @@ export function AdminFinanceLive() {
   };
 
   const generateInvoices = async (period: FeePeriod) => {
-    if (!confirm(`Phát hành hóa đơn cho đợt “${period.name || period.code}”? Phụ huynh sẽ nhận được thông báo tự động.`)) return;
+    if (!await confirmAction({ title: `Phát hành hóa đơn cho “${period.name || period.code}”?`, description: 'Hóa đơn sẽ được tạo và phụ huynh nhận thông báo tự động.', confirmLabel: 'Phát hành' })) return;
     setBusy(true);
     try {
       const result = await api.post<Invoice[]>(`/fee-periods/${period.id}/generate-invoices`);
@@ -1250,7 +1251,7 @@ export function AdminFinanceLive() {
 
   const remindHomeroom = async (summary: FinanceClassSummary) => {
     if (!summary.homeroomTeacherId) return toast.show('err', `Lớp ${summary.classCode} chưa có giáo viên chủ nhiệm`);
-    if (!confirm(`Gửi thông báo nhiệm vụ tài chính của lớp ${summary.classCode} tới giáo viên chủ nhiệm?`)) return;
+    if (!await confirmAction({ title: `Nhắc GVCN lớp ${summary.classCode}?`, description: 'Thông báo nhiệm vụ tài chính sẽ được gửi tới giáo viên chủ nhiệm.', confirmLabel: 'Gửi nhắc' })) return;
     setSendingClassId(summary.classId);
     try {
       const suffix = invoicePeriod === 'ALL' ? '' : `?periodId=${encodeURIComponent(invoicePeriod)}`;
@@ -1263,7 +1264,7 @@ export function AdminFinanceLive() {
 
   const remindVisibleHomerooms = async () => {
     if (!remindableClasses.length) return toast.show('err', 'Không có lớp phù hợp cần gửi nhắc mới hôm nay');
-    if (!confirm(`Gửi nhắc nhiệm vụ tài chính tới GVCN của ${remindableClasses.length} lớp đang hiển thị?`)) return;
+    if (!await confirmAction({ title: `Nhắc GVCN của ${remindableClasses.length} lớp?`, description: 'Hệ thống sẽ gửi thông báo tới tất cả giáo viên chủ nhiệm phù hợp trong danh sách đang hiển thị.', confirmLabel: 'Gửi hàng loạt' })) return;
     setSendingVisible(true);
     try {
       const result = await api.post<HomeroomDebtReminderResult>('/finance/classes/remind-homerooms', {
@@ -1278,7 +1279,7 @@ export function AdminFinanceLive() {
 
   const reconcileVietQr = async (item: VietQrPendingPayment, accepted: boolean) => {
     const action = accepted ? 'xác nhận' : 'từ chối';
-    if (!confirm(`${accepted ? 'Xác nhận đã nhận' : 'Từ chối'} ${money(item.payment.amount)} cho hóa đơn ${item.invoice.code}?`)) return;
+    if (!await confirmAction({ title: `${accepted ? 'Xác nhận đã nhận' : 'Từ chối'} ${money(item.payment.amount)}?`, description: `Áp dụng cho hóa đơn ${item.invoice.code}.`, confirmLabel: accepted ? 'Xác nhận' : 'Từ chối', tone: accepted ? 'default' : 'danger' })) return;
     setReconcilingPaymentId(item.payment.id);
     try {
       await api.post(`/payments/${item.payment.id}/${accepted ? 'confirm-vietqr' : 'reject-vietqr'}`, accepted ? {} : undefined);
@@ -1315,8 +1316,8 @@ export function AdminFinanceLive() {
         <article className={`finance-kpi-card ${(overview.data?.overdueInvoiceCount || 0) > 0 ? 'danger' : ''}`}><span><AlertTriangle size={20} /></span><div><small>Cần xử lý</small><strong>{overview.data?.overdueInvoiceCount || 0} quá hạn</strong><p>{overview.data?.dueSoonInvoiceCount || 0} hóa đơn sắp đến hạn</p></div></article>
       </section>
 
-      <FunctionTabs tabs={[
-        { id: 'overview', label: 'Tổng quan', description: 'Nắm nhanh thu, nợ và việc cần xử lý', Icon: TrendingUp, content: (
+      <FunctionTabs mode="tabs" tabs={[
+        { id: 'overview', label: 'Báo cáo', description: 'Nắm nhanh thu, nợ và việc cần xử lý', Icon: TrendingUp, content: (
           <div className="finance-overview-grid">
             <Section title="Tiến độ thu học phí" subtitle="Tỷ lệ thu trên tổng giá trị hóa đơn đã phát hành" wide>
               <div className="finance-progress-summary">
@@ -1428,7 +1429,7 @@ export function AdminFinanceLive() {
             </Async>
           </Section>
         ) },
-        { id: 'invoices', label: 'Công nợ theo lớp', description: 'Theo dõi và giao GVCN nhắc hạn', Icon: FileText, content: (
+        { id: 'invoices', label: 'Hóa đơn & công nợ', description: 'Theo dõi và giao GVCN nhắc hạn', Icon: FileText, content: (
           <Section title="Tổng thu và công nợ toàn trường" subtitle="Theo dõi tiến độ từng lớp và giao nhiệm vụ nhắc hạn cho giáo viên chủ nhiệm" wide
             action={<div className="finance-section-actions"><button className="live-btn ghost" type="button" onClick={() => downloadClassFinanceCsv(filteredClassSummaries)}><Download size={15} /> Xuất báo cáo lớp</button><button className="live-btn" type="button" disabled={sendingVisible || remindableClasses.length === 0} onClick={remindVisibleHomerooms}><BellRing size={15} /> {sendingVisible ? 'Đang gửi…' : `Nhắc GVCN (${remindableClasses.length})`}</button></div>}>
             <div className="finance-delegation-note"><UsersRound size={20} /><div><strong>Kế toán điều hành tổng thể, GVCN chịu trách nhiệm theo sát phụ huynh</strong><small>Kế toán theo dõi tổng thu và công nợ theo lớp. Các lớp chưa hoàn thành sẽ được giao lại cho giáo viên chủ nhiệm kiểm tra và nhắc phụ huynh.</small></div></div>

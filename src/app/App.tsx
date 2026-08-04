@@ -10,6 +10,7 @@ import { useApi } from '../api/useApi';
 import type { TeacherWorkspaceContext, UnreadCount } from '../api/types';
 import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
 import { GlobalSearch } from '../components/GlobalSearch';
+import { ParentChildContext } from '../components/ParentChildContext';
 import { ConnectivityBanner } from '../components/SystemFeedback';
 import { readHashRoute } from '../api/urlState';
 import { subscribeRealtime } from '../api/client';
@@ -250,7 +251,7 @@ export default function App() {
         </aside>
 
         <main className="workspace" id="main-content" tabIndex={-1}>
-          <header className="topbar">
+          <header className={`topbar topbar--${roleId}`}>
             <div className="topbar-heading">
               <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
               <div>
@@ -259,7 +260,8 @@ export default function App() {
               </div>
             </div>
             <div className="topbar-actions">
-              <GlobalSearch onNavigate={selectPage} />
+              {roleId === 'parent' && <ParentChildContext />}
+              <GlobalSearch roleId={roleId} onNavigate={selectPage} />
               <span className="topbar-date"><CalendarDays size={16} /> {today}</span>
               <button className="theme-toggle" type="button" onClick={toggleTheme} title={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'} aria-label={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'}>
                 {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}

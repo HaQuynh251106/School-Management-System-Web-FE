@@ -2,7 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Building2, CalendarClock, FileText, GraduationCap, LoaderCircle, ReceiptText, Search, UserRound, X } from 'lucide-react';
 import { api } from '../api/client';
 import type { GlobalSearchItem, GlobalSearchResponse } from '../api/types';
-import type { PageId } from '../types';
+import type { PageId, RoleId } from '../types';
+
+const SEARCH_COPY: Record<RoleId, { placeholder: string; label: string }> = {
+  admin: { placeholder: 'Tìm người dùng, tài khoản, thông báo…', label: 'Tìm kiếm trong khu vực quản trị' },
+  academic_staff: { placeholder: 'Tìm học sinh, lớp, môn, kỳ thi…', label: 'Tìm kiếm trong nghiệp vụ giáo vụ' },
+  accountant: { placeholder: 'Tìm đợt thu, hóa đơn, học sinh…', label: 'Tìm kiếm trong nghiệp vụ tài chính' },
+  teacher: { placeholder: 'Tìm lớp, học sinh, bài tập…', label: 'Tìm kiếm trong không gian giáo viên' },
+  student: { placeholder: 'Tìm bài tập, kỳ thi, thông báo…', label: 'Tìm kiếm trong cổng học sinh' },
+  parent: { placeholder: 'Tìm lịch học, học phí, thông báo…', label: 'Tìm kiếm trong cổng phụ huynh' },
+};
 
 const TYPE_ICON = {
   USER: UserRound,
@@ -15,7 +24,7 @@ const TYPE_ICON = {
   NOTIFICATION: FileText,
 } as const;
 
-export function GlobalSearch({ onNavigate }: { onNavigate: (page: PageId) => void }) {
+export function GlobalSearch({ roleId, onNavigate }: { roleId: RoleId; onNavigate: (page: PageId) => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GlobalSearchItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -31,6 +40,18 @@ export function GlobalSearch({ onNavigate }: { onNavigate: (page: PageId) => voi
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setOpen(true);
+        window.requestAnimationFrame(() => input.current?.focus());
+      }
+    };
+    window.addEventListener('keydown', focusSearch);
+    return () => window.removeEventListener('keydown', focusSearch);
   }, []);
 
   useEffect(() => {
@@ -77,6 +98,7 @@ export function GlobalSearch({ onNavigate }: { onNavigate: (page: PageId) => voi
     setOpen(true);
     window.requestAnimationFrame(() => input.current?.focus());
   };
+  const copy = SEARCH_COPY[roleId];
 
   return (
     <div className={`global-search ${open ? 'open' : ''}`} ref={root}>
@@ -88,10 +110,11 @@ export function GlobalSearch({ onNavigate }: { onNavigate: (page: PageId) => voi
         {loading ? <LoaderCircle size={17} className="is-spinning" /> : <Search size={17} />}
         <input ref={input} value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
           onFocus={() => query.trim().length >= 2 && setOpen(true)}
-          placeholder="Tìm học sinh, lớp, bài tập…" aria-label="Tìm kiếm toàn hệ thống" />
+          placeholder={copy.placeholder} aria-label={copy.label} />
         {query && <button type="button" aria-label="Xóa tìm kiếm" onClick={() => { setQuery(''); setResults([]); }}>
           <X size={15} />
         </button>}
+        {!query && <kbd aria-hidden="true">Ctrl K</kbd>}
       </div>
       {open && query.trim().length >= 2 && (
         <div className="global-search-panel" role="dialog" aria-label="Kết quả tìm kiếm">

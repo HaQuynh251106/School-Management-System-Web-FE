@@ -116,16 +116,13 @@ const quickLinks: Record<RoleId, DashboardLink[]> = {
   student: [
     { code: 'C2', title: 'Kết quả học tập', description: 'Điểm và thời khóa biểu', Icon: BarChart3 },
     { code: 'C4', title: 'Bài tập', description: 'Xem và nộp bài', Icon: Upload },
-    { code: 'C5', title: 'Thông báo', description: 'Cập nhật mới nhất', Icon: Bell },
     { code: 'C7', title: 'Trao đổi', description: 'Nhắn tin giáo viên', Icon: MessageSquareText },
     { code: 'C10', title: 'Lịch thi', description: 'Phòng, SBD và chỗ ngồi', Icon: CalendarCheck2 },
   ],
   parent: [
-    { code: 'D1', title: 'Chọn học sinh', description: 'Đổi hồ sơ đang theo dõi', Icon: Users },
     { code: 'D2', title: 'Tình hình học tập', description: 'Điểm và chuyên cần', Icon: BarChart3 },
     { code: 'D3', title: 'Liên lạc giáo viên', description: 'Trao đổi với giáo viên', Icon: MessageSquareText },
     { code: 'D4', title: 'Khoản thu', description: 'Hóa đơn và thanh toán', Icon: WalletCards },
-    { code: 'D5', title: 'Thông báo', description: 'Cập nhật từ nhà trường', Icon: Bell },
     { code: 'D9', title: 'Lịch thi của con', description: 'Lịch, phòng và SBD', Icon: CalendarCheck2 },
   ],
 };

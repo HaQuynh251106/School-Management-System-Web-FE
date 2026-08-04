@@ -64,7 +64,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'C6', title: 'Xin nghỉ học', phase: 'GĐ2', priority: 1, summary: 'Gửi đơn và theo dõi phê duyệt.', Icon: CalendarDays },
     { code: 'C7', title: 'Trao đổi giáo viên', phase: 'GĐ2', priority: 1, summary: 'Trao đổi với giáo viên và bạn cùng lớp.', Icon: MessageSquareText },
     { code: 'C8', title: 'Báo cáo cá nhân', phase: 'GĐ2', priority: 2, summary: 'Thống kê và xuất báo cáo.', Icon: FileSpreadsheet },
-    { code: 'C9', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Thông tin liên hệ và cấu hình thông báo.', Icon: Settings },
+    { code: 'C9', title: 'Hồ sơ cá nhân', phase: 'GĐ2', priority: 2, summary: 'Thông tin học sinh, liên hệ và cấu hình thông báo.', Icon: Settings },
     { code: 'C10', title: 'Thi & phúc khảo', phase: 'GĐ1', priority: 1, summary: 'Lịch thi, kết quả và phúc khảo.', Icon: CalendarClock },
     { code: 'C11', title: 'Học bạ điện tử', phase: 'GĐ1', priority: 1, summary: 'Xem và tải học bạ đã phát hành.', Icon: GraduationCap },
   ],

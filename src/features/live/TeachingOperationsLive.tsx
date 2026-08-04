@@ -12,6 +12,7 @@ import type {
   TeachingOperationsWorkspace, TimetableChangeRequestView,
 } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
+import { confirmAction } from '../../components/confirmAction';
 import { Async, EmptyState, PaginatedData, useToast } from './common';
 import { Field, Modal } from './Modal';
 import { useHashString } from '../../api/urlState';
@@ -197,7 +198,12 @@ export function TeachingOperationsLive() {
   };
 
   const cancelChange = async (request: TimetableChangeRequestView) => {
-    if (!confirm(`Hủy yêu cầu ${changeTypeLabel(request.requestType).toLocaleLowerCase('vi')} môn ${request.subjectName}?`)) return;
+    if (!await confirmAction({
+      title: 'Hủy yêu cầu thay đổi lịch?',
+      description: `${changeTypeLabel(request.requestType)} môn ${request.subjectName}.`,
+      confirmLabel: 'Hủy yêu cầu',
+      tone: 'warning',
+    })) return;
     try {
       await api.post(`/me/timetable-change-requests/${encodeURIComponent(request.id)}/cancel`);
       toast.show('ok', 'Đã hủy yêu cầu');

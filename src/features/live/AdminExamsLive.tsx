@@ -16,6 +16,7 @@ import { AdminExamCategoriesLive } from './AdminLive';
 import { useHashString } from '../../api/urlState';
 import { canApplyExamOrganizationPlan } from './examOrganizationPlanning';
 import { operationalAcademicYears } from './academicYearSelection';
+import { confirmAction } from '../../components/confirmAction';
 
 const today = new Date().toISOString().slice(0, 10);
 const blankSchedule = (date = today) => ({ subjectId: '', classIds: [] as string[], examDate: date, startTime: '07:30', durationMinutes: 90, notes: '' });
@@ -196,8 +197,8 @@ export function AdminExamsLive() {
       semesterId: period.semesterId, gradeLevel: period.gradeLevel || '', startDate: period.startDate, endDate: period.endDate });
   };
 
-  const deletePeriod = (period: ExamPeriod) => {
-    if (!window.confirm(`Xóa kỳ thi “${period.name}” cùng toàn bộ lịch, phòng và danh sách dự thi?`)) return;
+  const deletePeriod = async (period: ExamPeriod) => {
+    if (!await confirmAction({ title: `Xóa kỳ thi “${period.name}”?`, description: 'Toàn bộ lịch, phòng, phân công và danh sách dự thi liên quan cũng sẽ bị xóa.', confirmLabel: 'Xóa kỳ thi', tone: 'danger' })) return;
     run(async () => {
       await api.del(`/exam-periods/${period.id}`);
       if (periodId === period.id) { setPeriodId(''); setScheduleId(''); }
@@ -224,8 +225,8 @@ export function AdminExamsLive() {
     setScheduleForm({ subjectId: schedule.subjectId, classIds: [...(schedule.classIds || [])], examDate: schedule.examDate, startTime: schedule.startTime, durationMinutes: schedule.durationMinutes, notes: schedule.notes || '' });
   };
 
-  const deleteSchedule = (schedule: ExamSchedule) => {
-    if (!window.confirm(`Xóa lịch thi môn ${schedule.subjectName}? Phòng thi và danh sách dự thi của ca này cũng sẽ bị xóa.`)) return;
+  const deleteSchedule = async (schedule: ExamSchedule) => {
+    if (!await confirmAction({ title: `Xóa lịch thi môn ${schedule.subjectName}?`, description: 'Phòng thi, giám thị và danh sách dự thi của ca này cũng sẽ bị xóa.', confirmLabel: 'Xóa lịch thi', tone: 'danger' })) return;
     run(async () => {
       await api.del(`/exam-schedules/${schedule.id}`);
       if (scheduleId === schedule.id) setScheduleId('');
@@ -243,15 +244,17 @@ export function AdminExamsLive() {
     'Đã tạo phương án tổ chức ca thi hoàn chỉnh',
   );
 
-  const applyOrganization = () => activeOrganizationPlan?.status === 'PREVIEW'
-    && window.confirm('Áp dụng sẽ thay thế đồng thời phòng thi, giám thị, danh sách thí sinh, SBD và chỗ ngồi. Tiếp tục?')
-    && run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/apply`, {}),
-      'Đã tổ chức ca thi và lưu toàn bộ dữ liệu');
+  const applyOrganization = async () => {
+    if (activeOrganizationPlan?.status !== 'PREVIEW') return;
+    if (!await confirmAction({ title: 'Áp dụng phương án tổ chức ca thi?', description: 'Phòng thi, giám thị, danh sách thí sinh, số báo danh và chỗ ngồi hiện tại sẽ được thay thế đồng thời.', confirmLabel: 'Áp dụng phương án', tone: 'warning' })) return;
+    await run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/apply`, {}), 'Đã tổ chức ca thi và lưu toàn bộ dữ liệu');
+  };
 
-  const undoOrganization = () => activeOrganizationPlan?.status === 'APPLIED'
-    && window.confirm('Hoàn tác sẽ phục hồi toàn bộ phòng, giám thị và danh sách thí sinh trước lần áp dụng. Tiếp tục?')
-    && run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/undo`, {}),
-      'Đã hoàn tác toàn bộ phương án tổ chức ca thi');
+  const undoOrganization = async () => {
+    if (activeOrganizationPlan?.status !== 'APPLIED') return;
+    if (!await confirmAction({ title: 'Hoàn tác phương án tổ chức ca thi?', description: 'Hệ thống sẽ phục hồi toàn bộ phòng, giám thị và danh sách thí sinh trước lần áp dụng.', confirmLabel: 'Hoàn tác', tone: 'warning' })) return;
+    await run(() => api.post(`/exam-organization-plans/${activeOrganizationPlan.id}/undo`, {}), 'Đã hoàn tác toàn bộ phương án tổ chức ca thi');
+  };
 
   const assignGrader = () => scheduleId && graderForm.classId && graderForm.teacherId && run(async () => {
     await api.put(`/exam-schedules/${scheduleId}/graders`, graderForm);
@@ -262,8 +265,8 @@ export function AdminExamsLive() {
     setGraderForm({ classId: assignment.classId, teacherId: assignment.teacherId });
   };
 
-  const deleteGrader = (assignment: ExamGradingAssignment) => {
-    if (!window.confirm(`Xóa phân công chấm thi lớp ${assignment.classCode} của ${assignment.teacherName}?`)) return;
+  const deleteGrader = async (assignment: ExamGradingAssignment) => {
+    if (!await confirmAction({ title: `Xóa phân công chấm lớp ${assignment.classCode}?`, description: `${assignment.teacherName} sẽ mất quyền nhập điểm thi của lớp này.`, confirmLabel: 'Xóa phân công', tone: 'danger' })) return;
     run(async () => {
       await api.del(`/exam-grading-assignments/${assignment.id}`);
       if (graderForm.classId === assignment.classId) {

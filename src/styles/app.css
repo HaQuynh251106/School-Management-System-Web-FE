@@ -69,7 +69,7 @@ body {
   padding: 6px 10px;
   border: 1px solid var(--portal-border, #cce8e2);
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface);
   color: var(--portal-accent, #0f766e);
   font-size: 0.7rem;
   font-weight: 800;
@@ -367,7 +367,7 @@ body {
   padding: 18px;
   border: 1px solid #dfe6f0;
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(30, 64, 175, 0.04);
 }
 
@@ -2242,7 +2242,7 @@ button {
   padding: 10px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .permission-matrix > *:nth-child(5n) {
@@ -2665,7 +2665,7 @@ td {
   overflow: auto;
   border: 1px solid #dbe4f0;
   border-radius: 16px;
-  background: #ffffff;
+  background: var(--surface);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
   scrollbar-color: #cbd5e1 transparent;
 }
@@ -2765,7 +2765,7 @@ td {
   padding: 8px;
   border-right: 1px solid #eef2f7;
   border-bottom: 1px solid #e8edf4;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .teacher-slot.is-today { background: #f7fcff; }
@@ -3020,7 +3020,7 @@ td {
 }
 
 .segmented-control button.active {
-  background: #ffffff;
+  background: var(--surface);
   color: #111827;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
 }
@@ -3272,7 +3272,7 @@ td {
   padding: 10px 12px;
   border: 1px solid #d8dee9;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
   color: #64748b;
 }
 
@@ -3479,7 +3479,7 @@ td {
   padding: 13px 15px;
   border: 1px solid #e2e8f0;
   border-radius: 13px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .assignment-summary article > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #eef2ff; color: #4f46e5; }
@@ -3509,7 +3509,7 @@ td {
   padding: 16px;
   border: 1px solid #e2e8f0;
   border-radius: 15px;
-  background: #fff;
+  background: var(--surface);
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
@@ -3628,7 +3628,7 @@ td {
   width: 100%;
   min-height: 42px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .gradebook-onboarding {
@@ -3800,7 +3800,7 @@ td {
   overflow: auto;
   border: 1px solid #dbe4f0;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 7px 22px rgba(15, 23, 42, 0.055);
   scrollbar-color: #cbd5e1 transparent;
 }
@@ -3862,7 +3862,7 @@ td {
   z-index: 1;
   min-width: 210px !important;
   max-width: 240px;
-  background: #fff;
+  background: var(--surface);
   text-align: left !important;
   box-shadow: 1px 0 0 #e2e8f0;
 }
@@ -3945,7 +3945,7 @@ td {
   border: 1px solid #cbd5e1;
   border-radius: 9px;
   outline: none;
-  background: #fff;
+  background: var(--surface);
   color: #172033;
   font-weight: 850;
   text-align: center;
@@ -3954,7 +3954,7 @@ td {
 
 .gradebook-score-input:focus {
   border-color: #2563eb;
-  background: #fff;
+  background: var(--surface);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.13);
 }
 

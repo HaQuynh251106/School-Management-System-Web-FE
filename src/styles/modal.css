@@ -4,25 +4,49 @@
   background: rgba(15, 23, 42, 0.45); display: grid; place-items: center;
 }
 .modal-card {
-  background: #fff; border-radius: 16px; width: 100%; max-width: 540px;
+  background: var(--surface); color: var(--text); border-radius: 16px; width: 100%; max-width: 540px;
   max-height: 90vh; overflow: auto; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
 }
 .modal-card-wide { max-width: 1180px; }
 .modal-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 16px 20px; border-bottom: 1px solid var(--line);
-  position: sticky; top: 0; background: #fff; z-index: 1;
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
 }
 .modal-head h3 { margin: 0; font-size: 17px; }
 .modal-close { border: none; background: transparent; color: var(--muted); cursor: pointer; display: flex; }
 .modal-body { padding: 20px; }
 .modal-foot { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; gap: 10px; justify-content: flex-end; }
 
+.confirm-action-overlay { z-index: 1200; }
+.confirm-action-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  width: min(480px, 100%);
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-md);
+}
+.confirm-action-icon { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 14px; background: var(--info-soft); color: var(--info); }
+.confirm-action-card.is-warning .confirm-action-icon { background: var(--warning-soft); color: var(--warning); }
+.confirm-action-card.is-danger .confirm-action-icon { background: var(--danger-soft); color: var(--danger); }
+.confirm-action-copy h3 { margin: 1px 34px 6px 0; font-size: 1.05rem; }
+.confirm-action-copy p { margin: 0; color: var(--text-soft); font-size: .82rem; line-height: 1.6; }
+.confirm-action-card footer { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 9px; margin-top: 4px; }
+.confirm-action-close { position: absolute; top: 13px; right: 13px; display: grid; width: 34px; height: 34px; padding: 0; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--text-soft); }
+.confirm-action-close:hover { background: var(--surface-soft); color: var(--text); }
+.confirm-action-primary.danger { border-color: var(--danger); background: var(--danger); color: #fff; }
+
 .modal-field { margin-bottom: 14px; }
 .modal-field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .modal-field input, .modal-field select, .modal-field textarea {
   width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
-  background: #fbfcfe; outline: none; font: inherit;
+  background: var(--surface-soft); color: var(--text); outline: none; font: inherit;
 }
 .modal-field input:focus, .modal-field select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
 .modal-field input:disabled, .modal-field select:disabled { cursor: not-allowed; background: #f1f5f9; color: #64748b; }
@@ -106,7 +130,7 @@
   padding: 16px;
   border: 1px solid #e1e7f0;
   border-radius: 15px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .admin-user-form-section > header {
@@ -255,7 +279,7 @@
   padding: 14px;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .homeroom-profile-card > header { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; padding-bottom: 10px; border-bottom: 1px solid #edf1f5; }
@@ -299,7 +323,7 @@
 
 /* pagination */
 .pager { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 14px; color: var(--muted); font-size: 13px; }
-.pager button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.pager button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
 .pager button:disabled { opacity: 0.4; cursor: default; }
 
 /* conflict banner */

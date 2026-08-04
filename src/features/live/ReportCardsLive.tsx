@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, Archive, ArrowLeft, BookOpenCheck, CheckCircle2, ChevronRight,
   ClipboardCheck, Clock3, Download, FileCheck2, FileText, GraduationCap, History,
-  Layers3, LockKeyhole, School, Search, Send, ShieldCheck, Unlock, UserCheck, Users,
+  Layers3, LockKeyhole, School, Search, Send, ShieldCheck, Sparkles, Unlock, UserCheck, Users,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useActiveChild } from '../../api/activeChild';
 import { useApi } from '../../api/useApi';
 import { useHashNumber, useHashString } from '../../api/urlState';
 import type {
-  AcademicYear, ApiUser, Cohort, PageResponse, ReportCardClassSummary, ReportCardListItem,
-  ReportCardScopeOverview, ReportCardStatus, ReportCardView, SchoolClass,
+  AcademicYear, ApiUser, Cohort, ConductRuleSet, PageResponse, ReportCardClassSummary, ReportCardListItem,
+  ReportCardScopeOverview, ReportCardStatus, ReportCardView, SchoolClass, Semester,
 } from '../../api/types';
 import { Badge, Section } from '../../components/ui';
 import { Async, fmtDateTime, ServerPagination, useToast } from './common';
@@ -66,6 +66,29 @@ function WorkflowSteps({ status }: { status: ReportCardStatus }) {
   </ol>;
 }
 
+export function ConductEvaluationPanel({ card }: { card: ReportCardView }) {
+  const evaluation = card.conductEvaluation;
+  const ready = evaluation.readiness === 'READY';
+  return <section className="conduct-evaluation-panel">
+    <header>
+      <div><span className="conduct-evaluation-icon"><Sparkles size={21} /></span><div><small>ĐỀ XUẤT CÓ GIẢI THÍCH</small><h4>Đánh giá rèn luyện minh bạch</h4><p>Phiên bản tiêu chí {evaluation.ruleSet.versionNo} · Hệ thống chỉ đề xuất, GVCN quyết định cuối cùng.</p></div></div>
+      <div className={`conduct-evaluation-result ${ready ? 'ready' : 'missing'}`}>
+        <small>{ready ? 'Hệ thống đề xuất' : 'Trạng thái dữ liệu'}</small>
+        <strong>{ready ? `${CONDUCT_LABEL[evaluation.suggestedGrade || ''] || '—'} · ${evaluation.suggestedScore?.toFixed(1)}/100` : 'Chưa đủ căn cứ'}</strong>
+        {evaluation.finalGrade && <span>GVCN quyết định: {CONDUCT_LABEL[evaluation.finalGrade] || evaluation.finalGrade}</span>}
+      </div>
+    </header>
+    {!ready && <div className="conduct-missing-data"><AlertTriangle size={17} /><div><strong>Cần bổ sung dữ liệu trước khi dùng đề xuất</strong><ul>{evaluation.missingData.map((item) => <li key={item}>{item}</li>)}</ul></div></div>}
+    <div className="conduct-criteria-grid">{evaluation.criteria.map((criterion) => <article key={criterion.code} className={!criterion.sufficient ? 'insufficient' : ''}>
+      <header><div><strong>{criterion.label}</strong><small>Trọng số {criterion.weight}%</small></div><b>{criterion.rawScore == null ? '—' : criterion.rawScore.toFixed(1)}</b></header>
+      <div className="conduct-score-track"><span style={{ width: `${Math.max(0, Math.min(100, criterion.rawScore || 0))}%` }} /></div>
+      <p>{criterion.summary}</p>
+      {criterion.evidence.length > 0 && <details><summary>{criterion.evidence.length} minh chứng</summary><ul>{criterion.evidence.map((item) => <li key={item.id}><span><b>{item.title}</b><small>{item.occurredOn} · {item.teacherName || 'Hệ thống'}</small></span><em className={item.impactPoints > 0 ? 'positive' : item.impactPoints < 0 ? 'negative' : ''}>{item.impactPoints > 0 ? '+' : ''}{item.impactPoints}</em>{item.description && <p>{item.description}</p>}</li>)}</ul></details>}
+    </article>)}</div>
+    {evaluation.overrideReason && <div className="conduct-override-reason"><History size={16} /><span><strong>Lý do GVCN điều chỉnh khác đề xuất</strong><p>{evaluation.overrideReason}</p></span></div>}
+  </section>;
+}
+
 function ReportCardDocument({ card, onDownload }: { card: ReportCardView; onDownload: () => void }) {
   const missingItems = (card.missingRequirements || '').split(';').map((item) => item.trim()).filter(Boolean);
   return <div className="report-card-document">
@@ -84,6 +107,7 @@ function ReportCardDocument({ card, onDownload }: { card: ReportCardView; onDown
       <article><span>Kết quả</span><strong>{PROMOTION_LABEL[card.promotionStatus || ''] || 'Đang tổng hợp'}</strong></article>
       <article><span>Số môn</span><strong>{card.subjectCount}/12</strong></article>
     </div>
+    <ConductEvaluationPanel card={card} />
     {missingItems.length > 0 && <div className="report-card-warning"><AlertTriangle size={18} /><div><strong>Hồ sơ còn {missingItems.length} hạng mục cần hoàn thiện</strong><ul>{missingItems.slice(0, 4).map((item) => <li key={item}>{item}</li>)}</ul>{missingItems.length > 4 && <span>Và {missingItems.length - 4} hạng mục khác. Xem trạng thái từng môn trong bảng bên dưới.</span>}</div></div>}
     <div className="report-card-table-wrap"><table className="live-table report-card-subject-table"><thead><tr><th>STT</th><th>Môn học</th><th>HKI</th><th>HKII</th><th>Cả năm</th><th>Trạng thái</th></tr></thead><tbody>
       {card.subjects.map((item, index) => <tr key={item.subjectId}><td>{index + 1}</td><td><strong>{item.subjectName}</strong></td><td>{score(item.semesterOneAverage)}</td><td>{score(item.semesterTwoAverage)}</td><td className="annual-score">{score(item.annualAverage)}</td><td>{item.complete ? <span className="report-card-complete"><CheckCircle2 size={14} /> Đủ điểm</span> : <span className="report-card-incomplete"><Clock3 size={14} /> Chưa đủ</span>}</td></tr>)}
@@ -158,6 +182,52 @@ function StudentDirectory({ data, selectedClass, status, query, onStatus, onQuer
   </>;
 }
 
+function ConductRuleSettings({ academicYearId }: { academicYearId: string }) {
+  const toast = useToast();
+  const semesters = useApi<Semester[]>(academicYearId ? `/semesters?academicYearId=${encodeURIComponent(academicYearId)}` : null);
+  const [scope, setScope] = useState('ANNUAL');
+  const suffix = scope === 'ANNUAL' ? '' : `&semesterId=${encodeURIComponent(scope)}`;
+  const rules = useApi<ConductRuleSet>(academicYearId ? `/conduct/rules?academicYearId=${encodeURIComponent(academicYearId)}${suffix}` : null);
+  const [form, setForm] = useState({ attendanceWeight: 35, disciplineWeight: 30, responsibilityWeight: 20,
+    participationWeight: 15, goodMin: 85, fairMin: 70, averageMin: 50,
+    minAttendanceRecords: 10, minParticipationEvidence: 0 });
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (!rules.data) return;
+    setForm({ attendanceWeight: rules.data.attendanceWeight, disciplineWeight: rules.data.disciplineWeight,
+      responsibilityWeight: rules.data.responsibilityWeight, participationWeight: rules.data.participationWeight,
+      goodMin: rules.data.goodMin, fairMin: rules.data.fairMin, averageMin: rules.data.averageMin,
+      minAttendanceRecords: rules.data.minAttendanceRecords,
+      minParticipationEvidence: rules.data.minParticipationEvidence });
+  }, [rules.data]);
+  const weightTotal = form.attendanceWeight + form.disciplineWeight + form.responsibilityWeight + form.participationWeight;
+  const change = (key: keyof typeof form, value: number) => setForm((current) => ({ ...current, [key]: Number.isFinite(value) ? value : 0 }));
+  const save = async () => {
+    if (Math.abs(weightTotal - 100) > 0.01) return toast.show('err', 'Tổng trọng số phải bằng 100%');
+    setSaving(true);
+    try {
+      await api.put(`/conduct/rules?academicYearId=${encodeURIComponent(academicYearId)}`, { ...form, semesterId: scope === 'ANNUAL' ? null : scope });
+      toast.show('ok', 'Đã kích hoạt phiên bản tiêu chí mới'); await rules.reload();
+    } catch (error: any) { toast.show('err', error.message); } finally { setSaving(false); }
+  };
+  return <details className="conduct-rule-settings">{toast.node}<summary><span><ShieldCheck size={18} /><b>Cấu hình bộ tiêu chí rèn luyện</b><small>Phiên bản hóa theo năm học hoặc học kỳ</small></span><Badge tone={Math.abs(weightTotal - 100) < .01 ? 'green' : 'red'}>{weightTotal}%</Badge></summary>
+    <div className="conduct-rule-settings-body">
+      <header><label><span>Phạm vi áp dụng</span><select value={scope} onChange={(event) => setScope(event.target.value)}><option value="ANNUAL">Cả năm học</option>{(semesters.data || []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</select></label><div><small>Phiên bản đang dùng</small><strong>v{rules.data?.versionNo || 1}</strong></div></header>
+      <div className="conduct-rule-grid">
+        {([['attendanceWeight', 'Chuyên cần'], ['disciplineWeight', 'Ý thức và kỷ luật'], ['responsibilityWeight', 'Trách nhiệm học tập'], ['participationWeight', 'Tham gia và đóng góp']] as const).map(([key, label]) => <label key={key}><span>{label}</span><div><input type="number" min="0" max="100" value={form[key]} onChange={(event) => change(key, Number(event.target.value))} /><em>%</em></div></label>)}
+      </div>
+      <div className="conduct-threshold-grid">
+        <label><span>Tốt từ</span><input type="number" min="0" max="100" value={form.goodMin} onChange={(event) => change('goodMin', Number(event.target.value))} /></label>
+        <label><span>Khá từ</span><input type="number" min="0" max="100" value={form.fairMin} onChange={(event) => change('fairMin', Number(event.target.value))} /></label>
+        <label><span>Trung bình từ</span><input type="number" min="0" max="100" value={form.averageMin} onChange={(event) => change('averageMin', Number(event.target.value))} /></label>
+        <label><span>Tối thiểu lượt điểm danh</span><input type="number" min="0" value={form.minAttendanceRecords} onChange={(event) => change('minAttendanceRecords', Number(event.target.value))} /></label>
+        <label><span>Tối thiểu minh chứng tham gia</span><input type="number" min="0" value={form.minParticipationEvidence} onChange={(event) => change('minParticipationEvidence', Number(event.target.value))} /></label>
+      </div>
+      <footer><p>Mỗi lần lưu tạo một phiên bản mới; hồ sơ đã khóa vẫn giữ nguyên quyết định và lịch sử.</p><button className="live-btn primary" disabled={saving || Math.abs(weightTotal - 100) > .01} onClick={save}><FileCheck2 size={15} /> {saving ? 'Đang lưu…' : 'Kích hoạt phiên bản mới'}</button></footer>
+    </div>
+  </details>;
+}
+
 function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const staff = mode === 'staff';
   const { options, yearId, setYearId, selectedYear } = useReportCardYears();
@@ -172,6 +242,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const [page, setPage] = useHashNumber('trang', 1);
   const [pageSize, setPageSize] = useHashNumber('so-dong', 10, 5);
   const [conduct, setConduct] = useState(''); const [comment, setComment] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
   const [reason, setReason] = useState(''); const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -198,7 +269,11 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const students = useApi<PageResponse<ReportCardListItem>>(yearId && classId ? `/report-cards/students?${studentParams}` : null);
   const detail = useApi<ReportCardView>(yearId && studentId ? `/report-cards/${studentId}?academicYearId=${encodeURIComponent(yearId)}` : null);
   const { download, toast: downloadToast } = useDownloadReportCard(detail.data);
-  useEffect(() => { if (detail.data) { setConduct(detail.data.conductGrade || ''); setComment(detail.data.homeroomComment || ''); } }, [detail.data]);
+  useEffect(() => { if (detail.data) {
+    setConduct(detail.data.conductGrade || detail.data.conductEvaluation.suggestedGrade || '');
+    setComment(detail.data.homeroomComment || '');
+    setOverrideReason(detail.data.conductEvaluation.overrideReason || '');
+  } }, [detail.data]);
   useEffect(() => {
     if (staff || classId || studentId || classSummaries.loading || classSummaries.data?.length) return;
     const ownedClass = selectedYearClasses.data?.find((item) => item.homeroomTeacherId === profile.data?.id && item.cohortId);
@@ -224,8 +299,12 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   };
   const saveHomeroom = async () => {
     if (!studentId || !conduct || !comment.trim()) { toast.show('err', 'Vui lòng chọn hạnh kiểm và nhập nhận xét'); return; }
+    const suggestion = detail.data?.conductEvaluation.suggestedGrade;
+    if ((!suggestion || suggestion !== conduct) && !overrideReason.trim()) {
+      toast.show('err', 'Vui lòng ghi rõ lý do khi quyết định khác đề xuất hoặc khi hệ thống chưa đủ căn cứ'); return;
+    }
     setBusy(true);
-    try { await api.put(`/report-cards/${studentId}/homeroom?academicYearId=${encodeURIComponent(yearId)}`, { conductGrade: conduct, homeroomComment: comment.trim() }); toast.show('ok', 'Đã lưu phần nhận xét của GVCN'); await reloadScope(); }
+    try { await api.put(`/report-cards/${studentId}/homeroom?academicYearId=${encodeURIComponent(yearId)}`, { conductGrade: conduct, homeroomComment: comment.trim(), overrideReason: overrideReason.trim() || null }); toast.show('ok', 'Đã lưu quyết định rèn luyện và nhận xét của GVCN'); await reloadScope(); }
     catch (error: any) { toast.show('err', error.message); } finally { setBusy(false); }
   };
   const submit = async () => {
@@ -238,6 +317,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
   const currentStep = studentId ? 3 : classId ? 2 : 1;
   return <div className={`report-card-page report-card-managed ${mode}`}>{toast.node}{downloadToast.node}
     <header className={`report-card-hero ${staff ? '' : 'teacher'}`}><div><span>{staff ? <FileCheck2 size={16} /> : <UserCheck size={16} />} {staff ? 'TRUNG TÂM HỌC BẠ' : 'KHÔNG GIAN GVCN'}</span><h2>{staff ? 'Học bạ điện tử toàn trường' : 'Học bạ lớp chủ nhiệm'}</h2><p>{staff ? 'Chọn đúng niên khóa và năm học, mở từng lớp rồi mới kiểm tra hồ sơ học sinh.' : 'Theo dõi từng lớp chủ nhiệm, hoàn thiện nhận xét và gửi Giáo vụ duyệt.'}</p></div><div className="report-card-hero-mark"><BookOpenCheck size={31} /><strong>{overview.data?.publishedCount || 0}/{overview.data?.studentCount || 0}</strong><small>học bạ đã phát hành</small></div></header>
+    {staff && yearId && <ConductRuleSettings academicYearId={yearId} />}
     <div className="report-hierarchy-steps" aria-label="Các bước tra cứu"><span className={currentStep === 1 ? 'active' : 'done'}><i>1</i><b>Chọn lớp</b><small>Theo niên khóa và năm học</small></span><ChevronRight size={18} /><span className={currentStep === 2 ? 'active' : currentStep > 2 ? 'done' : ''}><i>2</i><b>Chọn học sinh</b><small>Trong đúng lớp đã chọn</small></span><ChevronRight size={18} /><span className={currentStep === 3 ? 'active' : ''}><i>3</i><b>Xem học bạ</b><small>Chi tiết và quy trình xử lý</small></span></div>
     <Section title="Phạm vi dữ liệu" subtitle="Hệ thống chỉ thống kê các lớp thuộc đúng niên khóa và năm học đã chọn" wide>
       <div className="report-scope-selector"><label><span>1. Niên khóa</span><select value={cohortId} onChange={(event) => changeCohort(event.target.value)}>{cohortOptions.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.entryYear}–{item.graduationYear}) · {item.status === 'COMPLETED' ? 'Đã kết thúc' : 'Đang theo học'}</option>)}</select></label><label><span>2. Năm học trong niên khóa</span><select value={yearId} onChange={(event) => changeYear(event.target.value)}>{scopedYears.map((item) => <option key={item.id} value={item.id}>{item.code} · {yearState(item)}</option>)}</select></label><div className="report-scope-note"><ShieldCheck size={18} /><span><strong>Phạm vi hiện tại</strong><small>{selectedCohort?.name || 'Chưa chọn niên khóa'} · {selectedYear?.code || 'Chưa chọn năm học'}</small></span></div></div>
@@ -247,7 +327,7 @@ function ManagedReportCards({ mode }: { mode: 'staff' | 'teacher' }) {
       <ScopeBreadcrumb cohort={selectedCohort} year={selectedYear} schoolClass={selectedClass} student={detail.data} onClasses={clearToClasses} onStudents={clearToStudents} />
       {currentStep === 1 && <Async state={classSummaries} empty={staff ? 'Không có lớp thuộc phạm vi đã chọn' : 'Bạn không chủ nhiệm lớp nào trong phạm vi đã chọn'}>{(rows) => <ClassDirectory rows={rows} onOpen={(id) => { setClassId(id, 'push'); setPage(1); }} />}</Async>}
       {currentStep === 2 && selectedClass && <Async state={students} allowEmpty>{(data) => <StudentDirectory data={data} selectedClass={selectedClass} status={status} query={query} onStatus={(value) => { setStatus(value, 'push'); setPage(1); }} onQuery={(value) => { setQuery(value); setPage(1); }} onOpen={(id) => setStudentId(id, 'push')} onPage={(value) => setPage(value, 'push')} onPageSize={(value) => { setPageSize(value); setPage(1); }} />}</Async>}
-      {currentStep === 3 && <div className="report-card-detail-page"><button type="button" className="live-btn subtle report-back-button" onClick={clearToStudents}><ArrowLeft size={16} /> Trở lại danh sách lớp {selectedClass?.classCode}</button><Async state={detail}>{(card) => <><div className="report-card-review-panel"><ReportCardDocument card={card} onDownload={download} /></div>{staff ? <div className="report-card-review-actions"><label><span>Ghi chú xử lý / lý do mở lại</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ghi rõ nội dung để lưu vào lịch sử" /></label><div>{card.status === 'HOMEROOM_SUBMITTED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('approve')}><UserCheck size={16} /> Duyệt học bạ</button>}{card.status === 'APPROVED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('lock')}><LockKeyhole size={16} /> Khóa học bạ</button>}{card.status === 'LOCKED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('publish')}><Send size={16} /> Phát hành</button>}{canOpenReportCardRevision(card.status) && <button className="live-btn subtle danger" disabled={busy} onClick={() => transition('reopen')}><Unlock size={16} /> {card.status === 'PUBLISHED' ? 'Tạo bản điều chỉnh' : 'Mở lại'}</button>}</div></div> : card.editableByHomeroom && <div className="homeroom-report-editor"><h4><ClipboardCheck size={18} /> Hoàn thiện phần của giáo viên chủ nhiệm</h4><div><label><span>Hạnh kiểm</span><select value={conduct} onChange={(event) => setConduct(event.target.value)}><option value="">Chọn hạnh kiểm</option>{CONDUCT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>Nhận xét cuối năm</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Nhận xét về học tập, rèn luyện và hướng phát triển của học sinh" /></label></div><footer><button className="live-btn subtle" disabled={busy} onClick={saveHomeroom}><FileText size={16} /> Lưu nhận xét</button>{card.status === 'DRAFT' && <button className="live-btn primary" disabled={busy || Boolean(card.missingRequirements)} onClick={submit}><Send size={16} /> Gửi Giáo vụ duyệt</button>}</footer></div>}</>}</Async></div>}
+      {currentStep === 3 && <div className="report-card-detail-page"><button type="button" className="live-btn subtle report-back-button" onClick={clearToStudents}><ArrowLeft size={16} /> Trở lại danh sách lớp {selectedClass?.classCode}</button><Async state={detail}>{(card) => <><div className="report-card-review-panel"><ReportCardDocument card={card} onDownload={download} /></div>{staff ? <div className="report-card-review-actions"><label><span>Ghi chú xử lý / lý do mở lại</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Ghi rõ nội dung để lưu vào lịch sử" /></label><div>{card.status === 'HOMEROOM_SUBMITTED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('approve')}><UserCheck size={16} /> Duyệt học bạ</button>}{card.status === 'APPROVED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('lock')}><LockKeyhole size={16} /> Khóa học bạ</button>}{card.status === 'LOCKED' && <button className="live-btn primary" disabled={busy} onClick={() => transition('publish')}><Send size={16} /> Phát hành</button>}{canOpenReportCardRevision(card.status) && <button className="live-btn subtle danger" disabled={busy} onClick={() => transition('reopen')}><Unlock size={16} /> {card.status === 'PUBLISHED' ? 'Tạo bản điều chỉnh' : 'Mở lại'}</button>}</div></div> : card.editableByHomeroom && <div className="homeroom-report-editor"><h4><ClipboardCheck size={18} /> Hoàn thiện phần của giáo viên chủ nhiệm</h4><div className="homeroom-conduct-fields"><label><span>Mức GVCN quyết định</span><select value={conduct} onChange={(event) => setConduct(event.target.value)}><option value="">Chọn mức rèn luyện</option>{CONDUCT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><small>Đề xuất hệ thống: {CONDUCT_LABEL[card.conductEvaluation.suggestedGrade || ''] || 'Chưa đủ căn cứ'}</small></label><label><span>Nhận xét cuối năm</span><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Nhận xét về học tập, rèn luyện và hướng phát triển của học sinh" /></label>{(!card.conductEvaluation.suggestedGrade || conduct !== card.conductEvaluation.suggestedGrade) && <label className="conduct-override-field"><span>Lý do quyết định khác đề xuất *</span><textarea value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Nêu căn cứ chuyên môn và minh chứng GVCN đã xem xét" /></label>}</div><footer><button className="live-btn subtle" disabled={busy} onClick={saveHomeroom}><FileText size={16} /> Lưu quyết định và nhận xét</button>{card.status === 'DRAFT' && <button className="live-btn primary" disabled={busy || Boolean(card.missingRequirements)} onClick={submit}><Send size={16} /> Gửi Giáo vụ duyệt</button>}</footer></div>}</>}</Async></div>}
     </Section>
   </div>;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { BarChart3, BookOpenCheck, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, GraduationCap, MessageSquareText, School, ShieldCheck, UsersRound, type LucideIcon } from 'lucide-react';
+import { BarChart3, BookOpenCheck, CalendarCheck2, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, GraduationCap, MessageSquareText, School, ShieldCheck, UsersRound, type LucideIcon } from 'lucide-react';
 import { modules, roles } from '../data/navigation';
 import type { TeacherWorkspaceContext } from '../api/types';
 import type { ModuleItem, PageId, RoleDefinition, RoleId } from '../types';
@@ -87,6 +87,7 @@ function SidebarGroup({ id, label, description, Icon, items, activePage, onSelec
       <button
         type="button"
         className="menu-group-toggle"
+        aria-label={description ? `${label}. ${description}` : label}
         aria-expanded={open}
         aria-controls={`${id}-menu`}
         title={collapsed ? label.replace(/^\d+\.\s*/, '') : undefined}
@@ -133,25 +134,25 @@ export function SidebarMenu({
   const adminOtherItems = modules.admin.filter((item) => !adminUserItems.some((userItem) => userItem.code === item.code));
   const academicPreparation = modules.academic_staff.filter((item) => item.code === 'E1');
   const academicOperations = modules.academic_staff.filter((item) => ['E2', 'E3'].includes(item.code));
-  const academicClosure = modules.academic_staff.filter((item) => item.code === 'E4');
-  const academicArchives = modules.academic_staff.filter((item) => ['E5', 'E6'].includes(item.code));
+  const academicClosure = modules.academic_staff.filter((item) => ['E4', 'E6'].includes(item.code));
+  const academicArchives = modules.academic_staff.filter((item) => item.code === 'E5');
   const standardItems = modules[role.id].filter((item) => item.title !== 'Thông báo');
   const teacherItems = modules.teacher;
-  const teacherTeaching = teacherItems.filter((item) => ['B2', 'B1', 'B3', 'B4', 'B5'].includes(item.code)
+  const teacherToday = teacherItems.filter((item) => ['B2', 'B3', 'B15'].includes(item.code));
+  const teacherTeaching = teacherItems.filter((item) => ['B1', 'B4', 'B5'].includes(item.code)
     || (item.code === 'B14' && teacherContext?.loadRegistrationVisible));
-  const teacherWork = teacherItems.filter((item) => ['B10', 'B15', 'B16'].includes(item.code)
+  const teacherStudentCare = teacherItems.filter((item) => item.code === 'B16'
+    || (teacherContext?.homeroomTeacher && ['B8', 'B9', 'B13'].includes(item.code)));
+  const teacherReports = teacherItems.filter((item) => item.code === 'B10'
     || (item.code === 'B12' && teacherContext?.examResponsibilities));
-  const teacherHomeroom = teacherContext?.homeroomTeacher
-    ? teacherItems.filter((item) => ['B8', 'B9', 'B13'].includes(item.code))
-    : [];
   const teacherCommunication = teacherItems.filter((item) => item.code === 'B6');
   const studentItems = modules.student;
   const studentLearning = studentItems.filter((item) => ['C2', 'C3', 'C4', 'C10', 'C11'].includes(item.code));
-  const studentSupport = studentItems.filter((item) => ['C5', 'C6', 'C7'].includes(item.code));
-  const studentPersonal = studentItems.filter((item) => ['C1', 'C8', 'C9'].includes(item.code));
+  const studentSupport = studentItems.filter((item) => ['C6', 'C7'].includes(item.code));
+  const studentPersonal = studentItems.filter((item) => ['C8', 'C9'].includes(item.code));
   const parentItems = modules.parent;
-  const parentChildren = parentItems.filter((item) => ['D1', 'D2', 'D9', 'D10'].includes(item.code));
-  const parentCoordination = parentItems.filter((item) => ['D3', 'D5', 'D6'].includes(item.code));
+  const parentChildren = parentItems.filter((item) => ['D2', 'D9', 'D10'].includes(item.code));
+  const parentCoordination = parentItems.filter((item) => ['D3', 'D6'].includes(item.code));
   const parentServices = parentItems.filter((item) => ['D4', 'D7', 'D8'].includes(item.code));
 
   const adminLabels: Record<string, string> = {
@@ -192,26 +193,27 @@ export function SidebarMenu({
       {role.id === 'academic_staff' && <>
         <SidebarGroup id="academic-preparation" label="2. Chuẩn bị năm học" description="Cơ cấu, phòng và phân lớp" Icon={School} items={academicPreparation} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="academic-operations" label="3. Vận hành năm học" description="Phân công, lịch và kỳ thi" Icon={CalendarDays} items={academicOperations} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="academic-closure" label="4. Tổng kết & chuyển năm" description="Khóa dữ liệu, lên lớp" Icon={ClipboardCheck} items={academicClosure} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="academic-archives" label="5. Kho lưu trữ niên khóa" description="Hồ sơ lịch sử và học bạ" Icon={BookOpenCheck} items={academicArchives} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="academic-closure" label="4. Tổng kết & học bạ" description="Xét duyệt, phát hành và chuyển năm" Icon={ClipboardCheck} items={academicClosure} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="academic-archives" label="5. Kho lưu trữ niên khóa" description="Tra cứu hồ sơ các khóa đã kết thúc" Icon={BookOpenCheck} items={academicArchives} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
       </>}
 
       {role.id === 'teacher' && <>
-        <SidebarGroup id="teacher-teaching" label="Giảng dạy" description="Lịch, lớp, điểm và bài tập" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="teacher-work" label="Công việc" description="Nhật ký, điều chỉnh lịch và khảo thí" Icon={ClipboardCheck} items={teacherWork} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        {teacherHomeroom.length > 0 && <SidebarGroup id="teacher-homeroom" label="Lớp chủ nhiệm" description={teacherContext?.homeroomClasses.map((item) => item.code).join(', ') || 'Nghiệp vụ chủ nhiệm'} Icon={BookOpenCheck} items={teacherHomeroom} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />}
-        <SidebarGroup id="teacher-communication" label="Trao đổi" description="Tin nhắn theo phân công" Icon={MessageSquareText} items={teacherCommunication} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-today" label="Dạy học hôm nay" description="Lịch dạy, điểm danh và nhật ký tiết" Icon={CalendarCheck2} items={teacherToday} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-teaching" label="Quản lý giảng dạy" description="Lớp, điểm, bài tập và tải dạy" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-student-care" label={teacherContext?.homeroomTeacher ? 'Học sinh & chủ nhiệm' : 'Hỗ trợ học sinh'} description={teacherContext?.homeroomTeacher ? `Hỗ trợ và quản lý lớp ${teacherContext.homeroomClasses.map((item) => item.code).join(', ')}` : 'Theo dõi và phối hợp các trường hợp cần quan tâm'} Icon={BookOpenCheck} items={teacherStudentCare} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-reports" label="Kỳ thi & báo cáo" description="Nhiệm vụ khảo thí và báo cáo giảng dạy" Icon={ClipboardCheck} items={teacherReports} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        {teacherCommunication.map((item) => <SidebarItemButton key={item.code} item={item} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} displayTitle="Trao đổi" />)}
       </>}
 
       {role.id === 'student' && <>
         <SidebarGroup id="student-learning" label="Học tập" description="Lịch, điểm, bài tập và kỳ thi" Icon={BookOpenCheck} items={studentLearning} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="student-support" label="Kết nối & hỗ trợ" description="Thông báo, xin nghỉ và trao đổi" Icon={MessageSquareText} items={studentSupport} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="student-support" label="Kết nối & hỗ trợ" description="Xin nghỉ và trao đổi" Icon={MessageSquareText} items={studentSupport} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="student-personal" label="Cá nhân" description="Hồ sơ, báo cáo và cài đặt" Icon={GraduationCap} items={studentPersonal} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
       </>}
 
       {role.id === 'parent' && <>
         <SidebarGroup id="parent-children" label="Theo dõi con" description="Học tập, lịch thi và học bạ" Icon={School} items={parentChildren} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="parent-coordination" label="Phối hợp nhà trường" description="Trao đổi, thông báo và nghỉ học" Icon={MessageSquareText} items={parentCoordination} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="parent-coordination" label="Phối hợp nhà trường" description="Trao đổi và xác nhận nghỉ học" Icon={MessageSquareText} items={parentCoordination} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="parent-services" label="Tài chính & cá nhân" description="Học phí, báo cáo và cài đặt" Icon={ClipboardCheck} items={parentServices} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
       </>}
 

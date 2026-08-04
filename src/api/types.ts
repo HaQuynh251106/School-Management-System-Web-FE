@@ -585,6 +585,31 @@ export interface ReportCardAudit {
   id: string; action: string; fromStatus?: string | null; toStatus?: string | null;
   note?: string | null; actorId: string; actorName?: string | null; createdAt: string;
 }
+export interface ConductRuleSet {
+  id: string; academicYearId: string; semesterId?: string | null; versionNo: number; status: string;
+  attendanceWeight: number; disciplineWeight: number; responsibilityWeight: number; participationWeight: number;
+  goodMin: number; fairMin: number; averageMin: number; minAttendanceRecords: number;
+  minParticipationEvidence: number; createdBy: string; createdAt: string; activatedAt?: string | null;
+}
+export interface ConductEvidence {
+  id: string; category: string; impactPoints: number; title: string; description?: string | null;
+  occurredOn: string; sourceType: string; sourceRef: string; teacherId: string;
+  teacherName?: string | null; createdAt?: string | null;
+}
+export interface ConductCriterion {
+  code: string; label: string; weight: number; rawScore?: number | null; weightedScore?: number | null;
+  sufficient: boolean; summary: string; evidence: ConductEvidence[];
+}
+export interface ConductEvaluation {
+  id: string; academicYearId: string; semesterId?: string | null; studentId: string; studentName: string;
+  classId: string; classCode: string; ruleSet: ConductRuleSet; readiness: 'READY' | 'INSUFFICIENT_DATA';
+  missingData: string[]; suggestedScore?: number | null; suggestedGrade?: string | null;
+  finalGrade?: string | null; overrideReason?: string | null; workflowStatus: string;
+  decidedBy?: string | null; decidedByName?: string | null; decidedAt?: string | null;
+  calculatedAt: string; criteria: ConductCriterion[]; editableByHomeroom: boolean;
+  audits: Array<{ id: string; action: string; previousGrade?: string | null; newGrade?: string | null;
+    note?: string | null; actorId: string; actorName?: string | null; createdAt: string }>;
+}
 export interface ReportCardView {
   id: string; academicYearId: string; academicYearCode: string; studentId: string;
   studentCode?: string | null; studentName: string; classId: string; classCode: string;
@@ -592,7 +617,7 @@ export interface ReportCardView {
   homeroomComment?: string | null; semesterOneAverage?: number | null; semesterTwoAverage?: number | null;
   annualAverage?: number | null; conductGrade?: string | null; promotionStatus?: string | null;
   missingRequirements?: string | null; subjectCount: number; subjects: ReportCardSubjectResult[];
-  attendance: ReportCardAttendance; verificationCode: string; submittedAt?: string | null;
+  attendance: ReportCardAttendance; conductEvaluation: ConductEvaluation; verificationCode: string; submittedAt?: string | null;
   approvedAt?: string | null; lockedAt?: string | null; publishedAt?: string | null;
   editableByHomeroom: boolean; audits: ReportCardAudit[];
 }

@@ -10,6 +10,7 @@ import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, parseDelimitedGradeImport, scoreTone, weightedAverage, type GradeImportPreview } from './gradebook';
 import { NotificationsLive } from './SharedLive';
 import { useHashString } from '../../api/urlState';
+import { confirmAction } from '../../components/confirmAction';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -325,18 +326,18 @@ export function TeacherAttendanceLive() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeave);
   }, [dirty]);
 
-  const confirmDiscard = () => !dirty || window.confirm('Các thay đổi điểm danh chưa được lưu. Bạn có muốn bỏ thay đổi?');
+  const confirmDiscard = async () => !dirty || confirmAction({ title: 'Bỏ thay đổi điểm danh chưa lưu?', description: 'Các trạng thái và ghi chú vừa chỉnh trong tiết này sẽ không được lưu.', confirmLabel: 'Bỏ thay đổi', tone: 'warning' });
 
-  const changeSlot = (nextSlotId: string) => {
-    if (!confirmDiscard()) return;
+  const changeSlot = async (nextSlotId: string) => {
+    if (!await confirmDiscard()) return;
     setSlotId(nextSlotId);
     setSearch('');
     setStatusFilter('ALL');
     setUnlockReason('');
   };
 
-  const changeDate = (nextDate: string) => {
-    if (!confirmDiscard()) return;
+  const changeDate = async (nextDate: string) => {
+    if (!await confirmDiscard()) return;
     setDate(nextDate);
     setUnlockReason('');
   };
@@ -761,14 +762,14 @@ export function TeacherGradesLive() {
   const completedCells = gradeRows.reduce((total, row) => total + row.values.length, 0);
   const completion = totalCells ? Math.round((completedCells / totalCells) * 100) : 0;
 
-  const changeScopeSafely = (change: () => void) => {
-    if (dirty && !window.confirm('Bạn còn điểm chưa lưu. Bản nháp vẫn được giữ, nhưng bạn có muốn chuyển phạm vi đang xem không?')) return;
+  const changeScopeSafely = async (change: () => void) => {
+    if (dirty && !await confirmAction({ title: 'Chuyển phạm vi khi còn điểm chưa lưu?', description: 'Bản nháp vẫn được giữ trên thiết bị này để bạn có thể quay lại tiếp tục.', confirmLabel: 'Chuyển phạm vi', tone: 'warning' })) return;
     change();
   };
 
-  const discardDraft = () => {
+  const discardDraft = async () => {
     if (!dirty) return;
-    if (!window.confirm('Hoàn tác toàn bộ thay đổi chưa lưu và trở về dữ liệu gần nhất trên hệ thống?')) return;
+    if (!await confirmAction({ title: 'Hoàn tác toàn bộ thay đổi chưa lưu?', description: 'Sổ điểm sẽ trở về dữ liệu gần nhất đã lưu trên hệ thống và bản nháp trên thiết bị sẽ bị xóa.', confirmLabel: 'Hoàn tác thay đổi', tone: 'warning' })) return;
     setScores(baselineScores);
     setDraftRecovered(false);
     setDraftSavedAt('');
@@ -851,7 +852,7 @@ export function TeacherGradesLive() {
   const completeGradebook = async () => {
     if (!subjectEditable || !ready) return;
     if (completion < 100) return toast.show('err', 'Cần nhập đủ tất cả đầu điểm của mọi học sinh trước khi hoàn tất sổ điểm');
-    if (!window.confirm(`Xác nhận hoàn tất sổ điểm ${subjectName} của lớp ${classMap.get(classId) || classId}? Sau bước này sổ điểm sẽ được khóa.`)) return;
+    if (!await confirmAction({ title: `Hoàn tất sổ điểm ${subjectName}?`, description: `Sổ điểm lớp ${classMap.get(classId) || classId} sẽ được khóa và chuyển sang quy trình duyệt học bạ.`, confirmLabel: 'Hoàn tất và khóa sổ', tone: 'warning' })) return;
     try {
       await api.put(`/gradebook-completions?semesterId=${encodeURIComponent(semesterId)}&classId=${encodeURIComponent(classId)}&subjectId=${encodeURIComponent(subjectId)}`, { note: 'Giáo viên bộ môn xác nhận đã hoàn tất điểm' });
       toast.show('ok', 'Đã hoàn tất và khóa sổ điểm môn. Giáo vụ sẽ sử dụng dữ liệu này để duyệt học bạ.');
@@ -1193,7 +1194,11 @@ export function TeacherFinanceLive() {
 
   const remindClass = async () => {
     if (!selected) return;
-    if (!confirm(`Gửi nhắc hạn tới phụ huynh của các học sinh còn công nợ lớp ${selected.classCode}?`)) return;
+    if (!await confirmAction({
+      title: `Nhắc công nợ lớp ${selected.classCode}?`,
+      description: 'Thông báo sẽ được gửi tới phụ huynh của tất cả học sinh còn công nợ trong phạm vi đang chọn.',
+      confirmLabel: 'Gửi nhắc',
+    })) return;
     setSending(true);
     try {
       const suffix = periodId ? `?periodId=${encodeURIComponent(periodId)}` : '';
@@ -1204,7 +1209,11 @@ export function TeacherFinanceLive() {
   };
 
   const remindInvoice = async (invoice: Invoice) => {
-    if (!confirm(`Gửi nhắc thanh toán tới phụ huynh của học sinh ${invoice.studentName}?`)) return;
+    if (!await confirmAction({
+      title: `Nhắc phụ huynh của ${invoice.studentName}?`,
+      description: `Thông báo thanh toán hóa đơn ${invoice.code} sẽ được gửi ngay.`,
+      confirmLabel: 'Gửi nhắc',
+    })) return;
     setSendingInvoiceId(invoice.id);
     try {
       const result = await api.post<ClassReminderResult>(`/finance/homeroom/invoices/${invoice.id}/remind`);
