@@ -141,7 +141,7 @@ export function SidebarMenu({
   const teacherToday = teacherItems.filter((item) => ['B2', 'B3', 'B15'].includes(item.code));
   const teacherTeaching = teacherItems.filter((item) => ['B1', 'B4', 'B5'].includes(item.code)
     || (!teacherContext?.homeroomTeacher && item.code === 'B16')
-    || (item.code === 'B14' && teacherContext?.loadRegistrationVisible));
+    || item.code === 'B14');
   const teacherStudentCare = teacherItems.filter((item) => teacherContext?.homeroomTeacher
     && ['B8', 'B9', 'B13', 'B16'].includes(item.code));
   const teacherReports = teacherItems.filter((item) => item.code === 'B10'
@@ -160,6 +160,8 @@ export function SidebarMenu({
     A6: '3. Lịch sử hệ thống',
     A8: '4. Báo cáo & thống kê',
     A9: '5. Trung tâm thông báo',
+    A10: '6. Trung tâm vận hành',
+    A11: '7. Hồ sơ & bảo mật',
   };
 
   return (
@@ -200,7 +202,7 @@ export function SidebarMenu({
 
       {role.id === 'teacher' && <>
         <SidebarGroup id="teacher-today" label="Hôm nay" description="Lịch dạy, điểm danh và sổ đầu bài" Icon={CalendarCheck2} items={teacherToday} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="teacher-teaching" label="Giảng dạy" description="Lớp, bảng điểm, bài tập và tải dạy" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="teacher-teaching" label="Giảng dạy" description="Lớp, bảng điểm, bài tập và ngoại lệ lịch dạy" Icon={School} items={teacherTeaching} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         {teacherContext?.homeroomTeacher && <SidebarGroup id="teacher-student-care" label="Lớp chủ nhiệm" description={`Học sinh, xin nghỉ, công nợ và học bạ lớp ${teacherContext.homeroomClasses.map((item) => item.code).join(', ')}`} Icon={BookOpenCheck} items={teacherStudentCare} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />}
         <SidebarGroup id="teacher-reports" label="Khảo thí & báo cáo" description="Nhiệm vụ khảo thí và báo cáo giảng dạy" Icon={ClipboardCheck} items={teacherReports} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="teacher-communication" label="Trao đổi & cá nhân" description="Tin nhắn và cấu hình tài khoản" Icon={MessageSquareText} items={teacherCommunication} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />

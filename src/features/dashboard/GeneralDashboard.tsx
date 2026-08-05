@@ -1,7 +1,7 @@
 import {
   Activity, AlertTriangle, ArrowRight, BarChart3, Bell, BookOpenCheck, CalendarCheck2,
   CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Clock3,
-  GraduationCap, HeartHandshake, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
+  GraduationCap, HeartHandshake, KeyRound, MessageSquareText, RefreshCw, School, ShieldCheck, Sparkles, Upload,
   UserRoundCheck, Users, WalletCards,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -437,9 +437,7 @@ function OperationalRoleDashboard({
 
 function teacherDashboardLinks(workspace?: TeacherWorkspaceContext | null): DashboardLink[] {
   const links = quickLinks.teacher.filter((item) => item.code !== 'B12' || workspace?.examResponsibilities);
-  if (workspace?.loadRegistrationVisible) {
-    links.push({ code: 'B14', title: 'Đăng ký tải dạy', description: workspace.loadRegistrationOpen ? 'Theo dõi kỳ đăng ký hiện tại' : 'Xem kế hoạch tải dạy', Icon: Clock3 });
-  }
+  links.push({ code: 'B14', title: 'Đề nghị hạn chế lịch dạy', description: 'Gửi ngoại lệ có căn cứ và xem chỉ tiêu hệ thống', Icon: Clock3 });
   if (workspace?.homeroomTeacher) {
     links.push({ code: 'B9', title: 'Duyệt đơn nghỉ', description: 'Xử lý yêu cầu của lớp chủ nhiệm', Icon: CalendarCheck2 });
     links.push({ code: 'B13', title: 'Học bạ lớp chủ nhiệm', description: 'Theo dõi và xác nhận hồ sơ', Icon: GraduationCap });
@@ -611,6 +609,16 @@ function AdminCommandDashboard({ firstName, today, data, loading, hasError, onRe
           })}
         </section>
       )}
+
+      {!loading && overview && <section className="admin-account-readiness">
+        <header><span><KeyRound size={18} /></span><div><small>MỨC ĐỘ SẴN SÀNG TÀI KHOẢN</small><h3>{formatCompact(overview.readyAccounts)} tài khoản có thể sử dụng ngay</h3><p>Admin chỉ xử lý ngoại lệ kích hoạt và truy cập; không cấp hoặc đọc mật khẩu người dùng.</p></div></header>
+        <div>
+          <button type="button" onClick={() => onNavigate('A1L')}><strong>{formatCompact(overview.pendingActivationAccounts)}</strong><span>Chờ kích hoạt</span></button>
+          <button type="button" onClick={() => onNavigate('A1L')}><strong>{formatCompact(overview.passwordChangeRequiredAccounts)}</strong><span>Cần đổi mật khẩu</span></button>
+          <button type="button" onClick={() => onNavigate('A1L')}><strong>{formatCompact(overview.missingEmailAccounts)}</strong><span>Thiếu email</span></button>
+          <button type="button" onClick={() => onNavigate('A1L')}><strong>{formatCompact(overview.lockedAccounts)}</strong><span>Đang bị khóa</span></button>
+        </div>
+      </section>}
 
       <AdminCalendarWidget
         items={overview?.calendarItems ?? []}

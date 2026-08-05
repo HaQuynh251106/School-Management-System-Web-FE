@@ -19,6 +19,8 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A6: 'lich-su-he-thong',
     A8: 'bao-cao-thong-ke',
     A9: 'trung-tam-thong-bao',
+    A10: 'trung-tam-van-hanh',
+    A11: 'ho-so-bao-mat',
   },
   academic_staff: {
     E1: 'co-cau-dao-tao',
@@ -33,7 +35,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
   },
   teacher: {
     B1: 'lop-duoc-phan-cong',
-    B14: 'dang-ky-tai-day',
+    B14: 'de-nghi-han-che-lich-day',
     B15: 'so-dau-bai-dieu-chinh-lich',
     B16: 'ho-tro-hoc-sinh',
     B2: 'thoi-khoa-bieu',
@@ -87,6 +89,9 @@ Object.entries(PAGE_PATHS).forEach(([role, pages]) => {
     PAGE_BY_ROUTE.set(`${ROLE_PATHS[roleId]}/${pagePath}`, pageId);
   });
 });
+// Giữ liên kết cũ hoạt động, nhưng mọi điều hướng mới dùng đúng tên nghiệp vụ.
+PAGE_BY_ROUTE.set('giao-vien/dang-ky-tai-day', 'B14');
+PAGE_BY_ROUTE.set('giao-vien/dieu-kien-giang-day', 'B14');
 
 export interface ResolvedPageRoute {
   roleId: RoleId | null;

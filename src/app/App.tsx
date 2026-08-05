@@ -35,7 +35,6 @@ function pageAllowed(page: PageId, roleId: RoleId, teacherContext?: TeacherWorks
   if (roleId !== 'teacher' || !teacherContext) return true;
   if (['B8', 'B9', 'B13'].includes(page)) return teacherContext.homeroomTeacher;
   if (page === 'B12') return teacherContext.examResponsibilities;
-  if (page === 'B14') return teacherContext.loadRegistrationVisible;
   return true;
 }
 
@@ -188,7 +187,7 @@ export default function App() {
   const pageTitle = activePage === 'dashboard' ? 'Tổng quan' : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
   const today = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date());
-  const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
+  const profilePage: Partial<Record<RoleId, PageId>> = { admin: 'A11', teacher: 'B11', student: 'C9', parent: 'D8' };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
     const next = pageAllowed(page, role.id, teacherContext) ? page : 'dashboard';

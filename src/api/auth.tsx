@@ -6,7 +6,7 @@ import type { ApiUser } from './types';
 interface AuthContextValue {
   user: ApiUser | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, twoFactorCode?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -42,10 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, password: string, twoFactorCode?: string) => {
     const r = await api.post<{ user: ApiUser; accessToken: string; refreshToken: string }>(
       '/auth/login',
-      { username, password },
+      { username, password, twoFactorCode },
     );
     setTokens(r.accessToken);
     setUser(r.user);

@@ -20,8 +20,8 @@ export function fmtDateTime(s?: string | null) {
   return d.toLocaleString('vi-VN');
 }
 
-export const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-export const DAY_LABEL: Record<string, string> = { MON: 'T2', TUE: 'T3', WED: 'T4', THU: 'T5', FRI: 'T6', SAT: 'T7' };
+export const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
+export const DAY_LABEL: Record<string, string> = { MON: 'T2', TUE: 'T3', WED: 'T4', THU: 'T5', FRI: 'T6' };
 
 export function LoadingBlock() {
   return (

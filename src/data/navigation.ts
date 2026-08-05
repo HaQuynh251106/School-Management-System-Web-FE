@@ -1,7 +1,7 @@
 import {
   Archive, BarChart3, Bell, BookOpenCheck, CalendarClock, CalendarDays,
   CircleDollarSign, ClipboardCheck, FileSpreadsheet, GraduationCap, HeartHandshake,
-  History, KeyRound, MessageSquareText, NotebookPen, RefreshCcw, School, Settings,
+  History, KeyRound, MessageSquareText, NotebookPen, RefreshCcw, School, Settings, ShieldCheck,
   Upload, UserRoundCog, Users, WalletCards,
 } from 'lucide-react';
 import type { ModuleItem, RoleDefinition, RoleId } from '../types';
@@ -25,6 +25,8 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Giám sát các chỉ số vận hành toàn trường.', Icon: FileSpreadsheet },
     { code: 'A9', title: 'Trung tâm thông báo', phase: 'GĐ2', priority: 1, summary: 'Gửi thông báo hành chính toàn trường.', Icon: Bell },
+    { code: 'A10', title: 'Trung tâm vận hành', phase: 'GĐ2', priority: 1, summary: 'Giám sát dịch vụ, tác vụ, sao lưu và các lần gửi thất bại.', Icon: Settings },
+    { code: 'A11', title: 'Hồ sơ & bảo mật', phase: 'GĐ1', priority: 1, summary: 'Hồ sơ Admin, phiên đăng nhập và xác thực hai lớp.', Icon: ShieldCheck },
   ],
   academic_staff: [
     { code: 'E1', title: 'Chuẩn bị năm học', phase: 'GĐ1', priority: 1, summary: 'Thiết lập năm học, lớp, môn, phòng và phân lớp đầu cấp.', Icon: School },
@@ -39,7 +41,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
   ],
   teacher: [
     { code: 'B1', title: 'Lớp được phân công', phase: 'GĐ1', priority: 1, summary: 'Danh sách lớp, sĩ số, môn và học kỳ phụ trách.', Icon: School },
-    { code: 'B14', title: 'Đăng ký tải dạy', phase: 'GĐ1', priority: 1, summary: 'Đăng ký số tiết và khung giờ trong học kỳ.', Icon: ClipboardCheck },
+    { code: 'B14', title: 'Đề nghị hạn chế lịch dạy', phase: 'GĐ1', priority: 1, summary: 'Gửi ngoại lệ có lý do để Giáo vụ xem xét; định mức do hệ thống tính.', Icon: ClipboardCheck },
     { code: 'B15', title: 'Sổ đầu bài & đổi lịch', phase: 'GĐ1', priority: 1, summary: 'Nhật ký tiết dạy, dạy thay và đổi tiết.', Icon: NotebookPen },
     { code: 'B16', title: 'Hỗ trợ học sinh', phase: 'GĐ1', priority: 1, summary: 'Theo dõi và phối hợp hỗ trợ học sinh.', Icon: HeartHandshake },
     { code: 'B2', title: 'TKB cá nhân', phase: 'GĐ1', priority: 1, summary: 'Lịch dạy theo ngày, phòng, tiết và lớp.', Icon: CalendarDays },

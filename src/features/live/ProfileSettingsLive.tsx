@@ -15,7 +15,7 @@ const CHANNELS = [
   { id: 'EMAIL', label: 'Email', description: 'Nhận bản sao qua địa chỉ email hồ sơ', Icon: Mail },
 ] as const;
 
-export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 'parent' }) {
+export function ProfileSettingsLive({ actor }: { actor: 'admin' | 'teacher' | 'student' | 'parent' }) {
   const profile = useApi<ApiUser>('/me');
   const preferences = useApi<NotificationPreference[]>('/notification-preferences');
   const capabilities = useApi<Record<string, boolean>>('/notification-capabilities');
@@ -77,7 +77,7 @@ export function ProfileSettingsLive({ actor }: { actor: 'teacher' | 'student' | 
     <Async state={profile}>{(user) => <div className="profile-settings-page">
       <header className="profile-settings-hero">
         <div className="profile-settings-avatar">{form.avatarUrl ? <img src={form.avatarUrl} alt="Ảnh đại diện" /> : <span>{user.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>}</div>
-        <div><small>HỒ SƠ {actor === 'teacher' ? 'GIÁO VIÊN' : actor === 'student' ? 'HỌC SINH' : 'PHỤ HUYNH'}</small><h3>{user.fullName}</h3><p>@{user.username} · {user.className || user.mainSubject || 'Cổng thông tin nhà trường'}</p></div>
+        <div><small>HỒ SƠ {actor === 'admin' ? 'QUẢN TRỊ VIÊN' : actor === 'teacher' ? 'GIÁO VIÊN' : actor === 'student' ? 'HỌC SINH' : 'PHỤ HUYNH'}</small><h3>{user.fullName}</h3><p>@{user.username} · {user.className || user.mainSubject || 'Cổng thông tin nhà trường'}</p></div>
         <StatusPill value={user.status} />
       </header>
       <div className="profile-settings-grid">

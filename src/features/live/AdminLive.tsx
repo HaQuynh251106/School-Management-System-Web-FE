@@ -17,7 +17,7 @@ import { confirmAction } from '../../components/confirmAction';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
-  username: '', fullName: '', role: 'STUDENT', password: 'Sse@123456',
+  username: '', fullName: '', role: 'STUDENT',
   email: '', phone: '', avatarUrl: '', teacherCode: '',
   studentCode: '', dateOfBirth: '', gender: '', placeOfBirth: '',
   ethnicity: 'Kinh', nationality: 'Việt Nam', address: '', enrollmentDate: '',
@@ -259,7 +259,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       username: user.username,
       fullName: user.fullName,
       role: user.role,
-      password: '',
       email: user.email || '',
       phone: user.phone || '',
       avatarUrl: user.avatarUrl || '',
@@ -286,7 +285,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     if (!editingUser) {
       body.username = form.username.trim() || null;
       body.role = form.role;
-      body.password = null;
     }
     if (form.role === 'TEACHER') {
       body.teacherCode = form.teacherCode.trim();

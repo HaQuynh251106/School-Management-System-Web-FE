@@ -2673,7 +2673,7 @@ td {
 
 .teacher-timetable-grid {
   display: grid;
-  grid-template-columns: 82px repeat(6, minmax(172px, 1fr));
+  grid-template-columns: 82px repeat(5, minmax(172px, 1fr));
   min-width: 1180px;
 }
 
@@ -4227,7 +4227,7 @@ td {
   }
 
   .teacher-timetable-grid {
-    grid-template-columns: 68px repeat(6, 158px);
+    grid-template-columns: 68px repeat(5, 158px);
     min-width: 1016px;
   }
 
@@ -4519,6 +4519,12 @@ td {
 .load-registration-window small { color: var(--muted); }
 .load-registration-window.is-open { color: #087f6b; border-color: #9ad8ca; background: #f2fbf8; }
 .load-registration-window.is-closed { color: #9b4b00; border-color: #f0cc91; background: #fff8e8; }
+.load-registration-window-admin { display: grid; grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(145px, .7fr)) auto; gap: 12px; align-items: end; padding: 15px; margin-bottom: 14px; border: 1px solid #b8d8f8; border-radius: 14px; background: #f5f9ff; }
+.load-registration-window-admin > div { display: flex; align-items: center; gap: 10px; color: #1759a8; }
+.load-registration-window-admin > div span, .load-registration-window-admin label { display: grid; gap: 4px; }
+.load-registration-window-admin small { color: var(--muted); }
+.load-registration-window-admin input, .load-registration-window-admin select { min-height: 42px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: var(--surface); color: var(--text); }
+.availability-shift-tabs { margin: 12px 0; }
 .load-registration-intro { display: flex; align-items: center; gap: 12px; }
 .load-registration-intro > span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; color: #087f6b; background: #dff5ef; }
 .load-registration-intro div { display: grid; gap: 4px; }
@@ -4529,13 +4535,17 @@ td {
 .load-form-grid { display: grid; grid-template-columns: 1fr 180px 2fr; gap: 12px; }
 .load-form-grid label { display: grid; gap: 6px; }
 .load-form-grid label > span { font-weight: 700; font-size: .82rem; color: var(--muted); }
+.statutory-load-summary { display: grid; gap: 4px; min-height: 76px; padding: 11px 13px; border: 1px solid color-mix(in srgb, var(--role-color) 28%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--role-color) 6%, var(--surface)); }
+.statutory-load-summary > span { color: var(--muted); font-size: .76rem; font-weight: 750; }
+.statutory-load-summary > strong { color: var(--ink); font-size: 1.08rem; }
+.statutory-load-summary > small { color: var(--muted); line-height: 1.35; }
 .load-preferences, .availability-editor { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 .load-preferences > div:first-child, .availability-editor > div:first-child { display: grid; gap: 3px; margin-bottom: 10px; }
 .load-preferences small, .availability-editor small { color: var(--muted); }
 .choice-chips { display: flex; gap: 8px; }
 .choice-chips button { padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); cursor: pointer; }
 .choice-chips button.selected { color: #fff; border-color: #2864dc; background: #2864dc; }
-.availability-grid { display: grid; grid-template-columns: 80px repeat(6, minmax(64px, 1fr)); gap: 6px; align-items: stretch; }
+.availability-grid { display: grid; grid-template-columns: 80px repeat(5, minmax(64px, 1fr)); gap: 6px; align-items: stretch; }
 .availability-grid > b, .availability-grid > strong { display: grid; place-items: center; color: var(--muted); font-size: .76rem; min-height: 34px; }
 .availability-grid button { min-height: 34px; border: 1px solid #cfe4df; border-radius: 8px; background: #f2fbf8; color: #087f6b; font-size: .75rem; cursor: pointer; }
 .availability-grid button.blocked { border-color: #f0b3b0; color: #bd2b25; background: #fff3f2; font-weight: 750; }
@@ -4547,6 +4557,25 @@ td {
 .plain-language-help.compact { padding: 10px 12px; margin-bottom: 12px; }
 .plain-language-help strong { color: var(--ink); }
 .plain-language-help span { color: var(--muted); font-size: .8rem; }
+.workload-policy-banner { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; padding: 14px; border: 1px solid color-mix(in srgb, var(--role-color) 30%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--role-color) 5%, var(--surface)); }
+.workload-policy-banner > div { display: grid; gap: 3px; padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+.workload-policy-banner strong { color: var(--ink); font-size: 1.05rem; }
+.workload-policy-banner span, .workload-policy-banner small { color: var(--muted); font-size: .76rem; }
+.workload-policy-banner > small { grid-column: 1 / -1; }
+.workload-policy-banner > button { grid-column: 1 / -1; justify-self: start; }
+.workload-policy-editor { display: grid; grid-template-columns: minmax(260px, 1.5fr) repeat(3, minmax(150px, .7fr)) auto; gap: 12px; align-items: end; margin: -2px 0 14px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.workload-policy-editor > div { display: grid; gap: 4px; align-self: center; }
+.workload-policy-editor > div small { color: var(--muted); line-height: 1.4; }
+.workload-policy-editor label { display: grid; gap: 6px; }
+.workload-policy-editor label > span { color: var(--muted); font-size: .78rem; font-weight: 750; }
+.workload-adjustment-history { margin-top: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); overflow: hidden; }
+.workload-adjustment-history > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 15px; cursor: pointer; }
+.workload-adjustment-history > summary span { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; }
+.workload-adjustment-history > summary b { color: var(--muted); font-size: .8rem; }
+.workload-adjustment-history .async-state, .workload-adjustment-history .curriculum-history-list { margin: 0 14px 14px; }
+.workload-adjustment-history .curriculum-history-list > div { grid-template-columns: minmax(0, 1fr) auto auto; }
+.teacher-load-table tr.workload-over-limit > td { background: color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+.teacher-load-table tr.workload-over-limit > td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
 .wizard-footer { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
 .wizard-footer > span { margin-right: auto; color: var(--muted); font-size: .82rem; font-weight: 650; }
 .timetable-simple-flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 16px; }
@@ -4607,9 +4636,9 @@ td {
 .class-preview-issues span { display: grid; gap: 2px; }
 .class-preview-issues strong { color: #8a3800; font-size: .8rem; }
 .class-preview-issues small { color: #9a5a2a; line-height: 1.4; }
-.compact-timetable-grid { display: grid; grid-template-columns: 64px repeat(6, minmax(120px, 1fr)); min-width: 800px; overflow-x: auto; }
+.compact-timetable-grid { display: grid; grid-template-columns: 64px repeat(5, minmax(120px, 1fr)); min-width: 680px; overflow-x: auto; }
 .compact-timetable-grid > div { min-height: 54px; padding: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.compact-timetable-grid > div:nth-child(7n) { border-right: 0; }
+.compact-timetable-grid > div:nth-child(6n) { border-right: 0; }
 .compact-timetable-grid .grid-corner, .compact-timetable-grid .grid-day, .compact-timetable-grid .grid-period { display: grid; place-items: center; min-height: 42px; color: #526986; background: var(--surface-subtle, #f6f8fc); font-size: .75rem; font-weight: 800; }
 .compact-timetable-grid .grid-lesson { display: grid; place-items: center; align-content: center; gap: 3px; color: #9aa6b6; text-align: center; font-size: .75rem; }
 .compact-timetable-grid .grid-lesson.filled { place-items: start; align-content: center; color: #2864dc; background: #f6f9ff; }
@@ -4627,6 +4656,7 @@ td {
 [data-theme='dark'] .load-registration-overview { background: #102d29; border-color: #24564d; }
 [data-theme='dark'] .load-registration-window.is-open { background: #102d29; border-color: #24564d; }
 [data-theme='dark'] .load-registration-window.is-closed { background: #352811; border-color: #725b2c; }
+[data-theme='dark'] .load-registration-window-admin { background: #10243b; border-color: #28517b; }
 [data-theme='dark'] .assignment-applied-confirmation, [data-theme='dark'] .live-btn.success { background: #102d29; border-color: #24564d; color: #72d8c5; }
 [data-theme='dark'] .load-registration-intro small { color: #9dbbb5; }
 [data-theme='dark'] .availability-grid button { background: #102d29; border-color: #24564d; color: #72d8c5; }
@@ -4661,11 +4691,15 @@ td {
   .curriculum-grade-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .curriculum-copy-panel > div { grid-template-columns: 1fr 1fr; }
   .semester-focus, .load-registration-overview { align-items: stretch; flex-direction: column; }
+  .load-registration-window-admin { grid-template-columns: 1fr; }
   .semester-focus select { min-width: 0; width: 100%; }
   .requirement-single-column article { grid-template-columns: 1fr 1fr; }
   .requirement-single-column article > div:nth-last-child(-n + 3) { border-bottom: 1px solid var(--line); }
   .requirement-single-column article > div:nth-last-child(-n + 2) { border-bottom: 0; }
-  .availability-grid { overflow-x: auto; grid-template-columns: 70px repeat(6, 70px); }
+  .availability-grid { overflow-x: auto; grid-template-columns: 70px repeat(5, 70px); }
+  .workload-policy-banner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .workload-policy-editor { grid-template-columns: 1fr 1fr; }
+  .workload-policy-editor > div { grid-column: 1 / -1; }
   .auto-timetable-toolbar { grid-template-columns: 1fr; }
   .assignment-preview-guide { grid-template-columns: 1fr; }
   .timetable-simple-flow { grid-template-columns: 1fr; }
@@ -4901,3 +4935,33 @@ td {
   .planning-stepper-buttons { grid-template-columns: 1fr; }
   .workflow-help-drawer > ol { padding-right: 14px; }
 }
+.rebuild-schedule-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+.rebuild-schedule-option.active { border-color: #f59e0b; background: color-mix(in srgb, #f59e0b 10%, var(--surface)); }
+.rebuild-schedule-option input { margin-top: 3px; }
+.rebuild-schedule-option span { display: grid; gap: 3px; }
+.rebuild-schedule-option small { color: var(--muted); line-height: 1.45; }
+.compare-schedule-option { display: flex; align-items: flex-start; gap: 12px; margin: 10px 0 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-soft); cursor: pointer; }
+.compare-schedule-option.active { border-color: var(--blue); background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
+.compare-schedule-option input { margin-top: 3px; }
+.compare-schedule-option span { display: grid; gap: 3px; }
+.compare-schedule-option small { color: var(--muted); line-height: 1.45; }
+.schedule-option-comparison { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.schedule-option-comparison button { display: grid; gap: 6px; padding: 15px; color: var(--ink); text-align: left; font: inherit; border: 1px solid var(--line); border-radius: 15px; background: var(--panel); cursor: pointer; }
+.schedule-option-comparison button.active { border-color: var(--blue); box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent); }
+.schedule-option-comparison button > span { color: var(--blue); font-size: 12px; font-weight: 700; text-transform: uppercase; }
+.schedule-option-comparison button > small { color: var(--muted); line-height: 1.45; }
+.schedule-option-comparison button > b { color: var(--green); font-size: 13px; }
+@media (max-width: 900px) { .schedule-option-comparison { grid-template-columns: 1fr; } }
+.schedule-global-issues { display: flex; align-items: flex-start; gap: 12px; margin: 12px 0; padding: 14px 16px; color: #9a3412; border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--line)); border-radius: 14px; background: color-mix(in srgb, #f59e0b 10%, var(--surface)); }
+.schedule-global-issues > div { display: grid; gap: 5px; }
+.schedule-global-issues span { font-size: 13px; line-height: 1.45; }

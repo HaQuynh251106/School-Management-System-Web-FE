@@ -10,8 +10,10 @@ const ChatLive = lazy(() => import('./live/ChatLive').then((module) => ({ defaul
 const AdminUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminUsersLive })));
 const AdminOperationsUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminOperationsUsersLive })));
 const AdminAccountLifecycleLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAccountLifecycleLive })));
-const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
+const AdminFinanceLive = lazy(() => import('./live/finance/AccountantFinanceLive').then((module) => ({ default: module.AdminFinanceLive })));
 const AdminNotificationsLive = lazy(() => import('./live/AdminNotificationsLive').then((module) => ({ default: module.AdminNotificationsLive })));
+const AdminOperationsLive = lazy(() => import('./live/AdminOperationsLive').then((module) => ({ default: module.AdminOperationsLive })));
+const AdminSecurityLive = lazy(() => import('./live/AdminSecurityLive').then((module) => ({ default: module.AdminSecurityLive })));
 const AdminAcademicLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AdminAcademicLive })));
 const AcademicYearClosureLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AcademicYearClosureLive })));
 const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
@@ -39,7 +41,7 @@ const ParentReportCardLive = lazy(() => import('./live/ReportCardsLive').then((m
 const StudentReportCardLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.StudentReportCardLive })));
 const TeacherReportCardsLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.TeacherReportCardsLive })));
 const AlumniLive = lazy(() => import('./live/AlumniLive').then((module) => ({ default: module.AlumniLive })));
-const TeacherLoadRegistrationLive = lazy(() => import('./live/WorkloadPlanningLive').then((module) => ({ default: module.TeacherLoadRegistrationLive })));
+const TeacherScheduleRestrictionLive = lazy(() => import('./live/ScheduleRestrictionLive').then((module) => ({ default: module.TeacherScheduleRestrictionLive })));
 const TeachingOperationsLive = lazy(() => import('./live/TeachingOperationsLive').then((module) => ({ default: module.TeachingOperationsLive })));
 const StudentSupportLive = lazy(() => import('./live/StudentSupportLive').then((module) => ({ default: module.StudentSupportLive })));
 
@@ -60,7 +62,7 @@ const WORKSPACE_STEPS: Record<string, string[]> = {
   E2: ['Tiếp nhận đăng ký tiết dạy', 'Phân công đúng chuyên môn', 'Tạo và duyệt thời khóa biểu'],
   E3: ['Tạo kỳ thi', 'Xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
   E4: ['Kiểm tra dữ liệu hai học kỳ', 'Duyệt kết quả lên lớp', 'Khóa năm và tạo năm kế tiếp'],
-  E5: ['Chọn niên khóa', 'Chọn lớp đã hoàn thành', 'Mở hồ sơ lịch sử khi cần'],
+  E5: ['Chọn niên khóa cần tra cứu', 'Tìm và lọc học sinh toàn khóa', 'Mở hồ sơ học tập lớp 10–12'],
   E6: ['Nhận học bạ GVCN đã gửi', 'Kiểm tra đủ 12 môn và hạnh kiểm', 'Duyệt, khóa rồi phát hành'],
   F1: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
 };
@@ -97,6 +99,8 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
     case 'A9': return <AdminNotificationsLive />;
+    case 'A10': return <AdminOperationsLive />;
+    case 'A11': return <AdminSecurityLive />;
     // ---- Giáo vụ ----
     case 'E1': return <AdminAcademicLive />;
     case 'E2': return <AdminTimetableLive />;
@@ -108,7 +112,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'F1': return <AdminFinanceLive />;
     // ---- Teacher ----
     case 'B1': return <TeacherClassesLive />;
-    case 'B14': return <TeacherLoadRegistrationLive />;
+    case 'B14': return <TeacherScheduleRestrictionLive />;
     case 'B15': return <TeachingOperationsLive />;
     case 'B16': return <StudentSupportLive />;
     case 'B2': return <MyTimetableLive />;

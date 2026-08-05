@@ -4,7 +4,7 @@ import {
   LogIn, Moon, RefreshCcw, School, ShieldCheck, Sparkles, Sun, UserRound, UserRoundCog, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../../api/auth';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 import { useTheme } from '../../api/theme';
 import type { CSSProperties } from 'react';
 
@@ -37,6 +37,8 @@ export function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true); setError(null); setMessage(null);
@@ -45,7 +47,19 @@ export function LoginPage() {
     finally { setBusy(false); }
   };
 
-  const submitLogin = (u = username, p = password) => run(() => login(u, p));
+  const submitLogin = (u = username, p = password) => run(async () => {
+    try {
+      await login(u, p, twoFactorCode || undefined);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'TWO_FACTOR_REQUIRED') {
+        setTwoFactorRequired(true);
+        setError(null);
+        window.requestAnimationFrame(() => document.getElementById('two-factor-code')?.focus());
+        return;
+      }
+      throw e;
+    }
+  });
   const submitForgot = () => run(async () => {
     const value = identifier.trim();
     await api.post('/auth/forgot-password', value.includes('@') ? { email: value } : { username: value });
@@ -81,7 +95,7 @@ export function LoginPage() {
           <picture>
             <source srcSet="/images/school-login-campus.avif" type="image/avif" />
             <source srcSet="/images/school-login-campus.webp" type="image/webp" />
-            <img src="/images/school-login-campus.webp" width="1003" height="1568" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" fetchPriority="high" />
+            <img src="/images/school-login-campus.webp" width="1003" height="1568" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" />
           </picture>
           <div className="login-visual-shade" />
           <div className="login-visual-content">
@@ -120,9 +134,13 @@ export function LoginPage() {
                   <label id="login-password-label" htmlFor="login-password">Mật khẩu</label>
                   <div className="login-input-wrap"><LockKeyhole size={18} /><input id="login-password" aria-labelledby="login-password-label" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Nhập mật khẩu" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
                 </div>
+                {twoFactorRequired && <label className="login-field">
+                  <span>Mã xác thực hai lớp</span>
+                  <div className="login-input-wrap"><ShieldCheck size={18} /><input id="two-factor-code" value={twoFactorCode} onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" pattern="[0-9]{6}" autoComplete="one-time-code" placeholder="Nhập 6 chữ số" required /></div>
+                </label>}
                 <div className="login-form-actions"><span>Thông tin đăng nhập được bảo mật</span><button className="link-button" type="button" onClick={() => { setView('forgot'); setError(null); setMessage(null); }}>Quên mật khẩu?</button></div>
                 <Feedback error={error} message={message} />
-                <button className="login-submit" type="submit" disabled={busy}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>
+                <button className="login-submit" type="submit" disabled={busy || (twoFactorRequired && twoFactorCode.length !== 6)}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : twoFactorRequired ? 'Xác thực và đăng nhập' : 'Đăng nhập'}</button>
               </form>
               {demos.length > 0 && <><div className="login-divider"><span>Tài khoản dùng thử</span></div>
               <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div></>}

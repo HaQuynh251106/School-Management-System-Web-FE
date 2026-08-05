@@ -12,6 +12,7 @@ export const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán',
   FINANCE_REMINDER: 'Nhắc hạn khoản thu', FINANCE_CLASS_COMPLETE: 'Lớp hoàn thành tài chính',
   FINANCE_TASK_REMINDER: 'Nhiệm vụ tài chính lớp',
+  TIMETABLE: 'Thời khóa biểu',
   ANNOUNCEMENT: 'Thông báo chung',
 };
 

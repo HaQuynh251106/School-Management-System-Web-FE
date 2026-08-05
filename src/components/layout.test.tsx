@@ -122,7 +122,7 @@ describe('SidebarMenu giáo viên theo phạm vi được giao', () => {
     expect(screen.getByRole('button', { name: /^Giảng dạy/i })).toBeVisible();
     expect(screen.getByRole('button', { name: /^Khảo thí & báo cáo/i })).toBeVisible();
     expect(screen.getByRole('button', { name: /^Trao đổi & cá nhân/i })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Đăng ký tải dạy' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Đề nghị hạn chế lịch dạy' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Sổ đầu bài & đổi lịch' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Hỗ trợ học sinh' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Trao đổi' })).toBeVisible();

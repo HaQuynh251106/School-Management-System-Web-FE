@@ -493,9 +493,10 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
   const markRead = async (id: string) => {
     try {
       await api.post(`/notifications/${id}/read`);
+      const readAt = new Date().toISOString();
       inbox.setData((current) => current ? {
         ...current,
-        items: current.items.map((item) => item.id === id ? { ...item, read: true } : item),
+        items: current.items.map((item) => item.id === id ? { ...item, read: true, readAt } : item),
         summary: { ...current.summary, unread: Math.max(0, (current.summary.unread || 0) - 1) },
       } : current);
       emitNotificationInboxChanged();
@@ -507,7 +508,7 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
       await api.post(`/notifications/${id}/unread`);
       inbox.setData((current) => current ? {
         ...current,
-        items: current.items.map((item) => item.id === id ? { ...item, read: false } : item),
+        items: current.items.map((item) => item.id === id ? { ...item, read: false, readAt: null } : item),
         summary: { ...current.summary, unread: (current.summary.unread || 0) + 1 },
       } : current);
       emitNotificationInboxChanged();
@@ -517,9 +518,10 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
   const markAll = async () => {
     try {
       await api.post('/notifications/read-all');
+      const readAt = new Date().toISOString();
       inbox.setData((current) => current ? {
         ...current,
-        items: current.items.map((item) => ({ ...item, read: true })),
+        items: current.items.map((item) => ({ ...item, read: true, readAt })),
         summary: { ...current.summary, unread: 0 },
       } : current);
       emitNotificationInboxChanged();
@@ -532,6 +534,12 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
       await api.put('/notification-preferences', { channel: preference.channel, enabled: !preference.enabled });
       toast.show('ok', 'Đã cập nhật kênh nhận thông báo'); preferences.reload();
     } catch (e: any) { toast.show('err', e.message); }
+  };
+  const openNotification = async (notification: Notification) => {
+    if (!notification.actionUrl || !/^#\/[a-z0-9-]+(?:\/|\?)/i.test(notification.actionUrl)) return;
+    if (!notification.read) await markRead(notification.id);
+    window.history.pushState(null, '', notification.actionUrl);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
   };
 
   return (
@@ -588,7 +596,7 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
               <div className="notification-item-content">
                 <header><div><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[notification.type] || notification.type}</Badge>{priority !== 'NORMAL' && <Badge tone={priority === 'URGENT' ? 'red' : 'orange'}>{priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge>}</div><time>{fmtDateTime(notification.createdAt)}</time></header>
                 <strong>{notification.title}</strong><p>{notification.body}</p>
-                <footer><span>{notification.refType === 'ANNOUNCEMENT' ? 'Từ Ban quản trị nhà trường' : 'Cập nhật tự động từ hệ thống'}</span><button type="button" onClick={() => notification.read ? markUnread(notification.id) : markRead(notification.id)}>{notification.read ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}</button></footer>
+                <footer><span>{notification.refType === 'ANNOUNCEMENT' ? 'Từ Ban quản trị nhà trường' : 'Cập nhật tự động từ hệ thống'}</span><div className="notification-item-actions">{notification.actionUrl && <button className="notification-open-action" type="button" onClick={() => openNotification(notification)}><CalendarClock size={14} /> Mở thời khóa biểu</button>}<button type="button" onClick={() => notification.read ? markUnread(notification.id) : markRead(notification.id)}>{notification.read ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}</button></div></footer>
               </div>
             </article>;
           })}</div>}
