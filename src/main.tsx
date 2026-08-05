@@ -5,6 +5,9 @@ import '@fontsource/be-vietnam-pro/500.css';
 import '@fontsource/be-vietnam-pro/600.css';
 import '@fontsource/be-vietnam-pro/700.css';
 import App from './app/App';
+import GlobalErrorDialog from './app/GlobalErrorDialog';
+import GlobalSuccessToast from './app/GlobalSuccessToast';
+import { ConfirmProvider } from './app/ConfirmDialog';
 import { AuthProvider } from './api/auth';
 import { ThemeProvider } from './api/theme';
 import './styles/app.css';
@@ -16,7 +19,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 <React.StrictMode>
     <ThemeProvider>
       <AuthProvider>
-        <App />
+        <ConfirmProvider>
+          <GlobalErrorDialog />
+          <GlobalSuccessToast />
+          <App />
+        </ConfirmProvider>
       </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>,

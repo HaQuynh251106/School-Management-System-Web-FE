@@ -191,7 +191,7 @@ body {
 
 .topbar {
   position: sticky;
-  top: 12px;
+  top: 0;
   z-index: 25;
   align-items: center;
   min-height: 76px;
@@ -478,7 +478,7 @@ body {
 .app-shell .live-table tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-soft) 65%, var(--surface)); }
 .app-shell .live-table tbody tr:hover td { background: color-mix(in srgb, var(--portal-soft) 72%, var(--surface)); }
 .app-shell .live-table td strong { color: var(--text); }
-.app-shell .live-table td small { color: var(--text-soft); }
+.app-shell .live-table td small { display: block; margin-top: 4px; color: var(--text-soft); line-height: 1.45; }
 
 .notification-table { min-width: 980px !important; }
 .notification-table td:nth-child(3) { min-width: 300px; text-align: left !important; }
@@ -609,6 +609,11 @@ body {
 
 [data-theme="dark"] .tab-list button { color: var(--text-soft); }
 [data-theme="dark"] .tab-list button:is(:hover, .active) { background: color-mix(in srgb, var(--portal-accent) 16%, var(--surface)); color: #8cc8ff; }
+[data-theme="dark"] .identity-role-tabs button { border-color: var(--border); background: var(--surface-soft); color: var(--text-soft); }
+[data-theme="dark"] .identity-role-tabs button:is(:hover, .active) { background: color-mix(in srgb, var(--portal-accent) 16%, var(--surface)); color: #8cc8ff; }
+[data-theme="dark"] .identity-permission-groups :is(section > strong, label span),
+[data-theme="dark"] .audit-summary,
+[data-theme="dark"] .audit-summary span b { color: var(--text); }
 [data-theme="dark"] .bar-track, [data-theme="dark"] .column-item > div { background: #22354c; }
 [data-theme="dark"] .login-error { border-color: #6b3035; background: #371f27; }
 [data-theme="dark"] .login-success { border-color: #245c4c; background: #17382f; }

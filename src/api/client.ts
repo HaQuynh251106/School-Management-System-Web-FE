@@ -1,3 +1,5 @@
+import { showAppError } from './errorEvents';
+
 // API client gọi backend SSE (Spring Boot, mặc định http://localhost:4000).
 // Token chỉ tồn tại trong bộ nhớ của tab hiện tại để tránh bị đọc lại từ localStorage khi có XSS.
 
@@ -7,6 +9,7 @@ const BASE: string =
 let accessToken: string | null = null;
 let refreshToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
+let authInvalidatedHandler: (() => void) | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -30,6 +33,10 @@ export function hasToken() {
 
 export function getRefreshToken() {
   return refreshToken;
+}
+
+export function setAuthInvalidatedHandler(handler: (() => void) | null) {
+  authInvalidatedHandler = handler;
 }
 
 async function performRefresh(): Promise<boolean> {
@@ -58,6 +65,17 @@ function tryRefresh(): Promise<boolean> {
   return refreshInFlight;
 }
 
+async function fetchOrThrow(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw error;
+    const message = 'Không thể kết nối tới máy chủ. Hãy kiểm tra backend và kết nối mạng rồi thử lại.';
+    showAppError(message);
+    throw new ApiError(0, message);
+  }
+}
+
 async function parseResponse(res: Response): Promise<unknown> {
   if (res.status === 204) return null;
   const text = await res.text();
@@ -67,20 +85,28 @@ async function parseResponse(res: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
-    throw new ApiError(res.status, 'Máy chủ trả về dữ liệu JSON không hợp lệ');
+    const message = 'Máy chủ trả về dữ liệu JSON không hợp lệ';
+    showAppError(message);
+    throw new ApiError(res.status, message);
   }
 }
 
-async function request<T>(path: string, opts: RequestInit = {}, retry = true): Promise<T> {
-  const headers: Record<string, string> = { ...((opts.headers as Record<string, string>) || {}) };
-  if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+export type ApiRequestOptions = RequestInit & {
+  suppressErrorStatuses?: number[];
+};
+
+async function request<T>(path: string, opts: ApiRequestOptions = {}, retry = true): Promise<T> {
+  const { suppressErrorStatuses = [], ...requestInit } = opts;
+  const headers: Record<string, string> = { ...((requestInit.headers as Record<string, string>) || {}) };
+  if (!(requestInit.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
 
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  const res = await fetchOrThrow(`${BASE}${path}`, { ...requestInit, headers });
 
   if (res.status === 401 && retry && !path.startsWith('/auth/')) {
     if (await tryRefresh()) return request<T>(path, opts, false);
     setTokens(null, null);
+    authInvalidatedHandler?.();
   }
 
   const data = await parseResponse(res);
@@ -88,6 +114,7 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
     const message = typeof data === 'object' && data !== null && 'error' in data
       ? String((data as { error: unknown }).error)
       : res.statusText;
+    if (!suppressErrorStatuses.includes(res.status)) showAppError(message);
     throw new ApiError(res.status, message);
   }
   return data as T;
@@ -96,12 +123,14 @@ async function request<T>(path: string, opts: RequestInit = {}, retry = true): P
 async function download(path: string, retry = true): Promise<{ blob: Blob; filename?: string }> {
   const headers: Record<string, string> = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const response = await fetch(`${BASE}${path}`, { headers });
+  const response = await fetchOrThrow(`${BASE}${path}`, { headers });
   if (response.status === 401 && retry && await tryRefresh()) return download(path, false);
   if (!response.ok) {
     const data = await parseResponse(response);
-    throw new ApiError(response.status, typeof data === 'object' && data && 'error' in data
-      ? String((data as { error: unknown }).error) : response.statusText);
+    const message = typeof data === 'object' && data && 'error' in data
+      ? String((data as { error: unknown }).error) : response.statusText;
+    showAppError(message);
+    throw new ApiError(response.status, message);
   }
   const disposition = response.headers.get('content-disposition') || '';
   const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
@@ -111,12 +140,16 @@ async function download(path: string, retry = true): Promise<{ blob: Blob; filen
 
 export const api = {
   base: BASE,
-  get: <T = any>(path: string) => request<T>(path),
+  get: <T = any>(path: string, options?: ApiRequestOptions) => request<T>(path, options),
   post: <T = any>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body ?? {}) }),
   put: <T = any>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body ?? {}) }),
-  del: <T = any>(path: string) => request<T>(path, { method: 'DELETE' }),
+  del: <T = any>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'DELETE',
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
   upload: <T = any>(path: string, file: File) => {
     const data = new FormData();
     data.append('file', file);

@@ -21,10 +21,12 @@ export function SidebarMenu({
   role,
   activePage,
   onSelect,
+  badges = {},
 }: {
   role: RoleDefinition;
   activePage: PageId;
   onSelect: (page: PageId) => void;
+  badges?: Record<string, number>;
 }) {
   return (
     <nav className="menu-nav" aria-label="Menu chức năng">
@@ -33,6 +35,7 @@ export function SidebarMenu({
         <span>
           <strong>Tổng quan</strong>
         </span>
+        <i className="menu-notification-spacer" />
         <ChevronRight size={16} />
       </button>
 
@@ -47,6 +50,9 @@ export function SidebarMenu({
           <span>
             <strong>{item.title}</strong>
           </span>
+          {badges[item.code]
+            ? <b className="menu-notification-badge" aria-label={`${badges[item.code]} thông báo mới`}>{badges[item.code] > 99 ? '99+' : badges[item.code]}</b>
+            : <i className="menu-notification-spacer" />}
           <ChevronRight size={16} />
         </button>
       ))}

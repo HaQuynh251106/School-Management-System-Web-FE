@@ -66,7 +66,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A1', title: 'Người dùng & phân quyền', phase: 'GĐ1', priority: 1, summary: 'Quản lý tài khoản, phân quyền và bảo mật.', Icon: Users },
     { code: 'A2', title: 'Cơ cấu đào tạo', phase: 'GĐ1', priority: 1, summary: 'Năm học, học kỳ, khối, lớp, môn, GVCN, phân lớp.', Icon: School },
     { code: 'A3', title: 'Xếp thời khóa biểu', phase: 'GĐ1', priority: 2, summary: 'Kiểm tra xung đột GV, phòng, lớp và ngày nghỉ.', Icon: CalendarDays },
-    { code: 'A4', title: 'Cấu hình khảo thí', phase: 'GĐ1', priority: 2, summary: 'Loại điểm, hệ số môn học, quy tắc trung bình.', Icon: Settings },
+    { code: 'A4', title: 'Khảo thí & lịch thi', phase: 'GĐ1', priority: 2, summary: 'Lập lịch thi, phân phòng, coi thi và cấu hình loại điểm.', Icon: Settings },
     { code: 'A5', title: 'Khóa ngoại khóa', phase: 'GĐ2', priority: 3, summary: 'Tạo, mở đăng ký, theo dõi sĩ số và doanh thu.', Icon: Sparkles },
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A7', title: 'Tài chính nội bộ', phase: 'GĐ2', priority: 1, summary: 'Đợt thu, hóa đơn, công nợ, VNPAY/MoMo.', Icon: CircleDollarSign },
@@ -81,6 +81,8 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B5', title: 'Bài tập', phase: 'GĐ2', priority: 2, summary: 'Giao bài, đính kèm tệp và chấm bài.', Icon: BookOpenCheck },
     { code: 'B6', title: 'Trao đổi', phase: 'GĐ2', priority: 2, summary: 'Nhắn tin với học sinh và phụ huynh.', Icon: MessageSquareText },
     { code: 'B7', title: 'Thông báo tự động', phase: 'GĐ2', priority: 1, summary: 'Theo dõi cơ chế báo điểm, điểm danh và trao đổi tình hình lớp.', Icon: Bell },
+    { code: 'B8', title: 'Kế hoạch giáo dục năm học', phase: 'GĐ2', priority: 1, summary: 'Xem và quản lý kế hoạch môn học, tiến độ và lịch kiểm tra dự kiến.', Icon: ClipboardCheck },
+    { code: 'B9', title: 'Lịch coi thi', phase: 'GĐ2', priority: 1, summary: 'Xem ngày, giờ, phòng và nhiệm vụ coi thi đã được phát hành.', Icon: CalendarDays },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },

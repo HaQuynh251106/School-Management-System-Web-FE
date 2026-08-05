@@ -3,11 +3,14 @@ import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, Check
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment } from '../../api/types';
+import type { AcademicTrainingPlan, AcademicYear, Announcement, AnnualSubjectSummary, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeachingAssignment } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, PaginatedData } from './common';
 import { Modal } from './Modal';
 import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
+import { YearSummaryPreviewWorkspace } from './YearSummaryPreviewWorkspace';
+import { YearReviewWorkspace } from './YearReviewWorkspace';
+import { useConfirm } from '../../app/ConfirmDialog';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -15,8 +18,9 @@ const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
 /* ===== B1 — Lớp được phân công ===== */
 export function TeacherClassesLive() {
   const { user } = useAuth();
-  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teaching-assignments');
+  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teacher-class-subjects');
   const classesApi = useApi<SchoolClass[]>('/classes');
+  const trainingPlans = useApi<AcademicTrainingPlan[]>('/academic/training-plans');
   const [classId, setClassId] = useState('');
   const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
@@ -34,8 +38,8 @@ export function TeacherClassesLive() {
     const g: Record<string, { classId: string; subjects: Set<string>; count: number }> = {};
     (teachingAssignments.data || []).forEach((assignment) => {
       g[assignment.classId] = g[assignment.classId] || { classId: assignment.classId, subjects: new Set(), count: 0 };
-      g[assignment.classId].subjects.add(assignment.subjectName);
-      g[assignment.classId].count += assignment.weeklyPeriods;
+      g[assignment.classId].subjects.add(assignment.subjectName || assignment.subjectId);
+      g[assignment.classId].count += assignment.weeklyPeriods ?? 1;
     });
     (classesApi.data || [])
       .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
@@ -50,10 +54,24 @@ export function TeacherClassesLive() {
     [classesApi.data, user?.id],
   );
   const selectedClass = classId ? classMap[classId] : undefined;
+  const selectedTrainingPlan = useMemo(() => (trainingPlans.data || [])
+    .filter((plan) => plan.academicYearId === selectedClass?.academicYearId
+      && plan.gradeLevel === selectedClass?.gradeLevel
+      && ['PUBLISHED', 'LOCKED'].includes(plan.status))
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0],
+  [selectedClass?.academicYearId, selectedClass?.gradeLevel, trainingPlans.data]);
+  const trainingPlanSummary = useApi<AnnualSubjectSummary[]>(selectedTrainingPlan
+    ? `/academic/training-plans/${selectedTrainingPlan.id}/annual-summary` : null);
+  const assignedSubjectIds = useMemo(() => new Set((teachingAssignments.data || [])
+    .filter((assignment) => assignment.classId === classId)
+    .map((assignment) => assignment.subjectId)), [classId, teachingAssignments.data]);
   const selectedIsHomeroom = selectedClass?.homeroomTeacherId === user?.id;
   const profileClass = profileTarget ? classMap[profileTarget.classId] : undefined;
 
   return (
+    <div style={{ display: 'grid', gap: 16 }}>
+    <YearSummaryPreviewWorkspace teacherId={user?.id} />
+    <YearReviewWorkspace />
     <Section title="Lớp giảng dạy và chủ nhiệm" subtitle="Theo dõi lớp phụ trách, danh sách học sinh và hồ sơ lớp chủ nhiệm" wide>
       {homeroomClasses.length > 0 && (
         <div className="homeroom-overview">
@@ -124,6 +142,18 @@ export function TeacherClassesLive() {
           </Async>
         </div>
       )}
+      {classId && <div className="teacher-published-plan">
+        <div className="teacher-published-plan-head">
+          <div><span>Kế hoạch giáo dục đã công bố</span><strong>{selectedTrainingPlan?.name || `Lớp ${selectedClass?.code || classId}`}</strong></div>
+          {selectedTrainingPlan && <StatusPill value={selectedTrainingPlan.status} />}
+        </div>
+        {!selectedTrainingPlan
+          ? <div className="empty-state"><strong>Khối này chưa có kế hoạch được công bố</strong></div>
+          : <Async state={trainingPlanSummary} allowEmpty empty="Kế hoạch chưa có môn học">{(rows) => {
+            const visibleRows = rows.filter((row) => assignedSubjectIds.has(row.subjectId));
+            return visibleRows.length ? <div className="teacher-plan-subject-grid">{visibleRows.map((row) => <article key={row.subjectId}><div><strong>{row.subjectName}</strong><small>Phiên bản {selectedTrainingPlan.versionNumber}</small></div><span>HK1 <b>{row.semester1Periods}</b></span><span>HK2 <b>{row.semester2Periods}</b></span><span>Cả năm <b>{row.annualPeriods} tiết</b></span></article>)}</div> : <div className="empty-state"><strong>Kế hoạch chưa có môn thầy cô được phân công ở lớp này</strong></div>;
+          }}</Async>}
+      </div>}
       {profileTarget && (
         <Modal
           title="Hồ sơ học sinh"
@@ -136,6 +166,7 @@ export function TeacherClassesLive() {
         </Modal>
       )}
     </Section>
+    </div>
   );
 }
 
@@ -222,6 +253,7 @@ function homeroomGenderLabel(value?: string | null) {
 
 /* ===== B3 — Sổ điểm danh ===== */
 export function TeacherAttendanceLive() {
+  const confirmAction = useConfirm();
   const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
   const [slotId, setSlotId] = useState('');
@@ -275,17 +307,17 @@ export function TeacherAttendanceLive() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeave);
   }, [dirty]);
 
-  const confirmDiscard = () => !dirty || window.confirm('Các thay đổi điểm danh chưa được lưu. Bạn có muốn bỏ thay đổi?');
+  const confirmDiscard = async () => !dirty || confirmAction({ title: 'Bỏ thay đổi điểm danh?', message: 'Các thay đổi điểm danh chưa được lưu sẽ bị mất.', confirmLabel: 'Bỏ thay đổi', tone: 'warning' });
 
-  const changeSlot = (nextSlotId: string) => {
-    if (!confirmDiscard()) return;
+  const changeSlot = async (nextSlotId: string) => {
+    if (!(await confirmDiscard())) return;
     setSlotId(nextSlotId);
     setSearch('');
     setStatusFilter('ALL');
   };
 
-  const changeDate = (nextDate: string) => {
-    if (!confirmDiscard()) return;
+  const changeDate = async (nextDate: string) => {
+    if (!(await confirmDiscard())) return;
     setDate(nextDate);
   };
 
@@ -484,53 +516,67 @@ function attendanceStatusTone(status: string) {
 /* ===== B4 — Bảng điểm ===== */
 export function TeacherGradesLive() {
   const { user } = useAuth();
-  const slots = useApi<TimetableSlot[]>('/me/timetable');
+  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teacher-class-subjects');
   const classes = useApi<SchoolClass[]>('/classes');
+  const years = useApi<AcademicYear[]>('/academic-years');
   const semesters = useApi<Semester[]>('/semesters');
   const cats = useApi<ExamCategory[]>('/exam-categories');
   const toast = useToast();
-
-  const classOpts = useMemo(() => {
-    const m: Record<string, true> = {};
-    const mainSubject = user?.mainSubject?.trim().toLocaleLowerCase('vi');
-    (slots.data || [])
-      .filter((slot) => Boolean(mainSubject) && (
-        slot.subjectId.trim().toLocaleLowerCase('vi') === mainSubject
-        || slot.subjectName.trim().toLocaleLowerCase('vi') === mainSubject)
-      )
-      .forEach((slot) => (m[slot.classId] = true));
-    (classes.data || [])
-      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
-      .forEach((schoolClass) => (m[schoolClass.id] = true));
-    return Object.keys(m);
-  }, [classes.data, slots.data, user?.id, user?.mainSubject]);
-
   const [classId, setClassId] = useState('');
   const [semesterId, setSemesterId] = useState('');
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [reason, setReason] = useState('');
 
+  const activeYearId = years.data?.find((year) => year.status === 'ACTIVE')?.id || '';
+  const semesterOptions = useMemo(() => (semesters.data || [])
+    .filter((semester) => !activeYearId || semester.academicYearId === activeYearId)
+    .filter((semester) => (teachingAssignments.data || []).some((assignment) => assignment.semesterId === semester.id)
+      || (classes.data || []).some((schoolClass) => schoolClass.academicYearId === semester.academicYearId && schoolClass.homeroomTeacherId === user?.id))
+    .sort((left, right) => left.sequence - right.sequence),
+  [activeYearId, classes.data, semesters.data, teachingAssignments.data, user?.id]);
+
+  const classOpts = useMemo(() => {
+    const m: Record<string, true> = {};
+    const selectedSemester = semesterOptions.find((semester) => semester.id === semesterId);
+    (teachingAssignments.data || [])
+      .filter((assignment) => !semesterId || assignment.semesterId === semesterId)
+      .forEach((assignment) => (m[assignment.classId] = true));
+    (classes.data || [])
+      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id
+        && (!selectedSemester || schoolClass.academicYearId === selectedSemester.academicYearId))
+      .forEach((schoolClass) => (m[schoolClass.id] = true));
+    const classMap = new Map((classes.data || []).map((item) => [item.id, item.code]));
+    return Object.keys(m).sort((left, right) => (classMap.get(left) || left).localeCompare(classMap.get(right) || right, 'vi'));
+  }, [classes.data, semesterId, semesterOptions, teachingAssignments.data, user?.id]);
+
   useEffect(() => {
-    if (!classId && classOpts.length) setClassId(classOpts[0]);
+    if (!classOpts.includes(classId)) setClassId(classOpts[0] || '');
   }, [classId, classOpts]);
 
   useEffect(() => {
-    if (!semesterId && semesters.data?.length) {
-      setSemesterId(semesters.data.find((semester) => semester.status === 'ACTIVE')?.id || semesters.data[0].id);
+    if (!semesterOptions.some((semester) => semester.id === semesterId)) {
+      setSemesterId(semesterOptions.find((semester) => semester.status === 'ACTIVE')?.id || semesterOptions[0]?.id || '');
     }
-  }, [semesterId, semesters.data]);
+  }, [semesterId, semesterOptions]);
 
-  const gradebookContext = useApi<TeacherGradebookContext>(classId && semesterId
-    ? `/me/gradebook-context?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}`
-    : null);
-  const contextMatches = gradebookContext.data?.classId === classId && gradebookContext.data?.semesterId === semesterId;
-  const contextSubjects = contextMatches ? gradebookContext.data?.subjects || [] : [];
+  const contextSubjects = useMemo(() => {
+    const unique = new Map<string, { subjectId: string; subjectName: string; teacherName: string; editable: boolean }>();
+    (teachingAssignments.data || [])
+      .filter((assignment) => assignment.classId === classId && assignment.semesterId === semesterId)
+      .forEach((assignment) => unique.set(assignment.subjectId, {
+        subjectId: assignment.subjectId,
+        subjectName: assignment.subjectName,
+        teacherName: assignment.teacherName,
+        editable: true,
+      }));
+    return [...unique.values()];
+  }, [classId, semesterId, teachingAssignments.data]);
+  const selectedIsHomeroom = classes.data?.find((schoolClass) => schoolClass.id === classId)?.homeroomTeacherId === user?.id;
 
   useEffect(() => {
-    if (!contextMatches || !gradebookContext.data) return;
-    const currentIsAvailable = gradebookContext.data.subjects.some((subject) => subject.subjectId === selectedSubjectId);
-    if (!currentIsAvailable) setSelectedSubjectId(gradebookContext.data.subjectId);
-  }, [contextMatches, gradebookContext.data, selectedSubjectId]);
+    const currentIsAvailable = contextSubjects.some((subject) => subject.subjectId === selectedSubjectId);
+    if (!currentIsAvailable) setSelectedSubjectId(contextSubjects[0]?.subjectId || '');
+  }, [contextSubjects, selectedSubjectId]);
 
   const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
   const subjectId = selectedSubject?.subjectId || '';
@@ -617,18 +663,18 @@ export function TeacherGradesLive() {
       action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready || !canEdit}>{canEdit ? <Send size={15} /> : <LockKeyhole size={15} />} {canEdit ? 'Lưu sổ điểm' : 'Chỉ xem'}</button>}>
       {toast.node}
       <div className="gradebook-filterbar">
+        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
+          <option value="">— Chọn học kỳ —</option>{semesterOptions.map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+        </select></label>
         <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
           <option value="">— Chọn lớp —</option>{classOpts.map((id) => <option key={id} value={id}>{classMap.get(id) || id}</option>)}
         </select></label>
-        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
-          <option value="">— Chọn học kỳ —</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
-        </select></label>
-        {contextMatches && gradebookContext.data?.homeroomTeacher ? (
+        {selectedIsHomeroom && contextSubjects.length > 1 ? (
           <label><span>Môn học của lớp chủ nhiệm</span><select className="live-select" value={subjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
             {contextSubjects.map((subject) => <option key={subject.subjectId} value={subject.subjectId}>{subject.subjectName}{subject.editable ? ' · Có thể chỉnh sửa' : ' · Chỉ xem'}</option>)}
           </select></label>
         ) : (
-          <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
+          <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
         )}
         {canEdit ? (
           <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
@@ -637,7 +683,7 @@ export function TeacherGradesLive() {
         )}
       </div>
 
-      {ready && gradebookContext.data?.homeroomTeacher && (
+      {ready && selectedIsHomeroom && (
         <div className={`gradebook-access-notice ${canEdit ? 'editable' : 'readonly'}`}>
           {canEdit ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}
           <span>{canEdit
@@ -646,7 +692,7 @@ export function TeacherGradesLive() {
         </div>
       )}
 
-      {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
+      {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{contextSubjects.length ? 'Môn học sẽ được hệ thống tự động xác định theo phân công.' : 'Bạn chưa được phân công môn cho lớp trong học kỳ này.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
         <Async paginate state={{ data: gradeRows, loading: students.loading, error: students.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
           {(pagedGradeRows) => (
             <div className="gradebook-shell">

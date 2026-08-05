@@ -4,8 +4,18 @@ import type { LucideIcon } from 'lucide-react';
 import { permissionRows } from '../data/mockData';
 import type { TabItem } from '../types';
 
-export function FunctionTabs({ tabs }: { tabs: TabItem[] }) {
-  const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? '');
+export function FunctionTabs({
+  tabs,
+  initialTabId,
+}: {
+  tabs: TabItem[];
+  initialTabId?: string;
+}) {
+  const [activeTab, setActiveTab] = useState(
+    initialTabId && tabs.some((tab) => tab.id === initialTabId)
+      ? initialTabId
+      : tabs[0]?.id ?? '',
+  );
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
@@ -130,10 +140,16 @@ export function Badge({ tone, children }: { tone: 'green' | 'blue' | 'orange' | 
 const VI_LABELS: Record<string, string> = {
   ACTIVE: 'Đang hoạt động', INACTIVE: 'Ngừng hoạt động', LOCKED: 'Đã khóa', PENDING: 'Chờ xử lý',
   PUBLISHED: 'Đã phát hành', DRAFT: 'Bản nháp', CLOSED: 'Đã đóng', OPEN: 'Đang mở',
-  SUBMITTED: 'Đã nộp', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
-  PAID: 'Đã thanh toán', PARTIAL: 'Thanh toán một phần', OVERDUE: 'Quá hạn',
-  SUCCESS: 'Thành công', FAILED: 'Thất bại', REFUNDED: 'Đã hoàn tiền',
+  SUBMITTED: 'Chờ duyệt', APPROVED: 'Đã duyệt', RETRY_REQUIRED: 'Yêu cầu thanh toán lại', LATE: 'Nộp muộn', GRADED: 'Đã chấm',
+  PAID: 'Đã thanh toán', PARTIAL: 'Thanh toán một phần', OVERDUE: 'Quá hạn', CANCELLED: 'Đã hủy', VOID: 'Vô hiệu',
+  EXPIRED: 'Đã hết hiệu lực',
+  SUCCESS: 'Thành công', FAILED: 'Thất bại', REVERSED: 'Đã hoàn tác', REFUNDED: 'Đã hoàn tiền',
+  REQUESTED: 'Chờ duyệt hoàn', COMPLETED: 'Đã hoàn tiền', REJECTED: 'Đã từ chối',
+  BALANCED: 'Khớp sổ', DISCREPANCY: 'Có sai lệch', WARNING: 'Cảnh báo', ERROR: 'Lỗi',
+  ISSUED: 'Đã phát hành',
   SENT: 'Đã gửi', RETRYING: 'Đang gửi lại', MAINTENANCE: 'Đang bảo trì',
+  PROPOSED: 'Đang đề xuất', UNSCHEDULED: 'Chưa tìm được lịch',
+  ON_TRACK: 'Đúng tiến độ', NO_DATA: 'Chưa có dữ liệu', NOT_STARTED: 'Chưa bắt đầu', DELAYED: 'Chậm tiến độ',
   READ: 'Đã đọc', UNREAD: 'Chưa đọc',
   PRESENT: 'Có mặt', ABSENT: 'Vắng mặt', ABSENT_EXCUSED: 'Vắng có phép', ABSENT_UNEXCUSED: 'Vắng không phép',
   ADMIN: 'Quản trị viên', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
@@ -149,11 +165,11 @@ export function viLabel(value?: string | null) {
 export function StatusPill({ value }: { value: string }) {
   const normalized = value.toLowerCase();
   const tone =
-    normalized === 'active' || normalized === 'paid' || normalized === 'success' || normalized === 'read' || normalized.includes('có mặt') || normalized.includes('đang học')
+    normalized === 'active' || normalized === 'paid' || normalized === 'success' || normalized === 'issued' || normalized === 'approved' || normalized === 'completed' || normalized === 'balanced' || normalized === 'read' || normalized.includes('có mặt') || normalized.includes('đang học')
       ? 'green'
-      : normalized === 'pending' || normalized === 'partial' || normalized === 'unread' || normalized.includes('trễ') || normalized.includes('cần')
+      : normalized === 'pending' || normalized === 'submitted' || normalized === 'requested' || normalized === 'warning' || normalized === 'retry_required' || normalized === 'partial' || normalized === 'unread' || normalized.includes('trễ') || normalized.includes('cần') || normalized.includes('yêu cầu')
         ? 'orange'
-        : normalized.includes('vắng') || normalized === 'locked' || normalized === 'inactive' || normalized === 'failed'
+        : normalized.includes('vắng') || normalized === 'locked' || normalized === 'inactive' || normalized === 'failed' || normalized === 'error' || normalized === 'discrepancy' || normalized === 'rejected' || normalized === 'cancelled' || normalized === 'void'
           ? 'red'
           : 'blue';
 

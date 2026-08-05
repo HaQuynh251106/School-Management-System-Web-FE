@@ -6,6 +6,7 @@ import { useApi } from '../../api/useApi';
 import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
+import { TeacherLessonProgress } from './AutomaticTimetableWorkspace';
 
 /* ===== TKB tuần (B2/C2) ===== */
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
@@ -15,6 +16,7 @@ const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
   EVENT: 'Sự kiện', STUDENT_STATUS: 'Tình hình học sinh', ATTENDANCE: 'Điểm danh',
   ATTENDANCE_ALERT: 'Chuyên cần', PARENT_MEETING: 'Họp phụ huynh', ASSIGNMENT: 'Bài tập',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán', ANNOUNCEMENT: 'Thông báo chung', EXTRACURRICULAR: 'Ngoại khóa',
+  EXAM: 'Lịch thi',
 };
 
 function classLabel(value: string) {
@@ -25,6 +27,13 @@ function timeLabel(slot: TimetableSlot) {
   if (!slot.startTime && !slot.endTime) return `Tiết ${slot.periodNo}`;
   return [slot.startTime?.slice(0, 5), slot.endTime?.slice(0, 5)].filter(Boolean).join(' – ');
 }
+
+const PERIOD_RANGE: Record<number, string> = {
+  1: '07:00 - 07:45', 2: '07:50 - 08:35', 3: '08:45 - 09:30',
+  4: '09:35 - 10:20', 5: '10:25 - 11:10', 6: '13:30 - 14:15',
+  7: '14:20 - 15:05', 8: '15:15 - 16:00', 9: '16:05 - 16:50',
+  10: '17:00 - 17:45',
+};
 
 export function WeeklyTimetable({ path, teacherView = false }: { path: string; teacherView?: boolean }) {
   const slots = useApi<TimetableSlot[]>(path);
@@ -85,12 +94,12 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
 
               {Array.from({ length: maxPeriod }, (_, index) => index + 1).map((period) => (
                 <Fragment key={period}>
-                  <div className="teacher-period" role="rowheader"><strong>{period}</strong><span>Tiết {period}</span></div>
+                  <div className={`teacher-period ${period === 6 ? 'session-start' : ''}`} role="rowheader"><strong>{period <= 5 ? 'Sáng' : 'Chiều'} · {period}</strong><span>{PERIOD_RANGE[period] || `Tiết ${period}`}</span></div>
                   {DAYS.map((day) => {
                     const slot = cell(day, period);
                     const colorIndex = slot ? Math.abs(slot.subjectName.split('').reduce((total, char) => total + char.charCodeAt(0), 0)) % SUBJECT_COLORS.length : 0;
                     return (
-                      <div key={`${day}-${period}`} className={`teacher-slot ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
+                      <div key={`${day}-${period}`} className={`teacher-slot ${period === 6 ? 'session-start' : ''} ${day === today ? 'is-today' : ''} ${slot ? 'has-class' : 'is-empty'}`} role="cell">
                         {slot ? (
                           <article className="teacher-class-card" style={{ '--slot-color': SUBJECT_COLORS[colorIndex] } as CSSProperties}>
                             <div className="teacher-class-topline"><span><School size={13} /> {classLabel(slot.classId)}</span><small>{timeLabel(slot)}</small></div>
@@ -114,14 +123,17 @@ export function WeeklyTimetable({ path, teacherView = false }: { path: string; t
 /* ===== B2 — TKB cá nhân của giáo viên ===== */
 export function MyTimetableLive() {
   return (
-    <Section
-      title="Lịch giảng dạy"
-      subtitle="Theo dõi lớp, môn học, phòng và thời gian trong một tuần"
-      action={<span className="schedule-status"><i /> Đang áp dụng</span>}
-      wide
-    >
-      <WeeklyTimetable path="/me/timetable" teacherView />
-    </Section>
+    <>
+      <Section
+        title="Lịch giảng dạy"
+        subtitle="Theo dõi lớp, môn học, phòng và thời gian trong một tuần"
+        action={<span className="schedule-status"><i /> Đang áp dụng</span>}
+        wide
+      >
+        <WeeklyTimetable path="/me/timetable" teacherView />
+      </Section>
+      <TeacherLessonProgress />
+    </>
   );
 }
 

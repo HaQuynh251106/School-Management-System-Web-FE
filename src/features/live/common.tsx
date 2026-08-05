@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
+import { showAppError, showAppSuccess } from '../../api/errorEvents';
 
 export const vnd = new Intl.NumberFormat('vi-VN');
 export const money = (n: number) => `${vnd.format(n ?? 0)} ₫`;
@@ -147,13 +148,14 @@ export function PaginatedData<T>({
 }
 
 export function useToast() {
-  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const show = (kind: 'ok' | 'err', text: string) => {
-    setMsg({ kind, text });
-    setTimeout(() => setMsg(null), 4000);
-  };
-  const node = msg ? <div className={`live-msg ${msg.kind}`}>{msg.text}</div> : null;
-  return { show, node };
+  const show = useCallback((kind: 'ok' | 'err', text: string) => {
+    if (kind === 'err') {
+      showAppError(text);
+      return;
+    }
+    showAppSuccess(text);
+  }, []);
+  return { show, node: null };
 }
 
 export const ATT_LABEL: Record<string, string> = {

@@ -12,7 +12,9 @@ import {
 import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive, TeacherNotificationsLive } from './live/TeacherLive';
 import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
 import { ParentSwitchLive, ParentMonitorLive, ParentInvoiceLive, ParentExtracurricularLive } from './live/ParentLive';
-import { MyTimetableLive, AssignmentsLive, ExtracurricularLive, NotificationsLive } from './live/SharedLive';
+import { MyTimetableLive, ExtracurricularLive, NotificationsLive } from './live/SharedLive';
+import { AssignmentsLive } from './live/AssignmentWorkspace';
+import { PublishedExamSchedule } from './live/ExamScheduleWorkspace';
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -42,6 +44,8 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B5': return <AssignmentsLive actor="teacher" />;
     case 'B6': return <ChatLive />;
     case 'B7': return <TeacherNotificationsLive />;
+    case 'B8': return <AdminAcademicLive />;
+    case 'B9': return <PublishedExamSchedule path="/exam-periods/me/schedule" teacher />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;

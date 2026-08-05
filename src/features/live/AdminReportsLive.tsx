@@ -1,44 +1,31 @@
 import { useApi } from '../../api/useApi';
 import { useState } from 'react';
 import type { AcademicYear } from '../../api/types';
-import { api } from '../../api/client';
 import { Section, StatusPill } from '../../components/ui';
-import { Download } from 'lucide-react';
-import { Async, money, useToast } from './common';
+import { Async } from './common';
+import { FinanceReportsWorkspace } from './FinanceReportsWorkspace';
+import { YearSummaryPreviewWorkspace } from './YearSummaryPreviewWorkspace';
+import { YearReviewWorkspace } from './YearReviewWorkspace';
+import { StudentPromotionWorkspace } from './StudentPromotionWorkspace';
+import { YearResultPublicationWorkspace } from './YearResultPublicationWorkspace';
 
 /** A8: Báo cáo & thống kê — GỘP tất cả vào một trang (tổng quan + phổ điểm + chuyên cần + doanh thu). */
 export function AdminReportsLive() {
   const overview = useApi<Record<string, number>>('/reports/overview');
   const dist = useApi<Array<{ band: string; count: number }>>('/reports/grade-distribution');
   const att = useApi<Record<string, number>>('/reports/attendance-summary');
-  const rev = useApi<Record<string, number>>('/reports/revenue');
   const years = useApi<AcademicYear[]>('/academicYears');
   const [yearId, setYearId] = useState('');
   const promotion = useApi<Record<string, number>>(yearId ? `/reports/promotion?academicYearId=${yearId}` : null);
-  const toast = useToast();
   const gradeTotal = (dist.data ?? []).reduce((sum, item) => sum + item.count, 0);
-
-  const exportReport = async (type: string) => {
-    try {
-      const result = await api.download(`/reports/export?type=${type}`);
-      const href = URL.createObjectURL(result.blob);
-      const anchor = document.createElement('a');
-      anchor.href = href; anchor.download = result.filename || `bao-cao-${type}.csv`; anchor.click();
-      URL.revokeObjectURL(href);
-      toast.show('ok', 'Đã xuất báo cáo CSV');
-    } catch (e: any) { toast.show('err', e.message); }
-  };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      {toast.node}
-      <div className="live-toolbar report-export-toolbar">
-        <strong>Xuất dữ liệu</strong>
-        <button className="live-btn ghost" onClick={() => exportReport('overview')}><Download size={14} /> Tổng quan</button>
-        <button className="live-btn ghost" onClick={() => exportReport('grades')}><Download size={14} /> Phổ điểm</button>
-        <button className="live-btn ghost" onClick={() => exportReport('attendance')}><Download size={14} /> Chuyên cần</button>
-        <button className="live-btn ghost" onClick={() => exportReport('revenue')}><Download size={14} /> Doanh thu</button>
-      </div>
+      <YearSummaryPreviewWorkspace />
+      <YearReviewWorkspace />
+      <YearResultPublicationWorkspace />
+      <StudentPromotionWorkspace />
+      <FinanceReportsWorkspace />
       <Section title="Tổng quan hệ thống" subtitle="Số liệu vận hành hiện tại" wide>
         <Async state={overview}>{(d) => (
           <div className="admin-table-scroll"><table className="live-table admin-data-table">
@@ -80,19 +67,6 @@ export function AdminReportsLive() {
           )}</Async>
         </Section>
       </div>
-
-      <Section title="Doanh thu học phí" subtitle="Tổng hợp các khoản thu" wide>
-        <Async state={rev}>{(d) => (
-          <div className="admin-table-scroll"><table className="live-table admin-data-table operation-table">
-            <thead><tr><th>Hạng mục</th><th>Giá trị</th><th>Thông tin hóa đơn</th><th>Trạng thái</th></tr></thead>
-            <tbody>
-              <tr><td><strong>Tổng phải thu</strong></td><td className="admin-table-value">{money(d.totalAmount ?? 0)}</td><td>{d.invoiceCount ?? 0} hóa đơn</td><td><StatusPill value="ACTIVE" /></td></tr>
-              <tr><td><strong>Đã thu</strong></td><td className="admin-table-value">{money(d.paidAmount ?? 0)}</td><td>{d.paidCount ?? 0} hóa đơn đã thanh toán</td><td><StatusPill value="PAID" /></td></tr>
-              <tr><td><strong>Còn phải thu</strong></td><td className="admin-table-value">{money(d.outstanding ?? 0)}</td><td>{Math.max(0, (d.invoiceCount ?? 0) - (d.paidCount ?? 0))} hóa đơn chưa hoàn tất</td><td><StatusPill value={(d.outstanding ?? 0) > 0 ? 'PENDING' : 'PAID'} /></td></tr>
-            </tbody>
-          </table></div>
-        )}</Async>
-      </Section>
 
       <Section title="Kết quả lên lớp" subtitle="Tổng hợp sau khi chốt năm học" wide
         action={<select className="live-select" value={yearId} onChange={(e) => setYearId(e.target.value)}><option value="">— Chọn năm học —</option>{(years.data ?? []).map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>}>

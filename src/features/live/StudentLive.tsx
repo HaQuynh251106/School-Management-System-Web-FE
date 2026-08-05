@@ -1,13 +1,29 @@
 import { useMemo, useState } from 'react';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
-import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass } from '../../api/types';
+import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass, PublishedEducationPlanView } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, GraduationCap, IdCard, MapPin, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { YearResultPanel } from './YearResultPanel';
+import { PublishedExamSchedule } from './ExamScheduleWorkspace';
+
+const PLAN_SUBJECT_TYPE_LABELS: Record<string, string> = {
+  MANDATORY: 'Bắt buộc',
+  OPTIONAL: 'Lựa chọn',
+  SPECIALIZED: 'Chuyên đề',
+  EDUCATIONAL_ACTIVITY: 'Hoạt động giáo dục',
+};
+const PLAN_ASSESSMENT_TYPE_LABELS: Record<string, string> = {
+  REGULAR: 'Thường xuyên',
+  MIDTERM: 'Giữa kỳ',
+  FINAL: 'Cuối kỳ',
+  PRACTICAL: 'Thực hành',
+  PROJECT: 'Dự án',
+};
 
 /* ===== C1 — Hồ sơ ===== */
 export function StudentProfileLive() {
@@ -164,6 +180,12 @@ export function StudentAcademicLive() {
       { id: 'tkb', label: 'Thời khóa biểu', Icon: CalendarDays, content: (
         <Section title="Thời khóa biểu" subtitle="Lịch học trong tuần" wide><WeeklyTimetable path="/me/timetable" /></Section>
       ) },
+      { id: 'exams', label: 'Lịch thi', Icon: CalendarDays, content: (
+        <PublishedExamSchedule path="/exam-periods/me/schedule" />
+      ) },
+      { id: 'education-plan', label: 'Kế hoạch giáo dục', Icon: ClipboardList, content: (
+        <PublishedEducationPlan />
+      ) },
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
         <Section title="Bảng điểm học kỳ" subtitle="Tổng hợp theo từng đầu điểm và hệ số đã cấu hình" wide
           action={<select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effSem} onChange={(e) => setSem(e.target.value)}>
@@ -206,8 +228,32 @@ export function StudentAcademicLive() {
           </Async>
         </Section>
       ) },
+      { id: 'year-result', label: 'Kết quả năm', Icon: GraduationCap, content: (
+        <YearResultPanel />
+      ) },
     ]} />
   );
+}
+
+export function PublishedEducationPlan({ studentId }: { studentId?: string }) {
+  const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : '';
+  const view = useApi<PublishedEducationPlanView>(`/academic/training-plans/published/me${query}`);
+  const semesters = useApi<Semester[]>('/semesters');
+  return <Section title="Kế hoạch giáo dục đã công bố" subtitle="Môn học, số tiết và kế hoạch kiểm tra dự kiến của lớp" wide>
+    <Async state={view} empty="Nhà trường chưa công bố kế hoạch giáo dục cho lớp này">
+      {(data) => <div className="published-plan-view">
+        <div className="published-plan-summary">
+          <div><small>Kế hoạch</small><strong>{data.plan.name}</strong><span>Phiên bản {data.plan.versionNumber}</span></div>
+          <div><small>Lớp</small><strong>{data.classCode}</strong><span>Khối {data.plan.gradeLevel}</span></div>
+          <div><small>Trạng thái</small><StatusPill value={data.plan.status} /><span>Công bố {data.plan.publishedAt ? fmtDate(data.plan.publishedAt) : '—'}</span></div>
+        </div>
+        <div className="planning-section-heading"><div><h3>Môn học và số tiết</h3><p>Số tiết được phân bổ theo hai học kỳ</p></div></div>
+        <table className="live-table"><thead><tr><th>Môn học</th><th>Loại môn</th><th>Học kỳ I</th><th>Học kỳ II</th><th>Cả năm</th></tr></thead><tbody>{data.subjects.map((item) => <tr key={item.subjectId}><td><strong>{item.subjectName}</strong></td><td>{PLAN_SUBJECT_TYPE_LABELS[item.subjectType] || item.subjectType}</td><td>{item.semester1Periods}</td><td>{item.semester2Periods}</td><td><strong>{item.annualPeriods}</strong></td></tr>)}</tbody></table>
+        <div className="planning-section-heading"><div><h3>Kế hoạch kiểm tra dự kiến</h3><p>Lịch thi chính thức được hiển thị riêng tại tab Lịch thi</p></div></div>
+        {data.assessments.length === 0 ? <div className="live-empty">Chưa có kế hoạch kiểm tra</div> : <table className="live-table"><thead><tr><th>Học kỳ</th><th>Môn</th><th>Loại</th><th>Tuần</th><th>Thời lượng</th></tr></thead><tbody>{data.assessments.map((item) => <tr key={item.id}><td>{semesters.data?.find((semester) => semester.id === item.semesterId)?.name || item.semesterId}</td><td>{data.subjects.find((subject) => subject.subjectId === item.subjectId)?.subjectName || item.subjectId}</td><td>{PLAN_ASSESSMENT_TYPE_LABELS[item.assessmentType] || item.assessmentType}</td><td>{item.weekNumber}</td><td>{item.durationMinutes} phút</td></tr>)}</tbody></table>}
+      </div>}
+    </Async>
+  </Section>;
 }
 
 /* ===== C3 — Chuyên cần ===== */

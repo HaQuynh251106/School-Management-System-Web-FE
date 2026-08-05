@@ -1,15 +1,18 @@
-import { useState } from 'react';
-import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Lock, Unlock, Plus, RefreshCw, FileText, Send, CheckCircle2, Pencil, Save, UserRound, IdCard, MapPin, UsersRound, Upload, KeyRound, Link2, Unlink, GraduationCap, Download, Megaphone, BellRing, Eye, CircleStop, Ban, Trash2, Undo2, AlertTriangle, Search, Bell, CircleAlert, FileImage, History, ShieldCheck } from 'lucide-react';
 import { api } from '../../api/client';
+import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, NotificationTemplate, Club, ClubRegistration,
-  ImportResult, LoginHistory, StudentYearlySummary, Announcement,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, InvoicePreview, FinanceTargetType, Payment, PaymentInitResponse, PaymentProof, PaymentProofDecision, PaymentHistory, PaymentRefund, PaymentReconciliation, PaymentReceipt, PaymentReceiptDownload, NotificationTemplate, Club, ClubRegistration,
+  StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
-import { Async, useToast, money, fmtDateTime } from './common';
+import { Async, useToast, money, fmtDate, fmtDateTime } from './common';
 import { Modal, Field } from './Modal';
+import { AcademicStructureWorkspace } from './AcademicStructureWorkspace';
+import { ExamScheduleWorkspace } from './ExamScheduleWorkspace';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
@@ -22,9 +25,16 @@ const BLANK_USER = {
 };
 
 export function AdminUsersLive() {
+  const [identityTab, setIdentityTab] = useState<'accounts' | 'permissions'>('accounts');
   const [role, setRole] = useState('');
+  const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
-  const params = [role && `role=${role}`, q && `q=${encodeURIComponent(q)}`].filter(Boolean).join('&');
+  const params = [
+    role && `role=${role}`,
+    status && `status=${status}`,
+    status === 'DELETED' && 'includeDeleted=true',
+    q && `q=${encodeURIComponent(q)}`,
+  ].filter(Boolean).join('&');
   const users = useApi<ApiUser[]>(`/users${params ? '?' + params : ''}`);
   const classes = useApi<SchoolClass[]>('/classes');
   const students = useApi<ApiUser[]>('/users?role=STUDENT');
@@ -35,8 +45,15 @@ export function AdminUsersLive() {
   const [form, setForm] = useState({ ...BLANK_USER });
   const [linkedStudentId, setLinkedStudentId] = useState('');
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importResult, setImportResult] = useState<StudentImportResult | null>(null);
+  const [resetTarget, setResetTarget] = useState<ApiUser | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetReason, setResetReason] = useState('');
+  const [lifecycleTarget, setLifecycleTarget] = useState<ApiUser | null>(null);
+  const [lifecycleReason, setLifecycleReason] = useState('');
   const history = useApi<LoginHistory[]>(editingUser ? `/users/${editingUser.id}/login-history` : null);
+  const managedSessions = useApi<UserSession[]>(editingUser ? `/users/${editingUser.id}/sessions` : null);
+  const managedDevices = useApi<UserDevice[]>(editingUser ? `/users/${editingUser.id}/devices` : null);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -55,22 +72,91 @@ export function AdminUsersLive() {
   };
 
   const resetPassword = async (u: ApiUser) => {
-    const value = window.prompt(`Nhập mật khẩu mới cho ${u.fullName} (để trống để hệ thống tự sinh):`, '');
-    if (value === null) return;
-    if (value && value.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    openPasswordReset(u);
+  };
+
+  const openPasswordReset = (user: ApiUser) => {
+    setResetTarget(user);
+    setResetPasswordValue('');
+    setResetReason('');
+  };
+
+  const submitPasswordReset = async () => {
+    if (!resetTarget || resetReason.trim().length < 5) {
+      return toast.show('err', 'Vui lòng nhập lý do có ít nhất 5 ký tự.');
+    }
+    if (resetPasswordValue && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/.test(resetPasswordValue)) {
+      return toast.show('err', 'Mật khẩu cần ít nhất 10 ký tự, chữ hoa, chữ thường, số và ký tự đặc biệt.');
+    }
     try {
-      const result = await api.post<{ password: string }>(`/users/${u.id}/reset-password`, { newPassword: value || null });
-      toast.show('ok', `Mật khẩu tạm thời của ${u.fullName}: ${result.password}`);
-    } catch (e: any) { toast.show('err', e.message); }
+      const result = await api.post<{ temporaryPassword: string }>(
+        `/users/${resetTarget.id}/reset-password`,
+        { newPassword: resetPasswordValue || null, reason: resetReason.trim() },
+      );
+      toast.show('ok', `Mật khẩu tạm thời của ${resetTarget.fullName}: ${result.temporaryPassword}`);
+      setResetTarget(null);
+      users.reload();
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể đặt lại mật khẩu.');
+    }
+  };
+
+  const submitLifecycleAction = async () => {
+    if (!lifecycleTarget || lifecycleReason.trim().length < 5) {
+      return toast.show('err', 'Vui lòng nhập lý do có ít nhất 5 ký tự.');
+    }
+    try {
+      if (lifecycleTarget.status === 'DELETED') {
+        await api.post(`/users/${lifecycleTarget.id}/restore`, {
+          status: 'PENDING',
+          reason: lifecycleReason.trim(),
+        });
+        toast.show('ok', `Đã khôi phục ${lifecycleTarget.fullName} về trạng thái chờ kích hoạt.`);
+      } else {
+        await api.del(`/users/${lifecycleTarget.id}`, { reason: lifecycleReason.trim() });
+        toast.show('ok', `Đã xóa mềm ${lifecycleTarget.fullName}.`);
+      }
+      setLifecycleTarget(null);
+      setLifecycleReason('');
+      users.reload();
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật tài khoản.');
+    }
+  };
+
+  const revokeManagedSession = async (sessionId: string) => {
+    if (!editingUser) return;
+    try {
+      await api.del(`/users/${editingUser.id}/sessions/${sessionId}`);
+      managedSessions.reload();
+      toast.show('ok', 'Đã thu hồi phiên đăng nhập.');
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể thu hồi phiên.');
+    }
+  };
+
+  const deactivateManagedDevice = async (deviceId: string) => {
+    if (!editingUser) return;
+    try {
+      await api.del(`/users/${editingUser.id}/devices/${deviceId}`);
+      managedDevices.reload();
+      managedSessions.reload();
+      toast.show('ok', 'Đã ngừng tin cậy thiết bị.');
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật thiết bị.');
+    }
   };
 
   const importExcel = async (file?: File) => {
     if (!file) return;
     setImporting(true);
     try {
-      const result = await api.upload<ImportResult>('/users/import', file);
+      const result = await api.upload<StudentImportResult>('/admin/users/import', file);
       setImportResult(result);
-      toast.show(result.failedRows ? 'err' : 'ok', `Đã nhập ${result.importedRows}/${result.totalRows} tài khoản`);
+      toast.show(
+        result.failedRows ? 'err' : 'ok',
+        `Import: ${result.createdStudents} tạo mới, ${result.updatedStudents} cập nhật, ${result.failedRows} lỗi`,
+      );
       users.reload(); students.reload(); classes.reload();
     } catch (e: any) { toast.show('err', e.message); }
     finally { setImporting(false); }
@@ -189,13 +275,30 @@ export function AdminUsersLive() {
 
   return (
     <Section title="Người dùng & phân quyền" subtitle="Quản lý tài khoản và quyền truy cập" wide
-      action={<button className="live-btn" onClick={openCreate}><Plus size={15} /> Tạo người dùng</button>}>
+      action={identityTab === 'accounts' ? <button className="live-btn" onClick={openCreate}><Plus size={15} /> Tạo người dùng</button> : undefined}>
       {toast.node}
-      <div className="live-toolbar">
+      <div className="identity-main-tabs tab-list" role="tablist" aria-label="Quản lý người dùng và phân quyền">
+        <button type="button" className={identityTab === 'accounts' ? 'active' : ''} onClick={() => setIdentityTab('accounts')}>
+          <UsersRound size={17} /> Tài khoản
+        </button>
+        <button type="button" className={identityTab === 'permissions' ? 'active' : ''} onClick={() => setIdentityTab('permissions')}>
+          <ShieldCheck size={17} /> Phân quyền vai trò
+        </button>
+      </div>
+
+      {identityTab === 'accounts' && <>
+        <div className="live-toolbar identity-account-toolbar">
         <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="">Tất cả vai trò</option>
           <option value="ADMIN">Quản trị viên</option><option value="TEACHER">Giáo viên</option>
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
+        </select>
+        <select className="live-select" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="">Tất cả trạng thái</option>
+          <option value="ACTIVE">Đang hoạt động</option>
+          <option value="PENDING">Chờ kích hoạt</option>
+          <option value="LOCKED">Đã khóa</option>
+          <option value="DELETED">Đã xóa</option>
         </select>
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className={`live-btn ghost ${importing ? 'is-disabled' : ''}`}>
@@ -209,12 +312,12 @@ export function AdminUsersLive() {
       {importResult && (
         <div className={`import-result ${importResult.failedRows ? 'has-errors' : ''}`}>
           <strong>Đã xử lý {importResult.totalRows} dòng</strong>
-          <span>{importResult.importedRows} thành công · {importResult.failedRows} lỗi</span>
-          {importResult.errors.length > 0 && <small>{importResult.errors.slice(0, 5).map((e) => `Dòng ${e.row}: ${e.error}`).join(' · ')}</small>}
+          <span>{importResult.createdStudents} tạo mới · {importResult.updatedStudents} cập nhật · {importResult.linkedRelations} liên kết PH-HS · {importResult.failedRows} lỗi</span>
+          {importResult.failedRows > 0 && <small>{importResult.rows.filter((row) => row.status === 'ERROR').slice(0, 5).map((row) => `Dòng ${row.rowNumber}: ${row.error}`).join(' · ')}</small>}
         </div>
       )}
 
-      <Async paginate state={users} empty="Không có người dùng" itemLabel="người dùng" resetKey={`${role}:${q}`}>
+      <Async paginate state={users} empty="Không có người dùng" itemLabel="người dùng" resetKey={`${role}:${status}:${q}`}>
         {(pageItems) => (
           <>
             <table className="live-table">
@@ -228,11 +331,14 @@ export function AdminUsersLive() {
                     <td><StatusPill value={u.status} /></td>
                     <td>
                       <div className="admin-user-actions">
-                        <button className="live-btn subtle" onClick={() => openEdit(u)}><Pencil size={14} /> Chỉnh sửa</button>
-                        <button className="live-btn subtle" onClick={() => toggleLock(u)}>
+                        {u.status !== 'DELETED' && <button className="live-btn subtle" onClick={() => openEdit(u)}><Pencil size={14} /> Chỉnh sửa</button>}
+                        {u.status !== 'DELETED' && <button className="live-btn subtle" onClick={() => toggleLock(u)}>
                           {u.status === 'ACTIVE' ? <><Lock size={14} /> Khóa</> : <><Unlock size={14} /> Mở</>}
+                        </button>}
+                        {u.status !== 'DELETED' && <button className="live-btn subtle" onClick={() => resetPassword(u)}><KeyRound size={14} /> Đặt lại mật khẩu</button>}
+                        <button className="live-btn subtle" onClick={() => { setLifecycleTarget(u); setLifecycleReason(''); }}>
+                          {u.status === 'DELETED' ? <><Undo2 size={14} /> Khôi phục</> : <><Trash2 size={14} /> Xóa</>}
                         </button>
-                        <button className="live-btn subtle" onClick={() => resetPassword(u)}><KeyRound size={14} /> Đặt lại mật khẩu</button>
                       </div>
                     </td>
                   </tr>
@@ -242,6 +348,9 @@ export function AdminUsersLive() {
           </>
         )}
       </Async>
+      </>}
+
+      {identityTab === 'permissions' && <RbacWorkspace />}
 
       {showEditor && (
         <Modal title={editingUser ? `Chỉnh sửa hồ sơ · ${editingUser.fullName}` : 'Tạo người dùng mới'} onClose={closeEditor}
@@ -358,15 +467,286 @@ export function AdminUsersLive() {
                 </Async>
               </section>
             )}
+
+            {editingUser && (
+              <section className="admin-user-form-section">
+                <header><span><ShieldCheck size={18} /></span><div><h4>Phiên và thiết bị</h4><p>Thu hồi truy cập khi phát hiện thiết bị không còn sử dụng</p></div></header>
+                <div className="identity-admin-security">
+                  <div>
+                    <strong>Phiên đang hoạt động</strong>
+                    {(managedSessions.data || []).map((session) => (
+                      <div key={session.id}><span>{session.deviceName || session.platform || 'Trình duyệt'} · {session.ipAddress || 'Không rõ IP'}</span><button type="button" onClick={() => revokeManagedSession(session.id)}>Thu hồi</button></div>
+                    ))}
+                    {!managedSessions.loading && (managedSessions.data || []).length === 0 && <small>Không có phiên hoạt động.</small>}
+                  </div>
+                  <div>
+                    <strong>Thiết bị đã đăng ký</strong>
+                    {(managedDevices.data || []).map((device) => (
+                      <div key={device.id}><span>{device.deviceName || device.platform} · {device.active ? 'Đang hoạt động' : 'Đã ngừng'}</span>{device.active && <button type="button" onClick={() => deactivateManagedDevice(device.id)}>Ngừng tin cậy</button>}</div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
+        </Modal>
+      )}
+
+      {resetTarget && (
+        <Modal title={`Đặt lại mật khẩu · ${resetTarget.fullName}`} onClose={() => setResetTarget(null)}
+          footer={<><button className="live-btn ghost" onClick={() => setResetTarget(null)}>Hủy</button><button className="live-btn" onClick={submitPasswordReset}><KeyRound size={15} /> Đặt lại mật khẩu</button></>}>
+          <Field label="Mật khẩu tạm thời (để trống để hệ thống tự sinh)">
+            <input type="password" value={resetPasswordValue} onChange={(event) => setResetPasswordValue(event.target.value)} placeholder="Tối thiểu 10 ký tự" />
+          </Field>
+          <Field label="Lý do bắt buộc">
+            <textarea rows={3} value={resetReason} onChange={(event) => setResetReason(event.target.value)} placeholder="Ví dụ: người dùng quên mật khẩu" />
+          </Field>
+          <div className="identity-warning"><AlertTriangle size={16} /> Toàn bộ phiên đăng nhập hiện tại sẽ bị thu hồi. Người dùng phải đổi mật khẩu ở lần đăng nhập kế tiếp.</div>
+        </Modal>
+      )}
+
+      {lifecycleTarget && (
+        <Modal title={`${lifecycleTarget.status === 'DELETED' ? 'Khôi phục' : 'Xóa tài khoản'} · ${lifecycleTarget.fullName}`} onClose={() => setLifecycleTarget(null)}
+          footer={<><button className="live-btn ghost" onClick={() => setLifecycleTarget(null)}>Hủy</button><button className="live-btn" onClick={submitLifecycleAction}>{lifecycleTarget.status === 'DELETED' ? <Undo2 size={15} /> : <Trash2 size={15} />} Xác nhận</button></>}>
+          <Field label="Lý do bắt buộc"><textarea rows={3} value={lifecycleReason} onChange={(event) => setLifecycleReason(event.target.value)} /></Field>
+          <div className="identity-warning"><AlertTriangle size={16} /> {lifecycleTarget.status === 'DELETED' ? 'Tài khoản sẽ được khôi phục ở trạng thái chờ kích hoạt.' : 'Dữ liệu nghiệp vụ được giữ nguyên và tài khoản có thể khôi phục sau này.'}</div>
         </Modal>
       )}
     </Section>
   );
 }
 
+const PERMISSION_COPY: Record<string, { title: string; description: string }> = {
+  IDENTITY_PROFILE_READ_SELF: {
+    title: 'Xem hồ sơ cá nhân',
+    description: 'Xem thông tin tài khoản của chính mình.',
+  },
+  IDENTITY_PASSWORD_CHANGE_SELF: {
+    title: 'Đổi mật khẩu cá nhân',
+    description: 'Tự đổi mật khẩu đăng nhập.',
+  },
+  IDENTITY_SESSION_MANAGE_SELF: {
+    title: 'Quản lý phiên đăng nhập cá nhân',
+    description: 'Xem và đăng xuất các phiên của chính mình.',
+  },
+  IDENTITY_DEVICE_MANAGE_SELF: {
+    title: 'Quản lý thiết bị cá nhân',
+    description: 'Xem và ngừng tin cậy thiết bị của chính mình.',
+  },
+  IDENTITY_USER_READ: {
+    title: 'Xem danh sách người dùng',
+    description: 'Tra cứu tài khoản trong hệ thống.',
+  },
+  IDENTITY_USER_CREATE: {
+    title: 'Tạo tài khoản',
+    description: 'Tạo mới tài khoản người dùng.',
+  },
+  IDENTITY_USER_UPDATE: {
+    title: 'Cập nhật tài khoản',
+    description: 'Chỉnh sửa hồ sơ và thông tin liên hệ.',
+  },
+  IDENTITY_USER_LOCK: {
+    title: 'Khóa và mở khóa tài khoản',
+    description: 'Thay đổi trạng thái truy cập của người dùng.',
+  },
+  IDENTITY_USER_RESET_PASSWORD: {
+    title: 'Đặt lại mật khẩu người khác',
+    description: 'Cấp mật khẩu tạm và thu hồi các phiên cũ.',
+  },
+  IDENTITY_USER_DELETE: {
+    title: 'Xóa mềm tài khoản',
+    description: 'Ngừng sử dụng tài khoản nhưng vẫn giữ dữ liệu.',
+  },
+  IDENTITY_USER_RESTORE: {
+    title: 'Khôi phục tài khoản',
+    description: 'Khôi phục tài khoản đã xóa về trạng thái chờ kích hoạt.',
+  },
+  IDENTITY_LOGIN_HISTORY_READ: {
+    title: 'Xem lịch sử đăng nhập',
+    description: 'Xem các lần đăng nhập thành công và thất bại.',
+  },
+  IDENTITY_SESSION_MANAGE_ANY: {
+    title: 'Quản lý phiên của người khác',
+    description: 'Xem và thu hồi phiên đăng nhập của người dùng khác.',
+  },
+  IDENTITY_DEVICE_MANAGE_ANY: {
+    title: 'Quản lý thiết bị của người khác',
+    description: 'Xem và ngừng tin cậy thiết bị của người dùng khác.',
+  },
+  IDENTITY_RBAC_MANAGE: {
+    title: 'Quản lý phân quyền',
+    description: 'Thay đổi quyền được cấp cho các vai trò.',
+  },
+  ACADEMIC_STRUCTURE_READ: {
+    title: 'Xem cơ cấu đào tạo',
+    description: 'Xem năm học, học kỳ, khối, lớp, môn, phòng và ngày nghỉ.',
+  },
+  ACADEMIC_STRUCTURE_MANAGE: {
+    title: 'Quản lý cơ cấu đào tạo',
+    description: 'Tạo và cập nhật danh mục đào tạo.',
+  },
+  ACADEMIC_ENROLLMENT_MANAGE: {
+    title: 'Phân lớp học sinh',
+    description: 'Xếp, chuyển và gỡ học sinh khỏi lớp theo năm học.',
+  },
+  ACADEMIC_PLAN_READ: {
+    title: 'Xem kế hoạch giáo dục năm học',
+    description: 'Xem thời lượng môn học và lịch thi dự kiến.',
+  },
+  ACADEMIC_PLAN_MANAGE: {
+    title: 'Quản lý kế hoạch giáo dục năm học',
+    description: 'Tạo, duyệt, công bố và lưu phiên bản kế hoạch giáo dục năm học.',
+  },
+  ACADEMIC_EXAM_PLAN_MANAGE: {
+    title: 'Quản lý lịch thi dự kiến',
+    description: 'Xếp môn thi, ngày giờ, phòng và giám thị.',
+  },
+  AUDIT_READ: {
+    title: 'Xem lịch sử hệ thống',
+    description: 'Tra cứu các thao tác quan trọng đã được ghi nhận.',
+  },
+};
+
+const PERMISSION_GROUPS = [
+  { id: 'personal', label: 'Bảo mật cá nhân' },
+  { id: 'users', label: 'Quản lý người dùng' },
+  { id: 'academic', label: 'Cơ cấu và kế hoạch giáo dục' },
+  { id: 'governance', label: 'Phân quyền và kiểm soát' },
+] as const;
+
+function permissionGroup(code: string) {
+  if (code.endsWith('_SELF')) return 'personal';
+  if (code.startsWith('ACADEMIC_')) return 'academic';
+  if (code === 'IDENTITY_RBAC_MANAGE' || code === 'AUDIT_READ') return 'governance';
+  return 'users';
+}
+
+function RbacWorkspace() {
+  const roles = useApi<RbacRole[]>('/admin/rbac/roles');
+  const permissions = useApi<RbacPermission[]>('/admin/rbac/permissions');
+  const toast = useToast();
+  const [roleId, setRoleId] = useState('');
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [reason, setReason] = useState('');
+  const configurableRoles = useMemo(
+    () => (roles.data || [])
+      .filter((role) => role.code !== 'ADMIN')
+      .sort((left, right) => (
+        ['TEACHER', 'STUDENT', 'PARENT'].indexOf(left.code)
+        - ['TEACHER', 'STUDENT', 'PARENT'].indexOf(right.code)
+      )),
+    [roles.data],
+  );
+  const selectedRole = configurableRoles.find((role) => role.id === roleId) || configurableRoles[0];
+  const selectedCodes = draft ?? selectedRole?.permissionCodes ?? [];
+
+  useEffect(() => {
+    if (selectedRole && selectedRole.id !== roleId) {
+      setRoleId(selectedRole.id);
+      setDraft(null);
+    }
+  }, [roleId, selectedRole]);
+
+  const groupedPermissions = useMemo(() => {
+    const groups = new Map<string, RbacPermission[]>();
+    for (const permission of permissions.data || []) {
+      const group = permissionGroup(permission.code);
+      groups.set(group, [...(groups.get(group) || []), permission]);
+    }
+    return PERMISSION_GROUPS.map((group) => [
+      group.label,
+      groups.get(group.id) || [],
+    ] as const);
+  }, [permissions.data]);
+
+  const togglePermission = (code: string) => {
+    setDraft((current) => {
+      const values = new Set(current ?? selectedRole?.permissionCodes ?? []);
+      if (values.has(code)) values.delete(code); else values.add(code);
+      return [...values];
+    });
+  };
+
+  const save = async () => {
+    if (!selectedRole) return;
+    if (reason.trim().length < 5) return toast.show('err', 'Vui lòng nhập lý do thay đổi quyền.');
+    try {
+      await api.put(`/admin/rbac/roles/${selectedRole.id}/permissions`, {
+        permissionCodes: selectedCodes,
+        reason: reason.trim(),
+      });
+      toast.show('ok', `Đã cập nhật quyền của ${selectedRole.name}.`);
+      setDraft(null);
+      setReason('');
+      roles.reload();
+    } catch (error) {
+      toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật quyền.');
+    }
+  };
+
+  return (
+    <div className="identity-rbac">
+      {toast.node}
+      <header>
+        <div>
+          <h3>Phân quyền vai trò</h3>
+          <p>Quản trị viên luôn có toàn quyền. Chọn vai trò cần giới hạn hoặc bổ sung quyền.</p>
+        </div>
+        <button className="live-btn" type="button" disabled={!selectedRole || draft === null} onClick={save}>
+          <Save size={15} /> Lưu thay đổi
+        </button>
+      </header>
+      <div className="identity-role-tabs" role="tablist" aria-label="Chọn vai trò cần phân quyền">
+        {configurableRoles.map((role) => (
+          <button
+            key={role.id}
+            type="button"
+            className={selectedRole?.id === role.id ? 'active' : ''}
+            onClick={() => {
+              setRoleId(role.id);
+              setDraft(null);
+              setReason('');
+            }}
+          >
+            {role.code === 'TEACHER' ? <GraduationCap size={17} /> : role.code === 'STUDENT' ? <UserRound size={17} /> : <UsersRound size={17} />}
+            <span>{viLabel(role.code)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="identity-rbac-toolbar">
+        <div>
+          <strong>{selectedRole ? `Quyền của ${viLabel(selectedRole.code)}` : 'Đang tải danh sách vai trò'}</strong>
+          <small>Mọi thay đổi có hiệu lực ngay với các phiên đang đăng nhập.</small>
+        </div>
+        <input className="live-input grow" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Nhập lý do thay đổi quyền" />
+      </div>
+      <div className="identity-permission-groups">
+        {groupedPermissions.map(([group, items]) => (
+          <section key={group}>
+            <strong>{group}</strong>
+            {items.map((permission) => (
+              <label key={permission.code}>
+                <input type="checkbox" checked={selectedCodes.includes(permission.code)} onChange={() => togglePermission(permission.code)} />
+                <span>
+                  {PERMISSION_COPY[permission.code]?.title || permission.name}
+                  <small>{PERMISSION_COPY[permission.code]?.description || permission.description}</small>
+                </span>
+              </label>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ============ A2 — Cơ cấu đào tạo (thêm tạo phòng học) ============ */
 export function AdminAcademicLive() {
+  const { user } = useAuth();
+  return <AcademicStructureWorkspace initialTabId={user?.role === 'TEACHER' ? 'plans' : 'years'} />;
+}
+
+export function LegacyAdminAcademicLive() {
   const years = useApi<AcademicYear[]>('/academicYears');
   const semesters = useApi<Semester[]>('/semesters');
   const classes = useApi<SchoolClass[]>('/classes');
@@ -423,8 +803,7 @@ export function AdminAcademicLive() {
   const assignHomeroomTeacher = async (classId: string, teacherId: string) => {
     setAssigningClassId(classId);
     try {
-      if (teacherId) await api.put(`/classes/${classId}/homeroom-teacher`, { teacherId });
-      else await api.del(`/classes/${classId}/homeroom-teacher`);
+      await api.put(`/classes/${classId}/homeroom-teacher`, { homeroomTeacherId: teacherId || null });
       toast.show('ok', teacherId ? 'Đã phân công giáo viên chủ nhiệm' : 'Đã bỏ phân công giáo viên chủ nhiệm');
       classes.reload();
     } catch (e: any) {
@@ -432,6 +811,18 @@ export function AdminAcademicLive() {
     } finally {
       setAssigningClassId('');
     }
+  };
+
+  const ensureHighSchoolClasses = async () => {
+    if (!cf.academicYearId) return toast.show('err', 'Chọn năm học trước khi khởi tạo 30 lớp');
+    try {
+      const result = await api.post<{ createdClasses: number }>(
+        `/academic/high-school-defaults/ensure?academicYearId=${encodeURIComponent(cf.academicYearId)}`,
+      );
+      toast.show('ok', `Đã khởi tạo ${result.createdClasses} lớp còn thiếu`);
+      classes.reload();
+      semesters.reload();
+    } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
@@ -476,11 +867,12 @@ export function AdminAcademicLive() {
               <div className="live-toolbar academic-create-bar">
                 <input className="live-input" placeholder="Mã lớp (10A2)" value={cf.code} onChange={(e) => setCf({ ...cf, code: e.target.value })} />
                 <input className="live-input grow" placeholder="Tên lớp" value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} />
-                <select className="live-select" value={cf.gradeLevel} onChange={(e) => setCf({ ...cf, gradeLevel: e.target.value })}>{[6,7,8,9,10,11,12].map((g) => <option key={g} value={`K${g}`}>Khối {g}</option>)}</select>
+                <select className="live-select" value={cf.gradeLevel} onChange={(e) => setCf({ ...cf, gradeLevel: e.target.value })}>{[10,11,12].map((g) => <option key={g} value={`K${g}`}>Khối {g}</option>)}</select>
                 <select className="live-select" value={cf.academicYearId} onChange={(e) => setCf({ ...cf, academicYearId: e.target.value })}><option value="">— Năm học —</option>{(years.data ?? []).map((y) => <option key={y.id} value={y.id}>{y.code}</option>)}</select>
                 <input className="live-input" type="number" min="1" max="100" style={{ width: 105 }} title="Sĩ số tối đa" value={cf.capacity} onChange={(e) => setCf({ ...cf, capacity: Number(e.target.value) })} />
                 <select className="live-select" value={cf.homeroomTeacherId} onChange={(e) => setCf({ ...cf, homeroomTeacherId: e.target.value })}><option value="">— GVCN (tùy chọn) —</option>{(teachers.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.fullName}</option>)}</select>
                 <button className="live-btn" onClick={addClass}><Plus size={15} /> Tạo lớp</button>
+                <button className="live-btn ghost" onClick={ensureHighSchoolClasses}>Khởi tạo 30 lớp</button>
               </div>
               <Async paginate state={classes} itemLabel="lớp học">{(l) => (
                 <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Sĩ số</th><th>Giáo viên chủ nhiệm</th></tr></thead>
@@ -532,73 +924,10 @@ export function AdminAcademicLive() {
               )}</Async>
             </Section>
           ) },
-          { id: 'year-end', label: 'Tổng kết năm', Icon: GraduationCap, content: <YearEndManager years={years.data ?? []} /> },
         ]}
       />
     </>
   );
-}
-
-function YearEndManager({ years }: { years: AcademicYear[] }) {
-  const [yearId, setYearId] = useState('');
-  const preview = useApi<StudentYearlySummary[]>(yearId ? `/academic-years/${yearId}/promotion-preview` : null);
-  const toast = useToast();
-  const [savingId, setSavingId] = useState('');
-  const [finalizing, setFinalizing] = useState(false);
-
-  const setConduct = async (studentId: string, conductGrade: string) => {
-    setSavingId(studentId);
-    try {
-      await api.put(`/academic-years/${yearId}/students/${studentId}/conduct`, { conductGrade });
-      toast.show('ok', 'Đã lưu hạnh kiểm'); preview.reload();
-    } catch (e: any) { toast.show('err', e.message); }
-    finally { setSavingId(''); }
-  };
-
-  const finalize = async () => {
-    if (!yearId || !window.confirm('Chốt năm học sẽ khóa kết quả và tự động xét lên lớp. Bạn muốn tiếp tục?')) return;
-    setFinalizing(true);
-    try {
-      await api.post(`/academic-years/${yearId}/finalize`);
-      toast.show('ok', 'Đã chốt năm học và hoàn tất xét lên lớp'); preview.reload();
-    } catch (e: any) { toast.show('err', e.message); }
-    finally { setFinalizing(false); }
-  };
-
-  return (
-    <Section title="Tổng kết và xét lên lớp" subtitle="Kiểm tra đủ đầu điểm, nhập hạnh kiểm rồi chốt năm học" wide
-      action={<button className="live-btn" disabled={!yearId || finalizing} onClick={finalize}><GraduationCap size={15} /> {finalizing ? 'Đang chốt…' : 'Chốt năm học'}</button>}>
-      {toast.node}
-      <div className="live-toolbar">
-        <select className="live-select grow" value={yearId} onChange={(e) => setYearId(e.target.value)}>
-          <option value="">— Chọn năm học cần tổng kết —</option>
-          {years.map((year) => <option key={year.id} value={year.id}>{year.code} · {viLabel(year.status)}</option>)}
-        </select>
-        {yearId && <button className="live-btn ghost" onClick={preview.reload}><RefreshCw size={14} /> Tính lại</button>}
-      </div>
-      {!yearId ? <div className="live-loading">Chọn năm học để kiểm tra điều kiện tổng kết.</div> : (
-        <Async paginate state={preview} empty="Năm học chưa có học sinh" itemLabel="học sinh">
-          {(rows) => <div className="admin-table-scroll"><table className="live-table year-end-table">
-            <thead><tr><th>Học sinh</th><th>Điểm TB</th><th>Hạnh kiểm</th><th>Điều kiện</th><th>Kết quả</th></tr></thead>
-            <tbody>{rows.map((row) => <tr key={row.id}>
-              <td><strong>{row.studentName}</strong></td>
-              <td>{row.averageScore == null ? '—' : row.averageScore.toFixed(2)}</td>
-              <td><select className="live-select" value={row.conductGrade || ''} disabled={Boolean(row.finalizedAt) || savingId === row.studentId} onChange={(e) => setConduct(row.studentId, e.target.value)}>
-                <option value="">— Chọn —</option><option value="GOOD">Tốt</option><option value="FAIR">Khá</option><option value="AVERAGE">Trung bình</option><option value="WEAK">Yếu</option>
-              </select></td>
-              <td>{row.missingRequirements ? <span className="year-end-missing" title={row.missingRequirements}>{row.missingRequirements}</span> : <Badge tone="green">Đủ dữ liệu</Badge>}</td>
-              <td><StatusPill value={yearEndLabel(row.promotionStatus)} /></td>
-            </tr>)}</tbody>
-          </table></div>}
-        </Async>
-      )}
-    </Section>
-  );
-}
-
-function yearEndLabel(status: string) {
-  return ({ READY: 'Sẵn sàng', INCOMPLETE: 'Thiếu dữ liệu', PROMOTED: 'Lên lớp',
-    PROMOTED_PENDING_CLASS: 'Chờ xếp lớp', GRADUATED: 'Tốt nghiệp', RETAINED: 'Lưu ban' } as Record<string, string>)[status] || status;
 }
 
 /* ============ A4 — Loại điểm ============ */
@@ -611,7 +940,7 @@ export function AdminExamCategoriesLive() {
     try { await api.post('/exam-categories', f); toast.show('ok', 'Đã thêm loại điểm'); setF({ code: '', name: '', weight: 1 }); cats.reload(); }
     catch (e: any) { toast.show('err', e.message); }
   };
-  return (
+  const scoreTypes = (
     <Section title="Cấu hình khảo thí" subtitle="Quản lý loại điểm và hệ số" wide>
       {toast.node}
       <div className="live-toolbar">
@@ -626,104 +955,1461 @@ export function AdminExamCategoriesLive() {
       )}</Async>
     </Section>
   );
+  return <FunctionTabs tabs={[
+    { id: 'exam-schedule', label: 'Lịch thi & coi thi', Icon: CalendarDays, content: <ExamScheduleWorkspace /> },
+    { id: 'score-types', label: 'Loại điểm', Icon: BookOpen, content: scoreTypes },
+  ]} />;
 }
 
-/* ============ A7 — Tài chính (xác nhận thu tiền mặt) ============ */
+/* ============ A7 — Tài chính ============ */
+const FINANCE_TARGET_LABEL: Record<FinanceTargetType, string> = {
+  ALL: 'Toàn bộ học sinh', GRADE: 'Theo khối', CLASS: 'Theo lớp', STUDENT: 'Danh sách học sinh',
+};
+
+const FINANCE_GRADES = [
+  { id: 'K10', label: 'Khối 10' },
+  { id: 'K11', label: 'Khối 11' },
+  { id: 'K12', label: 'Khối 12' },
+];
+
+const FINANCE_FEE_TYPE_LABEL: Record<string, string> = {
+  TUITION: 'Học phí',
+  MEAL: 'Bán trú / ăn uống',
+  TRANSPORT: 'Xe đưa đón',
+  ACTIVITY: 'Ngoại khóa',
+  OTHER: 'Khoản thu khác',
+};
+
+const INVOICE_SETTLEMENT_LABEL: Record<string, string> = {
+  PENDING: 'Chưa đóng',
+  PARTIAL: 'Đã đóng một phần',
+  OVERDUE: 'Quá hạn chưa đóng',
+  PAID: 'Đã đóng đủ',
+  CANCELLED: 'Đã hủy',
+  VOID: 'Không còn hiệu lực',
+};
+
+type FinanceDialogState = {
+  tone: 'info' | 'warning' | 'danger';
+  title: string;
+  message: string;
+  details?: string[];
+  confirmLabel?: string;
+  onConfirm?: () => void | Promise<void>;
+};
+
+function FinanceActionDialog({ dialog, onClose }: { dialog: FinanceDialogState | null; onClose: () => void }) {
+  if (!dialog) return null;
+  const Icon = dialog.tone === 'danger' ? CircleAlert : dialog.tone === 'warning' ? AlertTriangle : CircleDollarSign;
+  return (
+    <Modal
+      title={dialog.title}
+      onClose={onClose}
+      footer={dialog.onConfirm ? (
+        <>
+          <button className="live-btn subtle" onClick={onClose}>Quay lại</button>
+          <button className={`live-btn ${dialog.tone === 'danger' ? 'danger' : ''}`} onClick={() => {
+            const action = dialog.onConfirm;
+            onClose();
+            void action?.();
+          }}>{dialog.confirmLabel || 'Xác nhận'}</button>
+        </>
+      ) : <button className="live-btn" onClick={onClose}>Đã hiểu</button>}
+    >
+      <div className={`finance-dialog finance-dialog-${dialog.tone}`}>
+        <span className="finance-dialog-icon"><Icon size={24} /></span>
+        <div>
+          <p>{dialog.message}</p>
+          {!!dialog.details?.length && <ul>{dialog.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const normalizeFinanceSearch = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLocaleLowerCase('vi')
+  .trim();
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  CASH: 'Tiền mặt',
+  MB_BANK_TRANSFER: 'Chuyển khoản MB',
+  VNPAY: 'VNPAY',
+  MOMO: 'MoMo',
+};
+
+const REFUND_METHOD_LABEL: Record<string, string> = {
+  MB_BANK_TRANSFER: 'Chuyển khoản MB',
+  CASH: 'Tiền mặt',
+  OTHER: 'Phương thức khác',
+};
+
+const REFUND_TYPE_LABEL: Record<string, string> = {
+  PARTIAL: 'Hoàn một phần',
+  FULL: 'Hoàn toàn bộ còn lại',
+};
+
+type RefundRequestEditor = {
+  payment: PaymentHistory;
+  mode: 'FULL' | 'PARTIAL';
+  amount: string;
+  reason: string;
+};
+type RefundDecisionEditor = {
+  refund: PaymentRefund;
+  action: 'approve' | 'reject' | 'cancel';
+  method: string;
+  reference: string;
+  reason: string;
+  verified: boolean;
+};
+type FeePeriodMetadataEditor = {
+  period: FeePeriod;
+  feeType: string;
+  academicYearId: string;
+  semesterId: string;
+};
+
+const schoolToday = () => new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
+
 export function AdminFinanceLive() {
+  const { user: currentAdmin } = useAuth();
   const periods = useApi<FeePeriod[]>('/fee-periods');
   const invoices = useApi<Invoice[]>('/invoices');
+  const paymentProofs = useApi<PaymentProof[]>('/payment-proofs');
+  const paymentHistory = useApi<PaymentHistory[]>('/payment-history');
+  const paymentRefunds = useApi<PaymentRefund[]>('/payment-refunds');
+  const reconciliationRuns = useApi<PaymentReconciliation[]>('/finance/reconciliations');
+  const academicYears = useApi<AcademicYear[]>('/academicYears');
+  const semesters = useApi<Semester[]>('/semesters');
+  const classes = useApi<SchoolClass[]>('/classes');
+  const students = useApi<ApiUser[]>('/users?role=STUDENT');
   const toast = useToast();
   const [sel, setSel] = useState<string | null>(null);
   const items = useApi<FeePeriodItem[]>(sel ? `/fee-periods/${sel}/items` : null);
-  const [pf, setPf] = useState({ code: '', name: '', applyToGrades: '', dueDate: '' });
-  const [itf, setItf] = useState({ name: '', amount: 1000000 });
+  const [preview, setPreview] = useState<InvoicePreview | null>(null);
+  const [busy, setBusy] = useState('');
+  const [dialog, setDialog] = useState<FinanceDialogState | null>(null);
+  const [periodFilterFeeType, setPeriodFilterFeeType] = useState('');
+  const [periodFilterSemesterId, setPeriodFilterSemesterId] = useState('');
+  const [periodFilterStatus, setPeriodFilterStatus] = useState('');
+  const [periodGrade, setPeriodGrade] = useState('');
+  const [periodClassId, setPeriodClassId] = useState('');
+  const [invoiceFeeType, setInvoiceFeeType] = useState('');
+  const [invoiceSemesterId, setInvoiceSemesterId] = useState('');
+  const [invoiceSettlement, setInvoiceSettlement] = useState('');
+  const [invoiceGrade, setInvoiceGrade] = useState('');
+  const [invoiceClassId, setInvoiceClassId] = useState('');
+  const [invoiceQuery, setInvoiceQuery] = useState('');
+  const [proofStatus, setProofStatus] = useState('SUBMITTED');
+  const [historyStatus, setHistoryStatus] = useState('');
+  const [historyMethod, setHistoryMethod] = useState('');
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [refundStatus, setRefundStatus] = useState('REQUESTED');
+  const [refundRequest, setRefundRequest] = useState<RefundRequestEditor | null>(null);
+  const [refundDecision, setRefundDecision] = useState<RefundDecisionEditor | null>(null);
+  const [periodMetadataEditor, setPeriodMetadataEditor] = useState<FeePeriodMetadataEditor | null>(null);
+  const [reconciliationFromDate, setReconciliationFromDate] = useState(schoolToday);
+  const [reconciliationToDate, setReconciliationToDate] = useState(schoolToday);
+  const [reconciliationMethod, setReconciliationMethod] = useState('');
+  const [reconciliationMinAmount, setReconciliationMinAmount] = useState('');
+  const [reconciliationMaxAmount, setReconciliationMaxAmount] = useState('');
+  const [reconciliationDetail, setReconciliationDetail] = useState<PaymentReconciliation | null>(null);
+  const [proofReview, setProofReview] = useState<{ proof: PaymentProof; payment: Payment; downloadUrl: string } | null>(null);
+  const [proofRetryReason, setProofRetryReason] = useState('');
+  const [proofVerified, setProofVerified] = useState(false);
+  const [pf, setPf] = useState<{
+    code: string; name: string; feeType: string; academicYearId: string; semesterId: string;
+    targetType: FinanceTargetType; targetIds: string[]; dueDate: string;
+  }>({
+    code: '', name: '', feeType: 'TUITION', academicYearId: '', semesterId: '',
+    targetType: 'ALL', targetIds: [], dueDate: '',
+  });
+  const [itf, setItf] = useState<{ name: string; amount: number; targetType: FinanceTargetType; targetIds: string[] }>({
+    name: '', amount: 1000000, targetType: 'ALL', targetIds: [],
+  });
+  const selectedPeriod = periods.data?.find((period) => period.id === sel) || null;
+  const sortedClasses = useMemo(() => [...(classes.data || [])]
+    .sort((a, b) => a.code.localeCompare(b.code, 'vi', { numeric: true })), [classes.data]);
+  const classById = useMemo(() => new Map(sortedClasses.map((item) => [item.id, item])), [sortedClasses]);
+  const feePeriodById = useMemo(() => new Map((periods.data || []).map((period) => [period.id, period])), [periods.data]);
+  const semesterById = useMemo(() => new Map((semesters.data || []).map((semester) => [semester.id, semester])), [semesters.data]);
+  const studentById = useMemo(() => new Map((students.data || []).map((item) => [item.id, item])), [students.data]);
+  const periodSemesterOptions = (semesters.data || []).filter((semester) => !pf.academicYearId || semester.academicYearId === pf.academicYearId);
+  const metadataSemesterOptions = (semesters.data || []).filter((semester) =>
+    semester.academicYearId === periodMetadataEditor?.academicYearId);
+  const periodClassOptions = sortedClasses.filter((item) => !periodGrade || item.gradeLevel === periodGrade);
+  const periodStudentOptions = [...(students.data || [])]
+    .filter((student) => student.classId === periodClassId)
+    .sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'));
+
+  const showIssues = (title: string, details: string[], message = 'Vui lòng bổ sung các thông tin sau trước khi tiếp tục.') => {
+    setDialog({ tone: 'warning', title, message, details });
+  };
+  const showFailure = (title: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setDialog({ tone: 'danger', title, message, details: ['Dữ liệu chưa được thay đổi.'] });
+  };
+  const ask = (options: Omit<FinanceDialogState, 'onConfirm'>, onConfirm: () => void | Promise<void>) => {
+    setDialog({ ...options, onConfirm });
+  };
+
+  const toggleTarget = (ids: string[], id: string) => ids.includes(id)
+    ? ids.filter((value) => value !== id) : [...ids, id];
+
+  const targetSummary = (type?: FinanceTargetType, ids: string[] = []) => {
+    const effectiveType = type || 'ALL';
+    if (effectiveType === 'ALL') return FINANCE_TARGET_LABEL.ALL;
+    if (effectiveType === 'GRADE') return ids.map((id) => id.replace('K', 'Khối ')).join(', ');
+    if (effectiveType === 'CLASS') return ids.map((id) => classes.data?.find((item) => item.id === id)?.code || id).join(', ');
+    return `${ids.length} học sinh`;
+  };
+
+  const selectedPeriodStudents = useMemo(() => {
+    if (!selectedPeriod) return [];
+    return (students.data || []).filter((student) => {
+      if (selectedPeriod.targetType === 'ALL') return true;
+      if (selectedPeriod.targetType === 'STUDENT') return selectedPeriod.targetIds.includes(student.id);
+      if (selectedPeriod.targetType === 'CLASS') return !!student.classId && selectedPeriod.targetIds.includes(student.classId);
+      const grade = student.classId ? classById.get(student.classId)?.gradeLevel : null;
+      return !!grade && selectedPeriod.targetIds.includes(grade);
+    }).sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'));
+  }, [selectedPeriod, students.data, classById]);
+
+  const periodAllLabel = selectedPeriod?.targetType === 'CLASS' && selectedPeriod.targetIds.length === 1
+    ? `Toàn bộ lớp ${classById.get(selectedPeriod.targetIds[0])?.code || ''}`.trim()
+    : selectedPeriod?.targetType === 'GRADE' && selectedPeriod.targetIds.length === 1
+      ? `Toàn bộ ${selectedPeriod.targetIds[0].replace('K', 'khối ')}`
+      : selectedPeriod?.targetType === 'STUDENT'
+        ? `Toàn bộ ${selectedPeriod.targetIds.length} học sinh đã chọn`
+        : 'Toàn bộ học sinh trong phạm vi';
+
+  const itemTargetSummary = (item: FeePeriodItem) => item.targetType === 'ALL'
+    ? periodAllLabel
+    : studentById.get(item.targetIds?.[0])?.fullName || 'Một học sinh';
+
+  const periodRows = useMemo(() => {
+    return (periods.data || []).filter((period) => {
+      if (periodFilterFeeType && (period.feeType || 'OTHER') !== periodFilterFeeType) return false;
+      if (periodFilterSemesterId && period.semesterId !== periodFilterSemesterId) return false;
+      if (periodFilterStatus && period.status !== periodFilterStatus) return false;
+      return true;
+    });
+  }, [periods.data, periodFilterFeeType, periodFilterSemesterId, periodFilterStatus]);
+
+  const invoiceRows = useMemo(() => {
+    const query = normalizeFinanceSearch(invoiceQuery);
+    const statusOrder: Record<string, number> = { PENDING: 0, PARTIAL: 1, OVERDUE: 2, PAID: 3, CANCELLED: 4, VOID: 4 };
+    return [...(invoices.data || [])].filter((invoice) => {
+      const student = studentById.get(invoice.studentId);
+      const schoolClass = student?.classId ? classById.get(student.classId) : null;
+      const period = invoice.feePeriodId ? feePeriodById.get(invoice.feePeriodId) : null;
+      if (invoiceFeeType && (period?.feeType || 'OTHER') !== invoiceFeeType) return false;
+      if (invoiceSemesterId && period?.semesterId !== invoiceSemesterId) return false;
+      if (invoiceGrade && schoolClass?.gradeLevel !== invoiceGrade) return false;
+      if (invoiceClassId && student?.classId !== invoiceClassId) return false;
+      if (invoiceSettlement === 'UNPAID' && !['PENDING', 'PARTIAL', 'OVERDUE'].includes(invoice.status)) return false;
+      if (invoiceSettlement === 'PAID' && invoice.status !== 'PAID') return false;
+      if (invoiceSettlement === 'INACTIVE' && !['CANCELLED', 'VOID'].includes(invoice.status)) return false;
+      if (!query) return true;
+      return normalizeFinanceSearch([
+        invoice.code, invoice.studentName, student?.username, student?.studentCode,
+        student?.phone, student?.guardianPhone, student?.email,
+        invoice.feePeriodId ? feePeriodById.get(invoice.feePeriodId)?.code : '',
+      ].filter(Boolean).join(' ')).includes(query);
+    }).sort((a, b) => (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9)
+      || (a.dueDate || '').localeCompare(b.dueDate || '')
+      || (b.issuedAt || '').localeCompare(a.issuedAt || ''));
+  }, [invoices.data, invoiceFeeType, invoiceSemesterId, invoiceGrade, invoiceClassId,
+    invoiceSettlement, invoiceQuery, studentById, classById, feePeriodById]);
+  const invoiceClassOptions = sortedClasses.filter((schoolClass) => !invoiceGrade || schoolClass.gradeLevel === invoiceGrade);
+  const invoiceStats = useMemo(() => ({
+    pending: (invoices.data || []).filter((invoice) => invoice.status === 'PENDING').length,
+    partial: (invoices.data || []).filter((invoice) => invoice.status === 'PARTIAL').length,
+    overdue: (invoices.data || []).filter((invoice) => invoice.status === 'OVERDUE').length,
+    paid: (invoices.data || []).filter((invoice) => invoice.status === 'PAID').length,
+  }), [invoices.data]);
+  const proofRows = useMemo(() => (paymentProofs.data || [])
+    .filter((proof) => !proofStatus || proof.status === proofStatus), [paymentProofs.data, proofStatus]);
+  const historyRows = useMemo(() => {
+    const query = normalizeFinanceSearch(historyQuery);
+    return (paymentHistory.data || []).filter((payment) => {
+      if (historyStatus && payment.status !== historyStatus) return false;
+      if (historyMethod && payment.method !== historyMethod) return false;
+      if (!query) return true;
+      return normalizeFinanceSearch([
+        payment.studentName, payment.studentCode, payment.invoiceCode, payment.feePeriodCode,
+        payment.txnRef, payment.providerTransactionId, payment.receiptNumber,
+      ].filter(Boolean).join(' ')).includes(query);
+    });
+  }, [paymentHistory.data, historyStatus, historyMethod, historyQuery]);
+  const historyStats = useMemo(() => ({
+    success: (paymentHistory.data || []).filter((payment) => payment.status === 'SUCCESS').length,
+    pending: (paymentHistory.data || []).filter((payment) => payment.status === 'PENDING').length,
+    failed: (paymentHistory.data || []).filter((payment) => payment.status === 'FAILED').length,
+    reversed: (paymentHistory.data || []).filter((payment) => payment.status === 'REVERSED').length,
+  }), [paymentHistory.data]);
+  const refundRows = useMemo(() => (paymentRefunds.data || [])
+    .filter((refund) => !refundStatus || refund.status === refundStatus)
+    .sort((a, b) => {
+      const order: Record<string, number> = { REQUESTED: 0, COMPLETED: 1, REJECTED: 2, CANCELLED: 3 };
+      return (order[a.status] ?? 9) - (order[b.status] ?? 9)
+        || (b.requestedAt || '').localeCompare(a.requestedAt || '');
+    }), [paymentRefunds.data, refundStatus]);
+  const submittedProofByInvoice = useMemo(() => {
+    const result = new Map<string, PaymentProof>();
+    for (const proof of paymentProofs.data || []) {
+      if (proof.status === 'SUBMITTED' && !result.has(proof.invoiceId)) result.set(proof.invoiceId, proof);
+    }
+    return result;
+  }, [paymentProofs.data]);
+
+  const changePeriodTargetType = (targetType: FinanceTargetType) => {
+    setPeriodGrade('');
+    setPeriodClassId('');
+    setPf((current) => ({ ...current, targetType, targetIds: [] }));
+  };
+
+  const selectPeriodGrade = (grade: string) => {
+    setPeriodGrade(grade);
+    setPeriodClassId('');
+    setPf((current) => ({
+      ...current,
+      targetIds: current.targetType === 'GRADE' && grade ? [grade] : [],
+    }));
+  };
+
+  const selectPeriodClass = (classId: string) => {
+    setPeriodClassId(classId);
+    setPf((current) => ({
+      ...current,
+      targetIds: current.targetType === 'CLASS' && classId ? [classId] : [],
+    }));
+  };
+
+  const periodScopeFields = pf.targetType === 'ALL' ? (
+    <div className="finance-scope-note">Đợt thu sẽ áp dụng cho toàn bộ học sinh đang hoạt động.</div>
+  ) : (
+    <div className="finance-scope-cascade">
+      <label>
+        <span><b>1</b> Chọn khối</span>
+        <select className="live-select" aria-label="Chọn khối cho đợt thu" value={periodGrade} onChange={(event) => selectPeriodGrade(event.target.value)}>
+          <option value="">— Chọn khối —</option>
+          {FINANCE_GRADES.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}
+        </select>
+      </label>
+      {pf.targetType !== 'GRADE' && (
+        <label>
+          <span><b>2</b> Chọn lớp</span>
+          <select className="live-select" aria-label="Chọn lớp cho đợt thu" disabled={!periodGrade} value={periodClassId} onChange={(event) => selectPeriodClass(event.target.value)}>
+            <option value="">— Chọn lớp —</option>
+            {periodClassOptions.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
+          </select>
+        </label>
+      )}
+      {pf.targetType === 'STUDENT' && (
+        <div className="finance-scope-students">
+          <span><b>3</b> Chọn học sinh của lớp</span>
+          {!periodClassId ? <small>Chọn khối và lớp để tải danh sách học sinh.</small> : !periodStudentOptions.length
+            ? <small>Lớp này chưa có học sinh đang hoạt động.</small>
+            : <div className="finance-target-picker" role="group" aria-label="Danh sách học sinh của lớp">
+              {periodStudentOptions.map((student) => (
+                <label key={student.id} className={pf.targetIds.includes(student.id) ? 'selected' : ''}>
+                  <input type="checkbox" checked={pf.targetIds.includes(student.id)} onChange={() => setPf((current) => ({
+                    ...current, targetIds: toggleTarget(current.targetIds, student.id),
+                  }))} />
+                  <span>{student.fullName}<small>{student.studentCode || student.username}</small></span>
+                </label>
+              ))}
+            </div>}
+        </div>
+      )}
+    </div>
+  );
+
+  const choosePeriod = (id: string) => {
+    setSel(id);
+    setPreview(null);
+  };
 
   const createPeriod = async () => {
-    if (!pf.code) return toast.show('err', 'Nhập mã đợt thu');
+    const issues: string[] = [];
+    if (!pf.code.trim()) issues.push('Nhập mã đợt thu.');
+    if (!pf.name.trim()) issues.push('Nhập tên đợt thu.');
+    if (!pf.feeType) issues.push('Chọn loại khoản thu.');
+    if (!pf.academicYearId) issues.push('Chọn năm học.');
+    if (!pf.semesterId) issues.push('Chọn học kỳ.');
+    if (!pf.dueDate) issues.push('Chọn hạn thanh toán.');
+    if (pf.targetType !== 'ALL' && !periodGrade) issues.push('Chọn khối áp dụng.');
+    if (['CLASS', 'STUDENT'].includes(pf.targetType) && !periodClassId) issues.push('Chọn lớp áp dụng.');
+    if (pf.targetType === 'STUDENT' && !pf.targetIds.length) issues.push('Chọn ít nhất một học sinh trong lớp.');
+    if (issues.length) return showIssues('Chưa thể tạo đợt thu', issues);
+    setBusy('create');
     try {
-      await api.post('/fee-periods', { ...pf, applyToGrades: pf.applyToGrades || null, dueDate: pf.dueDate || null });
-      toast.show('ok', 'Đã tạo đợt thu'); setPf({ code: '', name: '', applyToGrades: '', dueDate: '' }); periods.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+      const created = await api.post<FeePeriod>('/fee-periods', { ...pf, dueDate: pf.dueDate || null });
+      toast.show('ok', `Đã tạo bản nháp ${created.code}`);
+      setPf({
+        code: '', name: '', feeType: 'TUITION', academicYearId: '', semesterId: '',
+        targetType: 'ALL', targetIds: [], dueDate: '',
+      });
+      setPeriodGrade(''); setPeriodClassId('');
+      setSel(created.id); setPreview(null); periods.reload();
+    } catch (error) { showFailure('Không thể tạo đợt thu', error); }
+    finally { setBusy(''); }
   };
+
+  const openPeriodMetadataEditor = (period: FeePeriod) => {
+    setPeriodMetadataEditor({
+      period,
+      feeType: period.feeType || 'OTHER',
+      academicYearId: period.academicYearId || '',
+      semesterId: period.semesterId || '',
+    });
+  };
+
+  const savePeriodMetadata = async () => {
+    if (!periodMetadataEditor) return;
+    const issues: string[] = [];
+    if (!periodMetadataEditor.feeType) issues.push('Chọn loại khoản thu.');
+    if (!periodMetadataEditor.academicYearId) issues.push('Chọn năm học.');
+    if (!periodMetadataEditor.semesterId) issues.push('Chọn học kỳ.');
+    const selectedSemester = (semesters.data || [])
+      .find((semester) => semester.id === periodMetadataEditor.semesterId);
+    if (selectedSemester && selectedSemester.academicYearId !== periodMetadataEditor.academicYearId) {
+      issues.push('Học kỳ không thuộc năm học đã chọn.');
+    }
+    if (issues.length) return showIssues('Chưa thể cập nhật phân loại', issues);
+
+    setBusy(`metadata:${periodMetadataEditor.period.id}`);
+    try {
+      const updated = await api.put<FeePeriod>(
+        `/fee-periods/${encodeURIComponent(periodMetadataEditor.period.id)}/metadata`,
+        {
+          feeType: periodMetadataEditor.feeType,
+          academicYearId: periodMetadataEditor.academicYearId,
+          semesterId: periodMetadataEditor.semesterId,
+        },
+      );
+      setPeriodMetadataEditor(null);
+      toast.show('ok', `Đã cập nhật phân loại ${updated.code}`);
+      periods.reload();
+    } catch (error) {
+      showFailure('Không thể cập nhật phân loại đợt thu', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
   const addItem = async () => {
-    if (!sel || !itf.name) return toast.show('err', 'Chọn đợt thu + nhập tên khoản');
-    try { await api.post(`/fee-periods/${sel}/items`, itf); toast.show('ok', 'Đã thêm khoản'); items.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
-  };
-  const open = async (id: string) => { try { await api.post(`/fee-periods/${id}/open`); toast.show('ok', 'Đã mở đợt thu'); periods.reload(); } catch (e: any) { toast.show('err', e.message); } };
-  const generate = async (id: string) => {
-    try { const inv = await api.post<Invoice[]>(`/fee-periods/${id}/generate-invoices`); toast.show('ok', `Đã phát hành ${inv.length} hóa đơn và tự động thông báo tới phụ huynh`); invoices.reload(); }
-    catch (e: any) { toast.show('err', e.message); }
-  };
-  const confirmCash = async (inv: Invoice) => {
-    if (!confirm(`Xác nhận học sinh ${inv.studentName} đã đóng ${money(inv.totalAmount - inv.paidAmount)} tại trường?`)) return;
+    const issues: string[] = [];
+    if (!sel) issues.push('Chọn một đợt thu đang ở trạng thái bản nháp.');
+    if (!itf.name.trim()) issues.push('Nhập tên khoản thu.');
+    if (itf.amount <= 0) issues.push('Số tiền phải lớn hơn 0.');
+    if (itf.targetType === 'STUDENT' && itf.targetIds.length !== 1) issues.push('Chọn đúng một học sinh trong phạm vi đợt thu.');
+    if (issues.length) return showIssues('Chưa thể thêm khoản thu', issues);
+    setBusy(`item:${sel}`);
     try {
-      await api.post('/payments/cash', { invoiceId: inv.id, method: 'CASH' });
-      toast.show('ok', `Đã ghi nhận thu tiền mặt ${inv.code}`);
+      await api.post(`/fee-periods/${sel}/items`, itf);
+      toast.show('ok', 'Đã thêm khoản thu');
+      setItf({ name: '', amount: 1000000, targetType: 'ALL', targetIds: [] });
+      setPreview(null); items.reload();
+    } catch (error) { showFailure('Không thể thêm khoản thu', error); }
+    finally { setBusy(''); }
+  };
+
+  const deleteItem = (item: FeePeriodItem) => {
+    if (!selectedPeriod || selectedPeriod.status !== 'DRAFT') {
+      return showIssues('Không thể xóa khoản thu', ['Chỉ được xóa khoản khi đợt thu đang ở trạng thái bản nháp.']);
+    }
+    ask({
+      tone: 'danger',
+      title: 'Xóa khoản thu?',
+      message: `Khoản “${item.name}” trị giá ${money(item.amount)} sẽ bị xóa khỏi bản nháp.`,
+      details: ['Thao tác này không ảnh hưởng đến đợt thu khác.'],
+      confirmLabel: 'Xóa khoản',
+    }, async () => {
+      setBusy(`delete-item:${item.id}`);
+      try {
+        await api.del(`/fee-periods/${selectedPeriod.id}/items/${item.id}`);
+        toast.show('ok', `Đã xóa khoản ${item.name}`);
+        setPreview(null); items.reload();
+      } catch (error) { showFailure('Không thể xóa khoản thu', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const openPeriod = async (id: string) => {
+    setBusy(`open:${id}`);
+    try {
+      const feeItems = await api.get<FeePeriodItem[]>(`/fee-periods/${id}/items`);
+      if (!feeItems.length) {
+        choosePeriod(id);
+        return showIssues('Chưa thể mở đợt thu', [
+          'Bản nháp chưa có khoản thu nào để lập hóa đơn.',
+          'Mở phần Chi tiết và thêm ít nhất một khoản thu.',
+        ]);
+      }
+      const period = periods.data?.find((item) => item.id === id);
+      ask({
+        tone: 'info',
+        title: 'Mở đợt thu?',
+        message: `${period?.name || 'Đợt thu'} có ${feeItems.length} khoản thu và sẽ sẵn sàng để xem trước.`,
+        details: ['Sau khi mở, cần xem trước trước khi phát hành hóa đơn.'],
+        confirmLabel: 'Mở đợt thu',
+      }, async () => {
+        setBusy(`open:${id}`);
+        try {
+          await api.post(`/fee-periods/${id}/open`);
+          toast.show('ok', 'Đã mở đợt thu'); setPreview(null); periods.reload();
+        } catch (error) { showFailure('Không thể mở đợt thu', error); }
+        finally { setBusy(''); }
+      });
+    } catch (error) { showFailure('Không thể kiểm tra đợt thu', error); }
+    finally { setBusy(''); }
+  };
+
+  const loadPreview = async (id: string) => {
+    setSel(id); setBusy(`preview:${id}`);
+    try {
+      const result = await api.get<InvoicePreview>(`/fee-periods/${id}/preview`);
+      setPreview(result);
+      toast.show('ok', `Sẵn sàng phát hành ${result.newInvoiceCount} hóa đơn`);
+    } catch (error) { showFailure('Không thể xem trước hóa đơn', error); }
+    finally { setBusy(''); }
+  };
+
+  const generate = async (id: string) => {
+    if (preview?.feePeriodId !== id) {
+      return showIssues('Chưa thể phát hành', ['Bấm “Xem trước” để kiểm tra số học sinh và tổng tiền trước.']);
+    }
+    if (!preview.newInvoiceCount) {
+      return showIssues('Không có hóa đơn cần phát hành', ['Tất cả học sinh trong phạm vi đã có hóa đơn hoặc chưa có khoản thu phù hợp.']);
+    }
+    ask({
+      tone: 'info',
+      title: 'Phát hành hóa đơn?',
+      message: `Hệ thống sẽ phát hành ${preview.newInvoiceCount} hóa đơn với tổng giá trị ${money(preview.newTotalAmount)}.`,
+      details: ['Học sinh và phụ huynh sẽ nhận thông báo.', 'Sau khi phát hành, hãy thu hồi về nháp nếu cần chỉnh sửa.'],
+      confirmLabel: 'Phát hành',
+    }, async () => {
+      setBusy(`generate:${id}`);
+      try {
+        const created = await api.post<Invoice[]>(`/fee-periods/${id}/generate-invoices`);
+        toast.show('ok', `Đã phát hành ${created.length} hóa đơn và gửi thông báo`);
+        setPreview(null); invoices.reload(); periods.reload();
+      } catch (error) { showFailure('Không thể phát hành hóa đơn', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const closePeriod = (id: string) => {
+    ask({
+      tone: 'warning',
+      title: 'Đóng đợt thu?',
+      message: 'Đợt thu sẽ chuyển sang trạng thái đã đóng và không thể chỉnh sửa hay thu hồi.',
+      details: ['Các hóa đơn đã phát hành và lịch sử thanh toán vẫn được giữ nguyên.'],
+      confirmLabel: 'Đóng đợt thu',
+    }, async () => {
+      setBusy(`close:${id}`);
+      try { await api.post(`/fee-periods/${id}/close`); toast.show('ok', 'Đã đóng đợt thu'); setPreview(null); periods.reload(); }
+      catch (error) { showFailure('Không thể đóng đợt thu', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const cancelPeriod = (id: string) => {
+    ask({
+      tone: 'danger',
+      title: 'Hủy đợt thu?',
+      message: 'Đợt thu và toàn bộ hóa đơn chưa thanh toán sẽ bị hủy.',
+      details: ['Không thể hủy nếu đã phát sinh thanh toán.', 'Thao tác được ghi vào lịch sử hệ thống.'],
+      confirmLabel: 'Hủy đợt thu',
+    }, async () => {
+      setBusy(`cancel:${id}`);
+      try {
+        await api.post(`/fee-periods/${id}/cancel`, { reason: 'Hủy từ màn quản trị tài chính' });
+        toast.show('ok', 'Đã hủy đợt thu'); setPreview(null); periods.reload(); invoices.reload();
+      } catch (error) { showFailure('Không thể hủy đợt thu', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const recallPeriod = (id: string) => {
+    ask({
+      tone: 'warning',
+      title: 'Thu hồi về bản nháp?',
+      message: 'Các hóa đơn chưa thanh toán sẽ được thu hồi để bạn chỉnh sửa hoặc xóa khoản thu.',
+      details: ['Không thể thu hồi nếu đã có giao dịch thanh toán.', 'Học sinh và phụ huynh sẽ nhận thông báo thu hồi.'],
+      confirmLabel: 'Lưu về nháp',
+    }, async () => {
+      setBusy(`recall:${id}`);
+      try {
+        await api.post(`/fee-periods/${id}/recall`);
+        toast.show('ok', 'Đã thu hồi đợt thu về bản nháp'); setPreview(null); periods.reload(); invoices.reload();
+      } catch (error) { showFailure('Không thể thu hồi đợt thu', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const confirmCash = (invoice: Invoice) => {
+    ask({
+      tone: 'info',
+      title: 'Xác nhận thu tiền mặt?',
+      message: `${invoice.studentName} đã nộp ${money(invoice.totalAmount - invoice.paidAmount)} tại trường.`,
+      details: [`Hóa đơn: ${invoice.code}`, 'Thao tác sẽ được ghi vào lịch sử thanh toán.'],
+      confirmLabel: 'Xác nhận đã thu',
+    }, async () => {
+      setBusy(`cash:${invoice.id}`);
+      try {
+        const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: invoice.id, method: 'CASH' });
+        await api.post(`/payments/${encodeURIComponent(initiated.payment.id)}/cash-confirm`);
+        toast.show('ok', `Đã ghi nhận thu tiền mặt ${invoice.code}`);
+        invoices.reload();
+        paymentHistory.reload();
+      } catch (error) { showFailure('Không thể xác nhận thu tiền', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const openPaymentProof = async (proof: PaymentProof) => {
+    setBusy(`proof:view:${proof.id}`);
+    try {
+      const [file, payment] = await Promise.all([
+        api.post<{ downloadUrl: string }>(`/files/${encodeURIComponent(proof.fileId)}/presigned-download`),
+        api.get<Payment>(`/payments/${encodeURIComponent(proof.paymentId)}`),
+      ]);
+      setProofRetryReason('');
+      setProofVerified(false);
+      setProofReview({ proof, payment, downloadUrl: file.downloadUrl });
+    } catch (error) {
+      showFailure('Không thể mở biên lai', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const approvePaymentProof = async () => {
+    if (!proofReview) return;
+    if (!proofVerified) {
+      toast.show('err', 'Hãy xác nhận đã đối chiếu giao dịch trên tài khoản MB');
+      return;
+    }
+    setBusy(`proof:approve:${proofReview.proof.id}`);
+    try {
+      await api.post<PaymentProofDecision>(`/payment-proofs/${encodeURIComponent(proofReview.proof.id)}/approve`);
+      toast.show('ok', `Đã xác nhận thu ${proofReview.proof.invoiceCode}`);
+      setProofReview(null);
+      paymentProofs.reload();
       invoices.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+      paymentHistory.reload();
+    } catch (error) {
+      showFailure('Không thể duyệt biên lai', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const requestPaymentAgain = async () => {
+    if (!proofReview) return;
+    if (!proofRetryReason.trim()) {
+      toast.show('err', 'Bắt buộc nhập lý do yêu cầu thanh toán lại');
+      return;
+    }
+    setBusy(`proof:retry:${proofReview.proof.id}`);
+    try {
+      await api.post<PaymentProofDecision>(`/payment-proofs/${encodeURIComponent(proofReview.proof.id)}/request-repayment`, {
+        reason: proofRetryReason.trim(),
+      });
+      toast.show('ok', `Đã yêu cầu thanh toán lại ${proofReview.proof.invoiceCode}`);
+      setProofReview(null);
+      paymentProofs.reload();
+      invoices.reload();
+      paymentHistory.reload();
+    } catch (error) {
+      showFailure('Không thể gửi yêu cầu thanh toán lại', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const remindInvoice = (invoice: Invoice) => {
+    ask({
+      tone: 'warning',
+      title: 'Gửi nhắc thanh toán?',
+      message: `Gửi thông báo quá hạn của ${invoice.code} cho ${invoice.studentName} và phụ huynh liên kết.`,
+      details: [`Số tiền còn thiếu: ${money(invoice.totalAmount - invoice.paidAmount)}`],
+      confirmLabel: 'Gửi nhắc nhở',
+    }, async () => {
+      setBusy(`remind:${invoice.id}`);
+      try {
+        await api.post(`/invoices/${invoice.id}/remind`);
+        toast.show('ok', `Đã gửi nhắc thanh toán ${invoice.code}`);
+      } catch (error) { showFailure('Không thể gửi nhắc nhở', error); }
+      finally { setBusy(''); }
+    });
+  };
+
+  const downloadPaymentReceipt = async (payment: PaymentHistory) => {
+    setBusy(`receipt:download:${payment.paymentId}`);
+    try {
+      const result = await api.get<PaymentReceiptDownload>(`/payments/${encodeURIComponent(payment.paymentId)}/receipt`);
+      const link = document.createElement('a');
+      link.href = result.downloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.click();
+    } catch (error) {
+      showFailure('Không thể tải biên nhận', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const issuePaymentReceipt = async (payment: PaymentHistory) => {
+    setBusy(`receipt:issue:${payment.paymentId}`);
+    try {
+      const receipt = await api.post<PaymentReceipt>(`/payments/${encodeURIComponent(payment.paymentId)}/receipt/issue`);
+      paymentHistory.reload();
+      if (receipt.status === 'ISSUED') {
+        toast.show('ok', `Đã phát hành biên nhận ${receipt.receiptNumber}`);
+      } else {
+        showIssues('Biên nhận chưa được tạo', [receipt.generationError || 'MinIO chưa sẵn sàng. Hãy kiểm tra dịch vụ và thử lại.']);
+      }
+    } catch (error) {
+      showFailure('Không thể phát hành biên nhận', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const availableRefundAmount = (payment: PaymentHistory) => Math.max(0,
+    payment.amount - (payment.refundedAmount || 0) - (payment.pendingRefundAmount || 0));
+
+  const openRefundRequest = (payment: PaymentHistory) => {
+    const available = availableRefundAmount(payment);
+    if (payment.status !== 'SUCCESS' || available <= 0) {
+      return showIssues('Không thể tạo yêu cầu hoàn tiền', [
+        'Giao dịch phải đang thành công và còn số tiền chưa hoàn hoặc chưa được giữ chỗ.',
+      ]);
+    }
+    setRefundRequest({ payment, mode: 'FULL', amount: String(available), reason: '' });
+  };
+
+  const submitRefundRequest = async () => {
+    if (!refundRequest) return;
+    const available = availableRefundAmount(refundRequest.payment);
+    const amount = refundRequest.mode === 'FULL'
+      ? available : Math.trunc(Number(refundRequest.amount));
+    if (!Number.isFinite(amount) || amount <= 0 || amount > available) {
+      return toast.show('err', `Số tiền hoàn phải từ 1 đến ${money(available)}`);
+    }
+    if (!refundRequest.reason.trim()) return toast.show('err', 'Bắt buộc nhập lý do hoàn tiền');
+    setBusy(`refund:request:${refundRequest.payment.paymentId}`);
+    try {
+      const created = await api.post<PaymentRefund>(`/payments/${encodeURIComponent(refundRequest.payment.paymentId)}/refunds`, {
+        amount,
+        reason: refundRequest.reason.trim(),
+      });
+      setRefundRequest(null);
+      toast.show('ok', `Đã tạo yêu cầu ${created.refundNumber}`);
+      paymentRefunds.reload();
+      paymentHistory.reload();
+    } catch (error) {
+      setRefundRequest(null);
+      showFailure('Không thể tạo yêu cầu hoàn tiền', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const openRefundDecision = (refund: PaymentRefund, action: RefundDecisionEditor['action']) => {
+    if ((action === 'approve' || action === 'reject') && refund.requestedBy === currentAdmin?.id) {
+      return showIssues('Cần Admin thứ hai xử lý', [
+        'Admin tạo yêu cầu không được tự duyệt hoặc tự từ chối.',
+        'Hãy đăng nhập bằng tài khoản admin.finance để tiếp tục.',
+      ], 'Quy trình hoàn tiền bắt buộc tách người tạo và người kiểm tra.');
+    }
+    setRefundDecision({ refund, action, method: 'MB_BANK_TRANSFER', reference: '', reason: '', verified: false });
+  };
+
+  const submitRefundDecision = async () => {
+    if (!refundDecision) return;
+    const { refund, action } = refundDecision;
+    if (action === 'approve' && !refundDecision.verified) {
+      return toast.show('err', 'Hãy xác nhận tiền đã được hoàn thực tế trước khi duyệt');
+    }
+    if (action === 'approve' && refundDecision.method !== 'CASH' && !refundDecision.reference.trim()) {
+      return toast.show('err', 'Hoàn không dùng tiền mặt bắt buộc có mã tham chiếu');
+    }
+    if (action !== 'approve' && !refundDecision.reason.trim()) {
+      return toast.show('err', 'Bắt buộc nhập lý do xử lý yêu cầu');
+    }
+    setBusy(`refund:${action}:${refund.id}`);
+    try {
+      const body = action === 'approve'
+        ? { method: refundDecision.method, reference: refundDecision.reference.trim() || null }
+        : { reason: refundDecision.reason.trim() };
+      const updated = await api.post<PaymentRefund>(`/payment-refunds/${encodeURIComponent(refund.id)}/${action}`, body);
+      setRefundDecision(null);
+      toast.show('ok', action === 'approve'
+        ? `Đã xác nhận hoàn ${money(updated.amount)}`
+        : action === 'reject' ? 'Đã từ chối yêu cầu hoàn tiền' : 'Đã hủy yêu cầu hoàn tiền');
+      paymentRefunds.reload();
+      paymentHistory.reload();
+      invoices.reload();
+      reconciliationRuns.reload();
+      setReconciliationDetail(null);
+    } catch (error) {
+      setRefundDecision(null);
+      showFailure('Không thể xử lý yêu cầu hoàn tiền', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const runReconciliation = async () => {
+    if (!reconciliationFromDate || !reconciliationToDate) {
+      return toast.show('err', 'Chọn đủ ngày bắt đầu và ngày kết thúc');
+    }
+    if (reconciliationFromDate > reconciliationToDate) {
+      return toast.show('err', 'Ngày bắt đầu không được sau ngày kết thúc');
+    }
+    const minAmount = reconciliationMinAmount.trim() ? Number(reconciliationMinAmount) : null;
+    const maxAmount = reconciliationMaxAmount.trim() ? Number(reconciliationMaxAmount) : null;
+    if ((minAmount != null && (!Number.isSafeInteger(minAmount) || minAmount < 0))
+      || (maxAmount != null && (!Number.isSafeInteger(maxAmount) || maxAmount < 0))) {
+      return toast.show('err', 'Khoảng tiền phải là số nguyên VND không âm');
+    }
+    if (minAmount != null && maxAmount != null && minAmount > maxAmount) {
+      return toast.show('err', 'Số tiền tối thiểu không được lớn hơn số tiền tối đa');
+    }
+    const rangeLabel = reconciliationFromDate === reconciliationToDate
+      ? reconciliationFromDate : `${reconciliationFromDate} - ${reconciliationToDate}`;
+    setBusy('reconcile');
+    try {
+      const result = await api.post<PaymentReconciliation>('/finance/reconciliations', {
+        fromDate: reconciliationFromDate,
+        toDate: reconciliationToDate,
+        minAmount,
+        maxAmount,
+        method: reconciliationMethod || null,
+      });
+      setReconciliationDetail(result);
+      reconciliationRuns.reload();
+      toast.show(result.status === 'BALANCED' ? 'ok' : 'err', result.status === 'BALANCED'
+        ? `Đối soát ${rangeLabel} đã khớp sổ`
+        : `Phát hiện ${result.discrepancyCount} sai lệch cần kiểm tra`);
+    } catch (error) {
+      showFailure('Không thể chạy đối soát', error);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const loadReconciliation = async (id: string) => {
+    setBusy(`reconcile:view:${id}`);
+    try {
+      setReconciliationDetail(await api.get<PaymentReconciliation>(`/finance/reconciliations/${encodeURIComponent(id)}`));
+    } catch (error) {
+      showFailure('Không thể mở kết quả đối soát', error);
+    } finally {
+      setBusy('');
+    }
   };
 
   return (
     <>
       {toast.node}
+      <FinanceActionDialog dialog={dialog} onClose={() => setDialog(null)} />
+      {refundRequest && (
+        <Modal
+          title="Tạo yêu cầu hoàn tiền"
+          onClose={() => setRefundRequest(null)}
+          footer={(
+            <>
+              <button className="live-btn ghost" type="button" onClick={() => setRefundRequest(null)}>Đóng</button>
+              <button className="live-btn" type="button" disabled={!!busy} onClick={submitRefundRequest}><Undo2 size={15} /> Gửi yêu cầu</button>
+            </>
+          )}
+        >
+          <div className="finance-refund-summary">
+            <span>{refundRequest.payment.invoiceCode} · {refundRequest.payment.studentName}</span>
+            <strong>Có thể hoàn: {money(availableRefundAmount(refundRequest.payment))}</strong>
+          </div>
+          <Field label="Hình thức hoàn *">
+            <div className="finance-refund-mode" role="group" aria-label="Hình thức hoàn tiền">
+              <button type="button" className={refundRequest.mode === 'FULL' ? 'active' : ''}
+                onClick={() => setRefundRequest({ ...refundRequest, mode: 'FULL', amount: String(availableRefundAmount(refundRequest.payment)) })}>
+                Toàn bộ còn lại
+              </button>
+              <button type="button" className={refundRequest.mode === 'PARTIAL' ? 'active' : ''}
+                onClick={() => setRefundRequest({ ...refundRequest, mode: 'PARTIAL' })}>
+                Một phần
+              </button>
+            </div>
+          </Field>
+          <Field label="Số tiền hoàn (VND) *">
+            <input type="number" min="1" max={availableRefundAmount(refundRequest.payment)} step="1" value={refundRequest.amount}
+              disabled={refundRequest.mode === 'FULL'}
+              onChange={(event) => setRefundRequest({ ...refundRequest, amount: event.target.value })} />
+          </Field>
+          <Field label="Lý do hoàn tiền *">
+            <textarea maxLength={500} rows={4} value={refundRequest.reason}
+              placeholder="Nêu rõ căn cứ và lý do cần hoàn"
+              onChange={(event) => setRefundRequest({ ...refundRequest, reason: event.target.value })} />
+          </Field>
+          <p className="finance-refund-note"><CircleAlert size={16} /> Yêu cầu mới chỉ giữ chỗ số tiền. Sau khi duyệt, giao dịch còn {money(Math.max(0, availableRefundAmount(refundRequest.payment) - (refundRequest.mode === 'FULL' ? availableRefundAmount(refundRequest.payment) : Math.max(0, Number(refundRequest.amount) || 0))))} có thể hoàn tiếp.</p>
+        </Modal>
+      )}
+      {refundDecision && (
+        <Modal
+          title={refundDecision.action === 'approve' ? 'Xác nhận đã hoàn tiền'
+            : refundDecision.action === 'reject' ? 'Từ chối yêu cầu hoàn tiền' : 'Hủy yêu cầu hoàn tiền'}
+          onClose={() => setRefundDecision(null)}
+          footer={(
+            <>
+              <button className="live-btn ghost" type="button" onClick={() => setRefundDecision(null)}>Đóng</button>
+              <button className={`live-btn ${refundDecision.action !== 'approve' ? 'danger' : ''}`} type="button"
+                disabled={!!busy || (refundDecision.action === 'approve'
+                  ? !refundDecision.verified || (refundDecision.method !== 'CASH' && !refundDecision.reference.trim())
+                  : !refundDecision.reason.trim())}
+                onClick={submitRefundDecision}>
+                {refundDecision.action === 'approve' ? <CheckCircle2 size={15} /> : <Ban size={15} />}
+                {refundDecision.action === 'approve' ? 'Xác nhận hoàn' : refundDecision.action === 'reject' ? 'Từ chối' : 'Hủy yêu cầu'}
+              </button>
+            </>
+          )}
+        >
+          <div className="finance-refund-summary">
+            <span>{refundDecision.refund.refundNumber} · {refundDecision.refund.studentName}</span>
+            <strong>{money(refundDecision.refund.amount)}</strong>
+            <small>{refundDecision.refund.reason}</small>
+          </div>
+          {refundDecision.action === 'approve' ? (
+            <>
+              <Field label="Phương thức hoàn *">
+                <select value={refundDecision.method} onChange={(event) => setRefundDecision({
+                  ...refundDecision,
+                  method: event.target.value,
+                  reference: event.target.value === 'CASH' ? '' : refundDecision.reference,
+                })}>
+                  {Object.entries(REFUND_METHOD_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </Field>
+              {refundDecision.method !== 'CASH' && (
+                <Field label="Mã tham chiếu hoàn tiền *">
+                  <input maxLength={120} value={refundDecision.reference} placeholder="Ví dụ: FT202607210001"
+                    onChange={(event) => setRefundDecision({ ...refundDecision, reference: event.target.value })} />
+                </Field>
+              )}
+              <label className="finance-refund-verification">
+                <input type="checkbox" checked={refundDecision.verified}
+                  onChange={(event) => setRefundDecision({ ...refundDecision, verified: event.target.checked })} />
+                <span><strong>Tôi đã kiểm tra tiền được hoàn thực tế</strong><small>Duyệt sẽ trừ số đã thu của hóa đơn và được ghi vào audit Admin.</small></span>
+              </label>
+            </>
+          ) : (
+            <Field label="Lý do xử lý *">
+              <textarea maxLength={500} rows={4} value={refundDecision.reason}
+                placeholder={refundDecision.action === 'reject' ? 'Nêu lý do không duyệt hoàn tiền' : 'Nêu lý do hủy yêu cầu'}
+                onChange={(event) => setRefundDecision({ ...refundDecision, reason: event.target.value })} />
+            </Field>
+          )}
+        </Modal>
+      )}
+      {proofReview && (
+        <Modal
+          title={`Biên lai ${proofReview.proof.invoiceCode}`}
+          size="wide"
+          onClose={() => setProofReview(null)}
+          footer={(
+            <>
+              <button className="live-btn ghost" type="button" onClick={() => setProofReview(null)}>Đóng</button>
+              <a className="live-btn ghost" href={proofReview.downloadUrl} target="_blank" rel="noopener noreferrer"><Download size={15} /> Tải biên lai</a>
+              {proofReview.proof.status === 'SUBMITTED' && (
+                <>
+                  <button className="live-btn ghost" type="button" disabled={!!busy || !proofRetryReason.trim()} onClick={requestPaymentAgain}><Undo2 size={15} /> Yêu cầu thanh toán lại</button>
+                  <button className="live-btn" type="button" disabled={!!busy || !proofVerified} onClick={approvePaymentProof}><CheckCircle2 size={15} /> Xác nhận đã thu</button>
+                </>
+              )}
+            </>
+          )}
+        >
+          <div className="payment-proof-review">
+            <div className="payment-proof-preview">
+              {proofReview.proof.contentType === 'application/pdf'
+                ? <iframe src={proofReview.downloadUrl} title={`Biên lai ${proofReview.proof.invoiceCode}`} />
+                : <img src={proofReview.downloadUrl} alt={`Biên lai ${proofReview.proof.invoiceCode}`} />}
+            </div>
+            <aside>
+              <div><span>Học sinh</span><strong>{proofReview.proof.studentName}</strong><small>{proofReview.proof.studentCode}</small></div>
+              <div><span>Hóa đơn</span><strong>{proofReview.proof.invoiceCode}</strong></div>
+              <div><span>Số tiền cần đối chiếu</span><strong>{money(proofReview.proof.amount)}</strong></div>
+              <div><span>Nội dung chuyển khoản cần khớp</span><strong>{proofReview.payment.bankTransferContent || 'Đối chiếu theo mã hóa đơn và học sinh'}</strong></div>
+              <div><span>File biên lai</span><strong>{proofReview.proof.fileName}</strong><small>{(proofReview.proof.sizeBytes / 1024).toFixed(0)} KB</small></div>
+              <div><span>Gửi lúc</span><strong>{fmtDateTime(proofReview.proof.submittedAt)}</strong></div>
+              <div><span>Trạng thái</span><StatusPill value={proofReview.proof.status} /></div>
+              {proofReview.proof.status === 'SUBMITTED' && (
+                <>
+                  <label className="payment-proof-verification">
+                    <input type="checkbox" checked={proofVerified} onChange={(event) => setProofVerified(event.target.checked)} />
+                    <span><strong>Đã đối chiếu trên tài khoản MB</strong><small>Giao dịch đã vào tài khoản, đúng số tiền và đúng nội dung chuyển khoản.</small></span>
+                  </label>
+                  <label className="payment-proof-reason">
+                    <span>Lý do yêu cầu thanh toán lại *</span>
+                    <textarea className="live-input" maxLength={500} placeholder="Ví dụ: Chưa thấy tiền vào tài khoản, sai số tiền hoặc sai nội dung chuyển khoản" value={proofRetryReason} onChange={(event) => setProofRetryReason(event.target.value)} />
+                  </label>
+                </>
+              )}
+              {proofReview.proof.reviewReason && <div className="payment-proof-rejected"><span>Lý do yêu cầu thanh toán lại</span><strong>{proofReview.proof.reviewReason}</strong></div>}
+            </aside>
+          </div>
+        </Modal>
+      )}
+      {periodMetadataEditor && (
+        <Modal
+          title={`Phân loại đợt thu · ${periodMetadataEditor.period.code}`}
+          onClose={() => !busy && setPeriodMetadataEditor(null)}
+          footer={(
+            <>
+              <button className="live-btn ghost" type="button" disabled={!!busy} onClick={() => setPeriodMetadataEditor(null)}>Hủy</button>
+              <button className="live-btn" type="button" disabled={!!busy} onClick={savePeriodMetadata}>
+                <Save size={15} /> {busy === `metadata:${periodMetadataEditor.period.id}` ? 'Đang lưu...' : 'Lưu phân loại'}
+              </button>
+            </>
+          )}
+        >
+          <div className="finance-metadata-context">
+            <strong>{periodMetadataEditor.period.name}</strong>
+            <span>Trạng thái và toàn bộ hóa đơn hiện có sẽ được giữ nguyên.</span>
+          </div>
+          <div className="finance-metadata-fields">
+            <Field label="Loại khoản thu *">
+              <select
+                className="live-select"
+                value={periodMetadataEditor.feeType}
+                onChange={(event) => setPeriodMetadataEditor((current) =>
+                  current ? { ...current, feeType: event.target.value } : current)}
+              >
+                {Object.entries(FINANCE_FEE_TYPE_LABEL).map(([value, label]) =>
+                  <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
+            <Field label="Năm học *">
+              <select
+                className="live-select"
+                value={periodMetadataEditor.academicYearId}
+                onChange={(event) => setPeriodMetadataEditor((current) => current ? {
+                  ...current, academicYearId: event.target.value, semesterId: '',
+                } : current)}
+              >
+                <option value="">— Chọn năm học —</option>
+                {(academicYears.data || []).map((year) =>
+                  <option key={year.id} value={year.id}>{year.name || year.code}</option>)}
+              </select>
+            </Field>
+            <Field label="Học kỳ *">
+              <select
+                className="live-select"
+                disabled={!periodMetadataEditor.academicYearId}
+                value={periodMetadataEditor.semesterId}
+                onChange={(event) => setPeriodMetadataEditor((current) =>
+                  current ? { ...current, semesterId: event.target.value } : current)}
+              >
+                <option value="">— Chọn học kỳ —</option>
+                {metadataSemesterOptions.map((semester) =>
+                  <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+              </select>
+            </Field>
+          </div>
+        </Modal>
+      )}
       <FunctionTabs tabs={[
         { id: 'periods', label: 'Đợt thu', Icon: CircleDollarSign, content: (
-          <Section title="Đợt thu học phí" subtitle="Quản lý khoản thu và phát hành hóa đơn" wide>
-            <div className="live-toolbar">
-              <input className="live-input" placeholder="Mã (HK2-2025)" value={pf.code} onChange={(e) => setPf({ ...pf, code: e.target.value })} />
-              <input className="live-input grow" placeholder="Tên đợt thu" value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} />
-              <input className="live-input" placeholder="Khối (K10,K11 - trống=tất cả)" value={pf.applyToGrades} onChange={(e) => setPf({ ...pf, applyToGrades: e.target.value })} />
-              <input className="live-input" type="date" aria-label="Hạn thanh toán" title="Hạn thanh toán" value={pf.dueDate} onChange={(e) => setPf({ ...pf, dueDate: e.target.value })} />
-              <button className="live-btn" onClick={createPeriod}><Plus size={15} /> Tạo đợt</button>
+          <Section title="Đợt thu học phí" subtitle="Thiết lập phạm vi, khoản thu và phát hành hóa đơn" wide>
+            <div className="finance-create-form">
+              <div className="live-toolbar">
+                <input className="live-input" placeholder="Mã đợt thu" value={pf.code} onChange={(e) => setPf({ ...pf, code: e.target.value })} />
+                <input className="live-input grow" placeholder="Tên đợt thu" value={pf.name} onChange={(e) => setPf({ ...pf, name: e.target.value })} />
+                <select className="live-select" aria-label="Loại khoản thu" value={pf.feeType} onChange={(e) => setPf({ ...pf, feeType: e.target.value })}>
+                  {Object.entries(FINANCE_FEE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <select className="live-select" aria-label="Năm học của đợt thu" value={pf.academicYearId} onChange={(e) => setPf({ ...pf, academicYearId: e.target.value, semesterId: '' })}>
+                  <option value="">— Chọn năm học —</option>
+                  {(academicYears.data || []).map((year) => <option key={year.id} value={year.id}>{year.name || year.code}</option>)}
+                </select>
+                <select className="live-select" aria-label="Học kỳ của đợt thu" disabled={!pf.academicYearId} value={pf.semesterId} onChange={(e) => setPf({ ...pf, semesterId: e.target.value })}>
+                  <option value="">— Chọn học kỳ —</option>
+                  {periodSemesterOptions.map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+                </select>
+                <select className="live-select" aria-label="Phạm vi đợt thu" value={pf.targetType} onChange={(e) => changePeriodTargetType(e.target.value as FinanceTargetType)}>
+                  {Object.entries(FINANCE_TARGET_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+                <input className="live-input" type="date" aria-label="Hạn thanh toán" value={pf.dueDate} onChange={(e) => setPf({ ...pf, dueDate: e.target.value })} />
+                <button className="live-btn" disabled={busy === 'create'} onClick={createPeriod}><Plus size={15} /> Tạo đợt</button>
+              </div>
+              {periodScopeFields}
             </div>
-            <Async paginate state={periods} empty="Chưa có đợt thu" itemLabel="đợt thu">
-              {(l) => (
-                <table className="live-table">
-                  <thead><tr><th>Mã</th><th>Tên</th><th>Khối</th><th>Trạng thái</th><th></th></tr></thead>
-                  <tbody>{l.map((p) => (
-                    <tr key={p.id} style={{ background: sel === p.id ? '#f1f5fd' : undefined }}>
-                      <td><strong>{p.code}</strong></td><td>{p.name}</td><td>{p.applyToGrades || 'Tất cả'}</td>
-                      <td><StatusPill value={p.status} /></td>
-                      <td style={{ display: 'flex', gap: 6 }}>
-                        <button className="live-btn subtle" onClick={() => setSel(p.id)}>Khoản thu</button>
-                        {p.status === 'DRAFT' && <button className="live-btn ghost" onClick={() => open(p.id)}>Mở</button>}
-                        {p.status === 'OPEN' && <button className="live-btn" onClick={() => generate(p.id)}><Send size={14} /> Phát hành & thông báo</button>}
-                      </td>
+
+            <div className="finance-period-filter">
+              <label><span>Loại khoản thu</span><select className="live-select" aria-label="Lọc đợt thu theo loại khoản thu" value={periodFilterFeeType} onChange={(event) => setPeriodFilterFeeType(event.target.value)}>
+                <option value="">Tất cả loại</option>
+                {Object.entries(FINANCE_FEE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select></label>
+              <label><span>Học kỳ</span><select className="live-select" aria-label="Lọc đợt thu theo học kỳ" value={periodFilterSemesterId} onChange={(event) => setPeriodFilterSemesterId(event.target.value)}>
+                <option value="">Tất cả học kỳ</option>
+                {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+              </select></label>
+              <label><span>Trạng thái đợt thu</span><select className="live-select" aria-label="Lọc đợt thu theo trạng thái" value={periodFilterStatus} onChange={(event) => setPeriodFilterStatus(event.target.value)}>
+                <option value="">Tất cả trạng thái</option>
+                <option value="DRAFT">Bản nháp</option><option value="OPEN">Đang mở</option>
+                <option value="PUBLISHED">Đã phát hành</option><option value="CLOSED">Đã đóng</option>
+                <option value="CANCELLED">Đã hủy</option>
+              </select></label>
+              <button className="icon-inline-btn" title="Đặt lại bộ lọc đợt thu" aria-label="Đặt lại bộ lọc đợt thu" onClick={() => {
+                setPeriodFilterFeeType(''); setPeriodFilterSemesterId(''); setPeriodFilterStatus('');
+              }}><RefreshCw size={16} /></button>
+              {periods.data && <div className="finance-filter-result">Đang hiển thị <strong>{periodRows.length}</strong> đợt thu phù hợp</div>}
+            </div>
+
+            <Async paginate resetKey={`${periodFilterFeeType}|${periodFilterSemesterId}|${periodFilterStatus}`} state={{ ...periods, data: periods.data ? periodRows : null }} empty="Không có đợt thu phù hợp" itemLabel="đợt thu">
+              {(list) => (
+                <table className="live-table finance-period-table">
+                  <thead><tr><th>Mã</th><th>Tên</th><th>Loại khoản thu</th><th>Học kỳ</th><th>Phạm vi</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                  <tbody>{list.map((period) => (
+                    <tr key={period.id} className={sel === period.id ? 'is-selected' : ''}>
+                      <td><strong>{period.code}</strong></td><td>{period.name}</td>
+                      <td>{FINANCE_FEE_TYPE_LABEL[period.feeType || 'OTHER']}</td>
+                      <td>{period.semesterId ? semesterById.get(period.semesterId)?.name || 'Không xác định' : 'Chưa gán'}</td>
+                      <td>{targetSummary(period.targetType, period.targetIds || [])}</td>
+                      <td><StatusPill value={period.status} /></td>
+                      <td><div className="finance-row-actions">
+                        <button className="live-btn subtle compact" onClick={() => choosePeriod(period.id)}><FileText size={14} /> Chi tiết</button>
+                        <button className="live-btn ghost compact" disabled={!!busy} onClick={() => openPeriodMetadataEditor(period)}><Pencil size={14} /> Phân loại</button>
+                        {period.status === 'DRAFT' && <button className="live-btn ghost compact" disabled={!!busy} onClick={() => openPeriod(period.id)}><Unlock size={14} /> Mở</button>}
+                        {period.status === 'OPEN' && <button className="live-btn ghost compact" disabled={!!busy} onClick={() => loadPreview(period.id)}><Eye size={14} /> Xem trước</button>}
+                        {period.status === 'OPEN' && <button className="live-btn compact" disabled={!!busy || preview?.feePeriodId !== period.id || !preview.newInvoiceCount} onClick={() => generate(period.id)}><Send size={14} /> Phát hành</button>}
+                        {period.status === 'PUBLISHED' && <button className="live-btn ghost compact" disabled={!!busy} onClick={() => recallPeriod(period.id)}><Undo2 size={14} /> Lưu về nháp</button>}
+                        {period.status === 'PUBLISHED' && <button className="live-btn subtle compact" disabled={!!busy} onClick={() => closePeriod(period.id)}><CircleStop size={14} /> Đóng</button>}
+                        {['DRAFT', 'OPEN', 'PUBLISHED'].includes(period.status) && <button className="live-btn danger compact" disabled={!!busy} onClick={() => cancelPeriod(period.id)}><Ban size={14} /> Hủy</button>}
+                      </div></td>
                     </tr>
                   ))}</tbody>
                 </table>
               )}
             </Async>
-            {sel && (
-              <div style={{ marginTop: 16 }}>
-                <div className="live-toolbar">
-                  <input className="live-input grow" placeholder="Tên khoản (Học phí…)" value={itf.name} onChange={(e) => setItf({ ...itf, name: e.target.value })} />
-                  <input className="live-input" type="number" step="100000" value={itf.amount} onChange={(e) => setItf({ ...itf, amount: Number(e.target.value) })} />
-                  <button className="live-btn" onClick={addItem}><Plus size={15} /> Thêm khoản</button>
+
+            {selectedPeriod && (
+              <div className="finance-period-detail">
+                <div className="finance-detail-heading">
+                  <div><strong>{selectedPeriod.code} · {selectedPeriod.name}</strong><span>{targetSummary(selectedPeriod.targetType, selectedPeriod.targetIds || [])}</span></div>
+                  <StatusPill value={selectedPeriod.status} />
                 </div>
+
+                {selectedPeriod.status === 'DRAFT' && (
+                  <div className="finance-item-form">
+                    <div className="live-toolbar">
+                      <input className="live-input grow" placeholder="Tên khoản thu" value={itf.name} onChange={(e) => setItf({ ...itf, name: e.target.value })} />
+                      <input className="live-input" aria-label="Số tiền" type="number" min="1" step="100000" value={itf.amount} onChange={(e) => setItf({ ...itf, amount: Number(e.target.value) })} />
+                      <select className="live-select" aria-label="Phạm vi khoản thu" value={itf.targetType} onChange={(e) => setItf({ ...itf, targetType: e.target.value as FinanceTargetType, targetIds: [] })}>
+                        <option value="ALL">{periodAllLabel}</option>
+                        <option value="STUDENT">Một học sinh trong phạm vi</option>
+                      </select>
+                      <button className="live-btn" disabled={busy === `item:${sel}`} onClick={addItem}><Plus size={15} /> Thêm khoản</button>
+                    </div>
+                    {itf.targetType === 'STUDENT' && (
+                      <label className="finance-individual-picker">
+                        <span>Chọn học sinh nhận khoản thu riêng</span>
+                        <select className="live-select" aria-label="Chọn học sinh cho khoản thu riêng" value={itf.targetIds[0] || ''} onChange={(event) => setItf({ ...itf, targetIds: event.target.value ? [event.target.value] : [] })}>
+                          <option value="">— Chọn một học sinh —</option>
+                          {selectedPeriodStudents.map((student) => <option key={student.id} value={student.id}>{student.fullName} · {student.className || 'Chưa có lớp'} · {student.studentCode || student.username}</option>)}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                )}
+
                 <Async paginate state={items} empty="Chưa có khoản thu" itemLabel="khoản thu">
-                  {(l) => (<table className="live-table"><thead><tr><th>Khoản</th><th>Số tiền</th><th>Khối</th></tr></thead>
-                    <tbody>{l.map((it) => <tr key={it.id}><td>{it.name}</td><td>{money(it.amount)}</td><td>{it.gradeLevel || 'Tất cả'}</td></tr>)}</tbody></table>)}
+                  {(list) => (<table className="live-table"><thead><tr><th>Khoản thu</th><th>Số tiền</th><th>Phạm vi</th>{selectedPeriod.status === 'DRAFT' && <th>Thao tác</th>}</tr></thead>
+                    <tbody>{list.map((item) => <tr key={item.id}><td>{item.name}</td><td>{money(item.amount)}</td><td>{itemTargetSummary(item)}</td>{selectedPeriod.status === 'DRAFT' && <td><button className="icon-inline-btn" title="Xóa khoản thu" aria-label={`Xóa khoản ${item.name}`} disabled={!!busy} onClick={() => deleteItem(item)}><Trash2 size={16} /></button></td>}</tr>)}</tbody></table>)}
                 </Async>
+
+                {selectedPeriod.status === 'OPEN' && preview?.feePeriodId === selectedPeriod.id && (
+                  <div className="finance-preview-panel">
+                    <div className="finance-preview-heading"><div><strong>Kết quả xem trước</strong><span>Dữ liệu chưa được ghi thành hóa đơn</span></div><StatusPill value={preview.status} /></div>
+                    <div className="finance-preview-metrics">
+                      <div><span>Học sinh trong phạm vi</span><strong>{preview.targetedStudentCount}</strong></div>
+                      <div><span>Hóa đơn mới</span><strong>{preview.newInvoiceCount}</strong></div>
+                      <div><span>Đã phát hành</span><strong>{preview.existingInvoiceCount}</strong></div>
+                      <div><span>Tổng phát hành mới</span><strong>{money(preview.newTotalAmount)}</strong></div>
+                    </div>
+                    <table className="live-table finance-preview-table">
+                      <thead><tr><th>Học sinh</th><th>Lớp</th><th>Số khoản</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead>
+                      <tbody>{preview.students.slice(0, 100).map((student) => (
+                        <tr key={student.studentId}><td>{student.studentName}</td><td>{student.className || '—'}</td><td>{student.itemCount}</td><td>{money(student.totalAmount)}</td>
+                          <td><Badge tone={student.alreadyIssued ? 'green' : 'orange'}>{student.alreadyIssued ? 'Đã có hóa đơn' : 'Chờ phát hành'}</Badge></td></tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </Section>
         ) },
         { id: 'invoices', label: 'Hóa đơn & thu tiền', Icon: FileText, content: (
           <Section title="Xác nhận thu học phí" subtitle="Theo dõi và xác nhận các khoản đã thanh toán" wide
-            action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
-            <Async paginate state={invoices} empty="Chưa có hóa đơn" itemLabel="hóa đơn">
-              {(l) => (<table className="live-table"><thead><tr><th>Mã</th><th>Học sinh</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th></th></tr></thead>
-                <tbody>{l.map((i) => (
-                  <tr key={i.id}>
-                    <td><strong>{i.code}</strong></td><td>{i.studentName}</td><td>{money(i.totalAmount)}</td><td>{money(i.paidAmount)}</td>
-                    <td><StatusPill value={i.status} /></td>
-                    <td>{i.status !== 'PAID'
-                      ? <button className="live-btn" onClick={() => confirmCash(i)}><CheckCircle2 size={14} /> Xác nhận thu</button>
-                      : <Badge tone="green">Đã thu</Badge>}</td>
+            action={<button className="live-btn ghost" onClick={() => { invoices.reload(); toast.show('ok', 'Đang cập nhật danh sách hóa đơn'); }}><RefreshCw size={14} /> Tải lại</button>}>
+            <div className="finance-invoice-stats">
+              <div><span>Chưa đóng</span><strong>{invoiceStats.pending}</strong></div>
+              <div><span>Đã đóng một phần</span><strong>{invoiceStats.partial}</strong></div>
+              <div className="overdue"><span>Quá hạn chưa đóng</span><strong>{invoiceStats.overdue}</strong></div>
+              <div><span>Đã đóng đủ</span><strong>{invoiceStats.paid}</strong></div>
+            </div>
+            <div className="finance-invoice-filters">
+              <label><span>Loại khoản thu</span><select className="live-select" aria-label="Lọc hóa đơn theo loại khoản thu" value={invoiceFeeType} onChange={(event) => setInvoiceFeeType(event.target.value)}>
+                <option value="">Tất cả loại</option>
+                {Object.entries(FINANCE_FEE_TYPE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select></label>
+              <label><span>Học kỳ</span><select className="live-select" aria-label="Lọc hóa đơn theo học kỳ" value={invoiceSemesterId} onChange={(event) => setInvoiceSemesterId(event.target.value)}>
+                <option value="">Tất cả học kỳ</option>
+                {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+              </select></label>
+              <label><span>Khối</span><select className="live-select" aria-label="Lọc hóa đơn theo khối" value={invoiceGrade} onChange={(event) => {
+                setInvoiceGrade(event.target.value); setInvoiceClassId('');
+              }}><option value="">Tất cả học sinh</option>{FINANCE_GRADES.map((grade) => <option key={grade.id} value={grade.id}>{grade.label}</option>)}</select></label>
+              <label><span>Lớp</span><select className="live-select" aria-label="Lọc hóa đơn theo lớp" value={invoiceClassId} onChange={(event) => setInvoiceClassId(event.target.value)}>
+                <option value="">Tất cả lớp</option>{invoiceClassOptions.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}</select></label>
+              <label><span>Tình trạng đóng phí</span><select className="live-select" aria-label="Lọc tình trạng đóng phí" value={invoiceSettlement} onChange={(event) => setInvoiceSettlement(event.target.value)}>
+                <option value="">Tất cả tình trạng</option>
+                <option value="UNPAID">Chưa đóng / còn thiếu</option>
+                <option value="PAID">Đã đóng đủ</option>
+                <option value="INACTIVE">Đã hủy / không hiệu lực</option>
+              </select></label>
+              <label className="finance-invoice-search"><span>Tìm học sinh hoặc hóa đơn</span><div><Search size={16} /><input className="live-input" value={invoiceQuery} onChange={(event) => setInvoiceQuery(event.target.value)} placeholder="Tên, SĐT, mã HS, mã HĐ, mã đợt thu…" /></div></label>
+              <button className="icon-inline-btn finance-filter-reset" title="Đặt lại bộ lọc hóa đơn" aria-label="Đặt lại bộ lọc hóa đơn" onClick={() => {
+                setInvoiceFeeType(''); setInvoiceSemesterId(''); setInvoiceGrade('');
+                setInvoiceClassId(''); setInvoiceSettlement(''); setInvoiceQuery('');
+              }}><RefreshCw size={16} /></button>
+            </div>
+            <div className="finance-filter-result">Đang hiển thị <strong>{invoiceRows.length}</strong> hóa đơn phù hợp</div>
+            <Async paginate resetKey={`${invoiceFeeType}|${invoiceSemesterId}|${invoiceGrade}|${invoiceClassId}|${invoiceSettlement}|${invoiceQuery}`} state={{ ...invoices, data: invoices.data ? invoiceRows : null }} empty="Không có hóa đơn phù hợp" itemLabel="hóa đơn">
+              {(list) => (<table className="live-table finance-invoice-table"><thead><tr><th>Mã HĐ</th><th>Học sinh</th><th>Đợt thu</th><th>Lớp</th><th>Hạn thu</th><th>Tổng</th><th>Đã trả</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                <tbody>{list.map((invoice) => (
+                  <tr key={invoice.id}>
+                    <td><strong>{invoice.code}</strong></td>
+                    <td><strong>{invoice.studentName}</strong><small>{studentById.get(invoice.studentId)?.studentCode || studentById.get(invoice.studentId)?.username}</small></td>
+                    <td><strong>{invoice.feePeriodId ? feePeriodById.get(invoice.feePeriodId)?.code || '—' : '—'}</strong></td>
+                    <td>{studentById.get(invoice.studentId)?.className || '—'}</td><td>{fmtDate(invoice.dueDate)}</td><td>{money(invoice.totalAmount)}</td><td>{money(invoice.paidAmount)}</td>
+                    <td><Badge tone={invoice.status === 'PAID' ? 'green' : invoice.status === 'OVERDUE' ? 'red' : invoice.status === 'PARTIAL' ? 'orange' : ['CANCELLED', 'VOID'].includes(invoice.status) ? 'red' : 'blue'}>{INVOICE_SETTLEMENT_LABEL[invoice.status] || viLabel(invoice.status)}</Badge></td>
+                    <td><div className="finance-invoice-actions">
+                      {submittedProofByInvoice.has(invoice.id)
+                        ? <button className="live-btn compact" disabled={!!busy} onClick={() => openPaymentProof(submittedProofByInvoice.get(invoice.id)!)}><FileImage size={14} /> Xem biên lai</button>
+                        : ['PENDING', 'OVERDUE', 'PARTIAL'].includes(invoice.status) && <button className="live-btn compact" disabled={!!busy} onClick={() => confirmCash(invoice)}><CheckCircle2 size={14} /> Thu tiền mặt</button>}
+                      {invoice.status === 'OVERDUE' && <button className="live-btn ghost compact" disabled={!!busy} onClick={() => remindInvoice(invoice)}><Bell size={14} /> Nhắc đóng tiền</button>}
+                      {!['PENDING', 'OVERDUE', 'PARTIAL'].includes(invoice.status) && <Badge tone={invoice.status === 'PAID' ? 'green' : 'red'}>{invoice.status === 'PAID' ? 'Đã thu' : 'Không còn hiệu lực'}</Badge>}
+                    </div></td>
                   </tr>
                 ))}</tbody></table>)}
+            </Async>
+          </Section>
+        ) },
+        { id: 'proofs', label: `Biên lai (${(paymentProofs.data || []).filter((proof) => proof.status === 'SUBMITTED').length})`, Icon: FileImage, content: (
+          <Section title="Biên lai chuyển khoản MB" subtitle="Đối chiếu tài khoản ngân hàng trước khi xác nhận đã thu" wide
+            action={<button className="live-btn ghost" onClick={() => paymentProofs.reload()}><RefreshCw size={14} /> Tải lại</button>}>
+            <div className="payment-proof-toolbar">
+              <label><span>Trạng thái</span><select className="live-select" value={proofStatus} onChange={(event) => setProofStatus(event.target.value)}>
+                <option value="SUBMITTED">Chờ duyệt</option>
+                <option value="APPROVED">Đã duyệt</option>
+                <option value="RETRY_REQUIRED">Yêu cầu thanh toán lại</option>
+                <option value="">Tất cả</option>
+              </select></label>
+              <p>Chỉ xác nhận sau khi số tiền và nội dung đã xuất hiện trên tài khoản MB.</p>
+            </div>
+            <Async paginate resetKey={proofStatus} state={{ ...paymentProofs, data: paymentProofs.data ? proofRows : null }} empty="Không có biên lai phù hợp" itemLabel="biên lai">
+              {(list) => (
+                <table className="live-table payment-proof-table">
+                  <thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Số tiền</th><th>Biên lai</th><th>Gửi lúc</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                  <tbody>{list.map((proof) => (
+                    <tr key={proof.id}>
+                      <td><strong>{proof.studentName}</strong><small>{proof.studentCode}</small></td>
+                      <td><strong>{proof.invoiceCode}</strong></td>
+                      <td>{money(proof.amount)}</td>
+                      <td><span className="payment-proof-file">{proof.fileName}</span><small>{(proof.sizeBytes / 1024).toFixed(0)} KB</small></td>
+                      <td>{fmtDateTime(proof.submittedAt)}</td>
+                      <td><StatusPill value={proof.status} />{proof.reviewReason && <small className="payment-proof-reason-inline">{proof.reviewReason}</small>}</td>
+                      <td><button className="live-btn ghost compact" disabled={!!busy} onClick={() => openPaymentProof(proof)}><Eye size={14} /> Xem biên lai</button></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </Async>
+          </Section>
+        ) },
+        { id: 'reconciliation', label: `Đối soát & hoàn tiền (${(paymentRefunds.data || []).filter((refund) => refund.status === 'REQUESTED').length})`, Icon: RefreshCw, content: (
+          <Section title="Đối soát & hoàn tiền" subtitle="Đối chiếu sổ thu theo ngày và xử lý hoàn tiền có phê duyệt" wide
+            action={<button className="live-btn ghost" onClick={() => { paymentRefunds.reload(); reconciliationRuns.reload(); }}><RefreshCw size={14} /> Tải lại</button>}>
+            <div className="finance-reconciliation-toolbar">
+              <label><span>Từ ngày</span><input className="live-input" type="date" max={reconciliationToDate || schoolToday()} value={reconciliationFromDate} onChange={(event) => setReconciliationFromDate(event.target.value)} /></label>
+              <label><span>Đến ngày</span><input className="live-input" type="date" min={reconciliationFromDate} max={schoolToday()} value={reconciliationToDate} onChange={(event) => setReconciliationToDate(event.target.value)} /></label>
+              <label><span>Từ số tiền</span><input className="live-input" type="number" min="0" step="1000" placeholder="Không giới hạn" value={reconciliationMinAmount} onChange={(event) => setReconciliationMinAmount(event.target.value)} /></label>
+              <label><span>Đến số tiền</span><input className="live-input" type="number" min="0" step="1000" placeholder="Không giới hạn" value={reconciliationMaxAmount} onChange={(event) => setReconciliationMaxAmount(event.target.value)} /></label>
+              <label><span>Phương thức</span><select className="live-select" value={reconciliationMethod} onChange={(event) => setReconciliationMethod(event.target.value)}>
+                <option value="">Tất cả phương thức</option>
+                {Object.entries(PAYMENT_METHOD_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select></label>
+              <button className="live-btn" disabled={!!busy || !reconciliationFromDate || !reconciliationToDate} onClick={runReconciliation}><RefreshCw size={15} /> {busy === 'reconcile' ? 'Đang đối soát…' : 'Chạy đối soát'}</button>
+              <p>Khoảng ngày tối đa 31 ngày. Bộ lọc tiền áp dụng theo giá trị payment gốc; hệ thống kiểm tra invoice, refund, biên nhận, IPN VNPAY/MoMo và biên lai MB đã duyệt.</p>
+            </div>
+
+            {reconciliationDetail && (
+              <div className="finance-reconciliation-detail">
+                <div className="finance-detail-heading">
+                  <div>
+                    <strong>Kết quả {fmtDate(reconciliationDetail.fromDate || reconciliationDetail.reconciliationDate)}{(reconciliationDetail.toDate || reconciliationDetail.reconciliationDate) !== (reconciliationDetail.fromDate || reconciliationDetail.reconciliationDate) ? ` - ${fmtDate(reconciliationDetail.toDate)}` : ''}</strong>
+                    <span>{reconciliationDetail.method ? (PAYMENT_METHOD_LABEL[reconciliationDetail.method] || reconciliationDetail.method) : 'Tất cả phương thức'} · {reconciliationDetail.minAmount == null ? '0 đ' : money(reconciliationDetail.minAmount)} đến {reconciliationDetail.maxAmount == null ? 'không giới hạn' : money(reconciliationDetail.maxAmount)}</span>
+                    <span>Chạy lúc {fmtDateTime(reconciliationDetail.runAt)} · lần {reconciliationDetail.runCount}</span>
+                  </div>
+                  <StatusPill value={reconciliationDetail.status} />
+                </div>
+                <div className="finance-reconciliation-metrics">
+                  <div><span>Thực thu</span><strong>{money(reconciliationDetail.grossAmount)}</strong><small>{reconciliationDetail.paymentCount} giao dịch</small></div>
+                  <div><span>Hoàn tiền</span><strong>{money(reconciliationDetail.refundAmount)}</strong><small>{reconciliationDetail.refundCount} khoản hoàn</small></div>
+                  <div><span>Thực thu ròng</span><strong>{money(reconciliationDetail.netAmount)}</strong><small>Thực thu trừ hoàn tiền</small></div>
+                  <div className={reconciliationDetail.discrepancyCount ? 'has-error' : ''}><span>Sai lệch</span><strong>{reconciliationDetail.discrepancyCount}</strong><small>{reconciliationDetail.discrepancyCount ? 'Cần kiểm tra' : 'Đã khớp sổ'}</small></div>
+                </div>
+                {!!(reconciliationDetail.methodSummaries || []).length && (
+                  <table className="live-table finance-reconciliation-method-table">
+                    <thead><tr><th>Phương thức</th><th>Giao dịch</th><th>Thực thu</th><th>Khoản hoàn</th><th>Hoàn tiền</th><th>Thực thu ròng</th></tr></thead>
+                    <tbody>{reconciliationDetail.methodSummaries.map((summary) => (
+                      <tr key={summary.method}><td><strong>{PAYMENT_METHOD_LABEL[summary.method] || summary.method}</strong></td><td>{summary.paymentCount}</td><td>{money(summary.grossAmount)}</td><td>{summary.refundCount}</td><td>{money(summary.refundAmount)}</td><td><strong>{money(summary.netAmount)}</strong></td></tr>
+                    ))}</tbody>
+                  </table>
+                )}
+                {!!reconciliationDetail.issues.length && (
+                  <table className="live-table finance-reconciliation-issue-table">
+                    <thead><tr><th>Mức độ</th><th>Loại sai lệch</th><th>Đối tượng</th><th>Kỳ vọng</th><th>Thực tế</th><th>Nội dung</th></tr></thead>
+                    <tbody>{reconciliationDetail.issues.map((issue) => (
+                      <tr key={issue.id}><td><StatusPill value={issue.severity} /></td><td><strong>{issue.issueType}</strong></td><td>{issue.entityType}<small>{issue.entityId}</small></td>
+                        <td>{issue.expectedAmount == null ? '—' : money(issue.expectedAmount)}</td><td>{issue.actualAmount == null ? '—' : money(issue.actualAmount)}</td><td>{issue.message}</td></tr>
+                    ))}</tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            <div className="finance-subsection-heading">
+              <div><strong>Yêu cầu hoàn tiền</strong><small>Yêu cầu chờ duyệt giữ chỗ số tiền nhưng chưa thay đổi hóa đơn.</small></div>
+              <label><span>Trạng thái</span><select className="live-select" value={refundStatus} onChange={(event) => setRefundStatus(event.target.value)}>
+                <option value="REQUESTED">Chờ duyệt</option><option value="COMPLETED">Đã hoàn</option><option value="REJECTED">Đã từ chối</option><option value="CANCELLED">Đã hủy</option><option value="">Tất cả</option>
+              </select></label>
+            </div>
+            <Async paginate resetKey={refundStatus} state={{ ...paymentRefunds, data: paymentRefunds.data ? refundRows : null }} empty="Không có yêu cầu hoàn tiền phù hợp" itemLabel="yêu cầu hoàn tiền">
+              {(list) => (
+                <table className="live-table finance-refund-table">
+                  <thead><tr><th>Mã hoàn</th><th>Học sinh & hóa đơn</th><th>Số tiền</th><th>Lý do</th><th>Trạng thái & xử lý</th><th>Thao tác</th></tr></thead>
+                  <tbody>{list.map((refund) => (
+                    <tr key={refund.id}>
+                      <td><strong>{refund.refundNumber}</strong><small>{fmtDateTime(refund.requestedAt)}</small></td>
+                      <td><strong>{refund.studentName}</strong><small>{refund.studentCode || '—'} · {refund.invoiceCode}</small></td>
+                      <td>
+                        <strong>{money(refund.amount)}</strong>
+                        <small>{REFUND_TYPE_LABEL[refund.refundType || 'PARTIAL'] || refund.refundType}</small>
+                        {refund.invoicePaidAmountBefore != null && refund.invoicePaidAmountAfter != null && (
+                          <small>Số dư HĐ: {money(refund.invoicePaidAmountBefore)} → {money(refund.invoicePaidAmountAfter)}</small>
+                        )}
+                      </td>
+                      <td><span className="finance-refund-reason">{refund.reason}</span>{(refund.rejectionReason || refund.cancellationReason) && <small>{refund.rejectionReason || refund.cancellationReason}</small>}</td>
+                      <td>
+                        <StatusPill value={refund.status} />
+                        <small>Yêu cầu: {refund.requestedByName || refund.requestedBy}</small>
+                        {refund.status === 'REQUESTED' && refund.requestedBy === currentAdmin?.id && <small className="finance-refund-checker-note">Cần Admin khác xử lý</small>}
+                        {refund.approvedBy && <small>Duyệt: {refund.approvedByName || refund.approvedBy}</small>}
+                        {refund.refundMethod && <small>{REFUND_METHOD_LABEL[refund.refundMethod] || refund.refundMethod}{refund.refundReference ? ` · ${refund.refundReference}` : ''}</small>}
+                        {refund.completedAt && <small>{fmtDateTime(refund.completedAt)}</small>}
+                      </td>
+                      <td>{refund.status === 'REQUESTED' ? <div className="finance-refund-actions">
+                        <button className="icon-inline-btn primary" title={refund.requestedBy === currentAdmin?.id ? 'Cần Admin khác duyệt' : 'Duyệt hoàn tiền'} aria-label={`Duyệt ${refund.refundNumber}`} disabled={!!busy || refund.requestedBy === currentAdmin?.id} onClick={() => openRefundDecision(refund, 'approve')}><CheckCircle2 size={15} /></button>
+                        <button className="icon-inline-btn" title={refund.requestedBy === currentAdmin?.id ? 'Cần Admin khác từ chối' : 'Từ chối yêu cầu'} aria-label={`Từ chối ${refund.refundNumber}`} disabled={!!busy || refund.requestedBy === currentAdmin?.id} onClick={() => openRefundDecision(refund, 'reject')}><Ban size={15} /></button>
+                        <button className="icon-inline-btn" title="Hủy yêu cầu" aria-label={`Hủy ${refund.refundNumber}`} disabled={!!busy} onClick={() => openRefundDecision(refund, 'cancel')}><Trash2 size={15} /></button>
+                      </div> : <span>—</span>}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </Async>
+
+            <div className="finance-subsection-heading"><div><strong>Nhật ký đối soát</strong><small>Mỗi phạm vi ngày, tiền và phương thức có một bản tổng hợp; chạy lại đúng phạm vi sẽ cập nhật kết quả.</small></div></div>
+            <Async paginate state={reconciliationRuns} empty="Chưa có phiên đối soát" itemLabel="phiên đối soát">
+              {(list) => (
+                <table className="live-table finance-reconciliation-table">
+                  <thead><tr><th>Ngày</th><th>Thực thu</th><th>Hoàn tiền</th><th>Thực thu ròng</th><th>Kết quả</th><th>Người chạy</th><th></th></tr></thead>
+                  <tbody>{list.map((run) => (
+                    <tr key={run.id}><td><strong>{fmtDate(run.fromDate || run.reconciliationDate)}{(run.toDate || run.reconciliationDate) !== (run.fromDate || run.reconciliationDate) ? ` - ${fmtDate(run.toDate)}` : ''}</strong><small>{run.method ? (PAYMENT_METHOD_LABEL[run.method] || run.method) : 'Tất cả'} · {fmtDateTime(run.runAt)} · lần {run.runCount}</small></td><td>{money(run.grossAmount)}</td><td>{money(run.refundAmount)}</td><td><strong>{money(run.netAmount)}</strong></td>
+                      <td><StatusPill value={run.status} /><small>{run.discrepancyCount} sai lệch</small></td><td>{run.runByName || run.runBy}</td>
+                      <td><button className="live-btn ghost compact" disabled={!!busy} onClick={() => loadReconciliation(run.id)}><Eye size={14} /> Chi tiết</button></td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+            </Async>
+          </Section>
+        ) },
+        { id: 'history', label: 'Lịch sử giao dịch', Icon: History, content: (
+          <Section title="Lịch sử giao dịch" subtitle="Theo dõi thanh toán và biên nhận đã phát hành" wide
+            action={<button className="live-btn ghost" onClick={() => paymentHistory.reload()}><RefreshCw size={14} /> Tải lại</button>}>
+            <div className="finance-history-stats">
+              <div><span>Thành công</span><strong>{historyStats.success}</strong></div>
+              <div><span>Chờ xử lý</span><strong>{historyStats.pending}</strong></div>
+              <div className="failed"><span>Thất bại</span><strong>{historyStats.failed}</strong></div>
+              <div><span>Đã hoàn tác</span><strong>{historyStats.reversed}</strong></div>
+            </div>
+            <div className="finance-history-filters">
+              <label><span>Trạng thái</span><select className="live-select" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                <option value="">Tất cả trạng thái</option>
+                <option value="SUCCESS">Thành công</option>
+                <option value="PENDING">Chờ xử lý</option>
+                <option value="FAILED">Thất bại</option>
+                <option value="REVERSED">Đã hoàn tác</option>
+              </select></label>
+              <label><span>Phương thức</span><select className="live-select" value={historyMethod} onChange={(event) => setHistoryMethod(event.target.value)}>
+                <option value="">Tất cả phương thức</option>
+                {Object.entries(PAYMENT_METHOD_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select></label>
+              <label className="finance-history-search"><span>Tìm giao dịch</span><div><Search size={16} /><input className="live-input" value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="Tên, mã HS, hóa đơn, đợt thu, mã giao dịch…" /></div></label>
+            </div>
+            <div className="finance-filter-result">Đang hiển thị <strong>{historyRows.length}</strong> giao dịch phù hợp</div>
+            <Async paginate resetKey={`${historyStatus}|${historyMethod}|${historyQuery}`} state={{ ...paymentHistory, data: paymentHistory.data ? historyRows : null }} empty="Chưa có giao dịch phù hợp" itemLabel="giao dịch">
+              {(list) => (
+                <table className="live-table finance-history-table">
+                  <thead><tr><th>Thời gian</th><th>Học sinh</th><th>Hóa đơn</th><th>Phương thức</th><th>Số tiền</th><th>Trạng thái</th><th>Mã giao dịch</th><th>Hoàn tiền</th><th>Biên nhận</th></tr></thead>
+                  <tbody>{list.map((payment) => (
+                    <tr key={payment.paymentId}>
+                      <td>{fmtDateTime(payment.paidAt || payment.createdAt)}</td>
+                      <td><strong>{payment.studentName}</strong><small>{payment.studentCode || 'Chưa có mã HS'}</small></td>
+                      <td><strong>{payment.invoiceCode}</strong><small>{payment.feePeriodCode || 'Không có mã đợt thu'}</small></td>
+                      <td>{PAYMENT_METHOD_LABEL[payment.method] || payment.method}</td>
+                      <td><strong>{money(payment.amount)}</strong>{(payment.refundedAmount || 0) > 0 && <small>Thực nhận: {money(payment.netAmount)}</small>}</td>
+                      <td><StatusPill value={payment.status} />{payment.gatewayErrorMessage && <small className="finance-history-error">{payment.gatewayErrorMessage}</small>}</td>
+                      <td><span className="finance-transaction-code">{payment.providerTransactionId || payment.txnRef || '—'}</span>{payment.callbackCount > 0 && <small>{payment.callbackCount} lần callback</small>}</td>
+                      <td><div className="finance-refund-cell">
+                        {(payment.refundedAmount || 0) > 0 && <small>Đã hoàn {money(payment.refundedAmount)}</small>}
+                        {(payment.pendingRefundAmount || 0) > 0 && <small className="pending">Chờ duyệt {money(payment.pendingRefundAmount)}</small>}
+                        {payment.status === 'SUCCESS' && availableRefundAmount(payment) > 0
+                          ? <button className="live-btn ghost compact" disabled={!!busy} onClick={() => openRefundRequest(payment)}><Undo2 size={14} /> Yêu cầu hoàn</button>
+                          : !(payment.refundedAmount || payment.pendingRefundAmount) && <span>—</span>}
+                      </div></td>
+                      <td>{!['SUCCESS', 'REVERSED'].includes(payment.status) ? <span>—</span> : payment.receiptStatus === 'ISSUED' ? (
+                        <div className="finance-receipt-cell"><small>{payment.receiptNumber}</small><button className="live-btn ghost compact" disabled={!!busy} onClick={() => downloadPaymentReceipt(payment)}><Download size={14} /> Tải PDF</button></div>
+                      ) : payment.status === 'SUCCESS' ? (
+                        <div className="finance-receipt-cell">{payment.receiptStatus && <StatusPill value={payment.receiptStatus} />}<button className="live-btn compact" disabled={!!busy} onClick={() => issuePaymentReceipt(payment)}><FileText size={14} /> {payment.receiptStatus === 'FAILED' ? 'Tạo lại' : 'Tạo biên nhận'}</button></div>
+                      ) : <span>—</span>}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              )}
             </Async>
           </Section>
         ) },

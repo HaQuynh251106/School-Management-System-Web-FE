@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Eye, EyeOff, KeyRound, LogOut, ShieldCheck } from 'lucide-react';
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
+import { showAppError } from '../../api/errorEvents';
 
 export function PasswordChangePage() {
   const { user, logout } = useAuth();
@@ -12,8 +13,15 @@ export function PasswordChangePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (error) showAppError(error);
+  }, [error]);
+
   const submit = async () => {
     setError(null);
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/.test(newPassword)) {
+      return setError('Mật khẩu phải có ít nhất 10 ký tự, chữ hoa, chữ thường, số và ký tự đặc biệt.');
+    }
     if (newPassword.length < 10) return setError('Mật khẩu mới phải có ít nhất 10 ký tự.');
     if (newPassword !== confirmation) return setError('Mật khẩu xác nhận không khớp.');
     if (newPassword === currentPassword) return setError('Mật khẩu mới phải khác mật khẩu hiện tại.');
