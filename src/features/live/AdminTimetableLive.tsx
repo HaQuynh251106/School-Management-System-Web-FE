@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, BookOpenCheck, CalendarDays, CalendarOff, CheckCircle2,
+  AlertTriangle, BookOpenCheck, CalendarDays, CheckCircle2,
   ChevronLeft, ChevronRight, Clock3, Pencil, Plus, RotateCcw, Search,
   Trash2, UserRoundCheck, UsersRound, X,
 } from 'lucide-react';
@@ -10,22 +10,32 @@ import type {
   ApiUser, Room, SchoolClass, Semester, TeacherWorkload, TeachingAssignment, TimetableSlot, Subject,
 } from '../../api/types';
 import { FunctionTabs, Section } from '../../components/ui';
-import { Async, DAY_LABEL, DAYS, fmtDate, useToast } from './common';
+import { Async, DAY_LABEL, DAYS, useToast } from './common';
 import { Field, Modal } from './Modal';
+import { useHashNumber, useHashString } from '../../api/urlState';
+import { AdminAutoTimetableLive, AdminWorkloadPlanningLive } from './WorkloadPlanningLive';
 
 const PERIODS = [1, 2, 3, 4, 5, 6];
-const PERIOD_TIME: Record<number, [string, string]> = {
-  1: ['07:00', '07:45'], 2: ['07:50', '08:35'], 3: ['08:45', '09:30'],
-  4: ['09:35', '10:20'], 5: ['10:25', '11:10'], 6: ['13:30', '14:15'],
+const PERIOD_TIME: Record<'MORNING' | 'AFTERNOON', Record<number, [string, string]>> = {
+  MORNING: {
+    1: ['07:00', '07:45'], 2: ['07:50', '08:35'], 3: ['08:50', '09:35'],
+    4: ['09:40', '10:25'], 5: ['10:35', '11:20'], 6: ['11:25', '12:10'],
+  },
+  AFTERNOON: {
+    1: ['13:00', '13:45'], 2: ['13:50', '14:35'], 3: ['14:50', '15:35'],
+    4: ['15:40', '16:25'], 5: ['16:35', '17:20'], 6: ['17:25', '18:10'],
+  },
 };
 
-const assignmentQuery = (classId: string, semesterId: string, day?: string, period?: number) => {
+const assignmentQuery = (classId: string, semesterId: string, day?: string, period?: number, startTime?: string, endTime?: string) => {
   const params = new URLSearchParams();
   if (classId) params.set('classId', classId);
   if (semesterId) params.set('semesterId', semesterId);
   if (day && period) {
     params.set('dayOfWeek', day);
     params.set('periodNo', String(period));
+    if (startTime) params.set('startTime', startTime);
+    if (endTime) params.set('endTime', endTime);
   }
   return `/teaching-assignments?${params.toString()}`;
 };
@@ -57,8 +67,33 @@ function normalizeSearch(value: string) {
     .replace(/Đ/g, 'D').toLocaleLowerCase('vi');
 }
 
+function groupAssignmentsBySubject(assignments: TeacherWorkload['assignments']) {
+  const groups = new Map<string, {
+    subjectId: string;
+    subjectName: string;
+    weeklyPeriods: number;
+    scheduledPeriods: number;
+    assignments: TeacherWorkload['assignments'];
+  }>();
+  assignments.forEach((assignment) => {
+    const current = groups.get(assignment.subjectId) ?? {
+      subjectId: assignment.subjectId,
+      subjectName: assignment.subjectName,
+      weeklyPeriods: 0,
+      scheduledPeriods: 0,
+      assignments: [],
+    };
+    current.weeklyPeriods += assignment.weeklyPeriods;
+    current.scheduledPeriods += assignment.scheduledPeriods;
+    current.assignments.push(assignment);
+    groups.set(assignment.subjectId, current);
+  });
+  return [...groups.values()].sort((left, right) => left.subjectName.localeCompare(right.subjectName, 'vi'));
+}
+
 type AssignmentForm = {
-  classId: string;
+  classIds: string[];
+  classWeeklyPeriods: Record<string, number>;
   semesterId: string;
   subjectId: string;
   teacherId: string;
@@ -66,7 +101,7 @@ type AssignmentForm = {
 };
 
 const emptyAssignment: AssignmentForm = {
-  classId: '', semesterId: '', subjectId: '', teacherId: '', weeklyPeriods: 2,
+  classIds: [], classWeeklyPeriods: {}, semesterId: '', subjectId: '', teacherId: '', weeklyPeriods: 2,
 };
 
 function TeachingAssignmentManager() {
@@ -75,9 +110,9 @@ function TeachingAssignmentManager() {
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const semesters = useApi<Semester[]>('/semesters');
   const toast = useToast();
-  const [classFilter, setClassFilter] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState('');
-  const [teacherSearch, setTeacherSearch] = useState('');
+  const [classFilter, setClassFilter] = useHashString('ta_class', '');
+  const [semesterFilter, setSemesterFilter] = useHashString('ta_semester', '');
+  const [teacherSearch, setTeacherSearch] = useHashString('ta_q', '');
   const assignments = useApi<TeachingAssignment[]>(assignmentQuery(classFilter, semesterFilter));
   const workloads = useApi<TeacherWorkload[]>(workloadQuery(semesterFilter));
   const [editing, setEditing] = useState<TeachingAssignment | null>(null);
@@ -85,16 +120,34 @@ function TeachingAssignmentManager() {
   const managedAssignments = useApi<TeachingAssignment[]>(managedTeacher
     ? teacherAssignmentQuery(managedTeacher.teacherId, semesterFilter) : null);
   const [form, setForm] = useState<AssignmentForm>(emptyAssignment);
+  const [classSearch, setClassSearch] = useState('');
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TeachingAssignment | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [workloadPage, setWorkloadPage] = useState(1);
-  const [workloadPageSize, setWorkloadPageSize] = useState(5);
+  const [workloadPage, setWorkloadPage] = useHashNumber('ta_page', 1);
+  const [workloadPageSize, setWorkloadPageSize] = useHashNumber('ta_size', 5);
 
   const selectedSubject = subjects.data?.find((subject) => subject.id === form.subjectId);
+  const selectedSemester = semesters.data?.find((semester) => semester.id === form.semesterId);
+  const batchAssignments = useApi<TeachingAssignment[]>(show && !editing && form.semesterId && form.subjectId
+    ? `/teaching-assignments?semesterId=${encodeURIComponent(form.semesterId)}&subjectId=${encodeURIComponent(form.subjectId)}`
+    : null);
+  const teacherContextAssignments = useApi<TeachingAssignment[]>(show && !editing && form.teacherId
+    ? teacherAssignmentQuery(form.teacherId, form.semesterId)
+    : null);
+  const existingTeacherAssignments = teacherContextAssignments.data ?? [];
+  const assignmentByClassId = new Map((batchAssignments.data ?? []).map((item) => [item.classId, item]));
+  const occupiedClassIds = new Set((batchAssignments.data ?? []).map((item) => item.classId));
+  const visibleBatchClasses = (classes.data ?? []).filter((item) => {
+    const sameYear = !selectedSemester?.academicYearId || !item.academicYearId
+      || selectedSemester.academicYearId === item.academicYearId;
+    const query = normalizeSearch(classSearch.trim());
+    return sameYear && (!query || normalizeSearch(`${item.code} ${item.name}`).includes(query));
+  });
+  const selectedClassDetails = (classes.data ?? []).filter((item) => form.classIds.includes(item.id));
   const selectableTeachers = [...(teachers.data ?? [])]
     .filter((teacher) => teacher.status === 'ACTIVE')
     .sort((left, right) => {
@@ -149,23 +202,41 @@ function TeachingAssignmentManager() {
 
   useEffect(() => {
     setWorkloadPage(1);
-  }, [teacherSearch, classFilter, semesterFilter, workloadPageSize]);
+  }, [teacherSearch, classFilter, semesterFilter, workloadPageSize, setWorkloadPage]);
 
   useEffect(() => {
     setWorkloadPage((current) => Math.min(current, workloadPageCount));
-  }, [workloadPageCount]);
+  }, [workloadPageCount, setWorkloadPage]);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...emptyAssignment, classId: classFilter, semesterId: semesterFilter });
+    setForm({
+      ...emptyAssignment,
+      classIds: classFilter ? [classFilter] : [],
+      classWeeklyPeriods: classFilter ? { [classFilter]: emptyAssignment.weeklyPeriods } : {},
+      semesterId: semesterFilter,
+    });
+    setClassSearch('');
     setError(null);
     setShow(true);
   };
 
   const openCreateForTeacher = (teacherId: string) => {
+    const teacher = teachers.data?.find((item) => item.id === teacherId);
+    const specialtySubject = teacher
+      ? subjects.data?.find((subject) => matchesSpecialty(teacher, subject))
+      : undefined;
     setEditing(null);
     setManagedTeacher(null);
-    setForm({ ...emptyAssignment, classId: classFilter, semesterId: semesterFilter, teacherId });
+    setForm({
+      ...emptyAssignment,
+      classIds: classFilter ? [classFilter] : [],
+      classWeeklyPeriods: classFilter ? { [classFilter]: emptyAssignment.weeklyPeriods } : {},
+      semesterId: semesterFilter,
+      subjectId: specialtySubject?.id ?? '',
+      teacherId,
+    });
+    setClassSearch('');
     setError(null);
     setShow(true);
   };
@@ -173,12 +244,14 @@ function TeachingAssignmentManager() {
   const openEdit = (item: TeachingAssignment) => {
     setEditing(item);
     setForm({
-      classId: item.classId,
+      classIds: [item.classId],
+      classWeeklyPeriods: { [item.classId]: item.weeklyPeriods },
       semesterId: item.semesterId,
       subjectId: item.subjectId,
       teacherId: item.teacherId,
       weeklyPeriods: item.weeklyPeriods,
     });
+    setClassSearch('');
     setManagedTeacher(null);
     setError(null);
     setShow(true);
@@ -215,16 +288,44 @@ function TeachingAssignmentManager() {
   };
 
   const save = async () => {
-    if (!form.classId || !form.semesterId || !form.subjectId || !form.teacherId) {
-      setError('Vui lòng chọn đầy đủ lớp, học kỳ, môn học và giáo viên.');
+    if (form.classIds.length === 0 || !form.semesterId || !form.subjectId || !form.teacherId) {
+      setError('Vui lòng chọn ít nhất một lớp, học kỳ, môn học và giáo viên.');
+      return;
+    }
+    const invalidClassId = !editing && form.classIds.find((classId) => {
+      const weeklyPeriods = form.classWeeklyPeriods[classId];
+      return !Number.isInteger(weeklyPeriods) || weeklyPeriods < 1 || weeklyPeriods > 20;
+    });
+    if (invalidClassId) {
+      const schoolClass = classes.data?.find((item) => item.id === invalidClassId);
+      setError(`Số tiết/tuần của lớp ${schoolClass?.code ?? invalidClassId} phải từ 1 đến 20.`);
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      if (editing) await api.put(`/teaching-assignments/${editing.id}`, form);
-      else await api.post('/teaching-assignments', form);
-      toast.show('ok', editing ? 'Đã cập nhật phân công giảng dạy' : 'Đã phân công giáo viên bộ môn');
+      if (editing) {
+        await api.put(`/teaching-assignments/${editing.id}`, {
+          classId: form.classIds[0],
+          semesterId: form.semesterId,
+          subjectId: form.subjectId,
+          teacherId: form.teacherId,
+          weeklyPeriods: form.weeklyPeriods,
+        });
+      } else {
+        await api.post('/teaching-assignments/batch', {
+          assignments: form.classIds.map((classId) => ({
+            classId,
+            weeklyPeriods: form.classWeeklyPeriods[classId],
+          })),
+          semesterId: form.semesterId,
+          subjectId: form.subjectId,
+          teacherId: form.teacherId,
+        });
+      }
+      toast.show('ok', editing
+        ? 'Đã cập nhật phân công giảng dạy'
+        : `Đã phân công giáo viên cho ${form.classIds.length} lớp`);
       setShow(false);
       setEditing(null);
       assignments.reload();
@@ -235,6 +336,37 @@ function TeachingAssignmentManager() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleClass = (classId: string) => {
+    setForm((current) => {
+      const selected = current.classIds.includes(classId);
+      const classWeeklyPeriods = { ...current.classWeeklyPeriods };
+      if (selected) delete classWeeklyPeriods[classId];
+      else classWeeklyPeriods[classId] = emptyAssignment.weeklyPeriods;
+      return {
+        ...current,
+        classIds: selected
+          ? current.classIds.filter((id) => id !== classId)
+          : [...current.classIds, classId],
+        classWeeklyPeriods,
+      };
+    });
+  };
+
+  const selectAllAvailableClasses = () => {
+    const availableIds = visibleBatchClasses.filter((item) => !occupiedClassIds.has(item.id)).map((item) => item.id);
+    setForm((current) => {
+      const classWeeklyPeriods = { ...current.classWeeklyPeriods };
+      availableIds.forEach((classId) => {
+        if (!classWeeklyPeriods[classId]) classWeeklyPeriods[classId] = emptyAssignment.weeklyPeriods;
+      });
+      return {
+        ...current,
+        classIds: [...new Set([...current.classIds, ...availableIds])],
+        classWeeklyPeriods,
+      };
+    });
   };
 
   return (
@@ -278,17 +410,28 @@ function TeachingAssignmentManager() {
           {(items) => (
             <div className="live-table-wrap">
               <table className="live-table teacher-workload-table">
-                <thead><tr><th>Giáo viên bộ môn</th><th>Chuyên môn hồ sơ</th><th>Lớp đang dạy</th><th>Môn học phụ trách</th><th>Số tiết/tuần</th><th>Thao tác</th></tr></thead>
-                <tbody>{items.map((item) => (
-                  <tr key={item.teacherId}>
+                <thead><tr><th>Giáo viên bộ môn</th><th>Chuyên môn</th><th>Phân công hiện tại</th><th>Tổng tải tuần</th><th>Thao tác</th></tr></thead>
+                <tbody>{items.map((item) => {
+                  const subjectGroups = groupAssignmentsBySubject(item.assignments);
+                  return <tr key={item.teacherId}>
                     <td><div className="assignment-teacher-cell"><span>{item.teacherName.slice(0, 1)}</span><div><strong>{item.teacherName}</strong><small>{item.teacherCode || 'Chưa có mã giáo viên'}</small></div></div></td>
                     <td><span className="teacher-specialty-pill">{item.mainSubject || 'Chưa cập nhật'}</span></td>
-                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><span className="teacher-class-code">{assignment.classCode}</span></div>)}</div> : <span className="assignment-unassigned">Chưa phụ trách lớp</span>}</td>
-                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><strong>{assignment.subjectName}</strong></div>)}</div> : '—'}</td>
-                    <td>{item.assignments.length > 0 ? <div className="teacher-assignment-stack teacher-period-stack">{item.assignments.map((assignment) => <div className="teacher-assignment-row" key={assignment.id}><strong>{assignment.weeklyPeriods} tiết</strong><small>Đã xếp {assignment.scheduledPeriods}/{assignment.weeklyPeriods}</small></div>)}<div className="teacher-period-total"><span>Tổng tải tuần</span><strong>{item.weeklyPeriods} tiết</strong></div></div> : <strong>0 tiết</strong>}</td>
+                    <td>{subjectGroups.length > 0 ? <div className="teacher-subject-groups">{subjectGroups.map((group) => (
+                      <section key={group.subjectId} className="teacher-subject-group">
+                        <header><div><BookOpenCheck size={15} /><strong>{group.subjectName}</strong></div><span>{group.assignments.length} lớp · {group.weeklyPeriods} tiết</span></header>
+                        <div>{group.assignments.map((assignment) => (
+                          <article key={assignment.id}>
+                            <span className="teacher-class-code">{assignment.classCode}</span>
+                            <strong>{assignment.weeklyPeriods} tiết/tuần</strong>
+                            <small><progress max={Math.max(assignment.weeklyPeriods, 1)} value={assignment.scheduledPeriods} />Đã xếp {assignment.scheduledPeriods}/{assignment.weeklyPeriods}</small>
+                          </article>
+                        ))}</div>
+                      </section>
+                    ))}</div> : <span className="assignment-unassigned">Chưa có lớp và môn phụ trách</span>}</td>
+                    <td><div className="teacher-load-summary"><strong>{item.weeklyPeriods} tiết</strong><span>{item.classCount} lớp · {item.subjectCount} môn</span><progress max={Math.max(item.weeklyPeriods, 1)} value={item.scheduledPeriods} /><small>Đã xếp {item.scheduledPeriods}/{item.weeklyPeriods} tiết</small></div></td>
                     <td><div className="teacher-workload-actions"><button className="live-btn compact" onClick={() => openCreateForTeacher(item.teacherId)}><Plus size={14} /> Thêm lớp dạy</button><button className="live-btn compact ghost" disabled={item.classCount === 0} onClick={() => setManagedTeacher(item)}><Pencil size={14} /> Quản lý phân công</button></div></td>
-                  </tr>
-                ))}</tbody>
+                  </tr>;
+                })}</tbody>
               </table>
             </div>
           )}
@@ -297,9 +440,9 @@ function TeachingAssignmentManager() {
           <div className="assignment-pagination-summary">Hiển thị <strong>{workloadRangeStart}–{workloadRangeEnd}</strong> trong <strong>{visibleWorkloads.length}</strong> giáo viên</div>
           <label className="assignment-page-size"><span>Số dòng</span><select value={workloadPageSize} onChange={(event) => setWorkloadPageSize(Number(event.target.value))}><option value={2}>2</option><option value={5}>5</option><option value={10}>10</option><option value={20}>20</option></select></label>
           <nav className="assignment-page-nav" aria-label="Phân trang danh sách giáo viên">
-            <button type="button" aria-label="Trang trước" disabled={workloadPage === 1} onClick={() => setWorkloadPage((page) => Math.max(1, page - 1))}><ChevronLeft size={16} /></button>
-            {workloadPageNumbers.map((page) => <button type="button" key={page} className={page === workloadPage ? 'active' : ''} aria-current={page === workloadPage ? 'page' : undefined} onClick={() => setWorkloadPage(page)}>{page}</button>)}
-            <button type="button" aria-label="Trang sau" disabled={workloadPage === workloadPageCount} onClick={() => setWorkloadPage((page) => Math.min(workloadPageCount, page + 1))}><ChevronRight size={16} /></button>
+            <button type="button" aria-label="Trang trước" disabled={workloadPage === 1} onClick={() => setWorkloadPage((page) => Math.max(1, page - 1), 'push')}><ChevronLeft size={16} /></button>
+            {workloadPageNumbers.map((page) => <button type="button" key={page} className={page === workloadPage ? 'active' : ''} aria-current={page === workloadPage ? 'page' : undefined} onClick={() => setWorkloadPage(page, 'push')}>{page}</button>)}
+            <button type="button" aria-label="Trang sau" disabled={workloadPage === workloadPageCount} onClick={() => setWorkloadPage((page) => Math.min(workloadPageCount, page + 1), 'push')}><ChevronRight size={16} /></button>
           </nav>
         </div>}
       </div>
@@ -348,19 +491,20 @@ function TeachingAssignmentManager() {
       {show && (
         <Modal
           title={editing ? 'Cập nhật phân công giảng dạy' : 'Phân công giáo viên bộ môn'}
-          onClose={() => { setShow(false); setEditing(null); }}
+          size={editing ? undefined : 'wide'}
+          onClose={() => { setShow(false); setEditing(null); setClassSearch(''); }}
           footer={<><button className="live-btn ghost" onClick={() => { setShow(false); setEditing(null); }}>Hủy</button><button className="live-btn" disabled={busy} onClick={save}>{busy ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Lưu phân công'}</button></>}
         >
           {error && <div className="conflict-box"><AlertTriangle size={17} /><span>{error}</span></div>}
           {editing && <div className="assignment-edit-context"><Pencil size={17} /><div><strong>{editing.subjectName} · Lớp {editing.classCode}</strong><span>{editing.teacherName} · {editing.weeklyPeriods} tiết/tuần</span></div></div>}
           {editingHasSchedule && <div className="assignment-edit-lock"><AlertTriangle size={17} /><span>Phân công đã có {editing?.scheduledPeriods} tiết trong thời khóa biểu. Bạn chỉ có thể thay đổi số tiết/tuần và không được nhỏ hơn số tiết đã xếp.</span></div>}
-          <div className="modal-grid2">
-            <Field label="Lớp học">
-              <select disabled={editingHasSchedule} value={form.classId} onChange={(event) => setForm((current) => ({ ...current, classId: event.target.value }))}>
+          <div className={editing ? 'modal-grid2' : undefined}>
+            {editing && <Field label="Lớp học">
+              <select disabled={editingHasSchedule} value={form.classIds[0] ?? ''} onChange={(event) => setForm((current) => ({ ...current, classIds: event.target.value ? [event.target.value] : [] }))}>
                 <option value="">— Chọn lớp —</option>
                 {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
               </select>
-            </Field>
+            </Field>}
             <Field label="Học kỳ">
               <select disabled={editingHasSchedule} value={form.semesterId} onChange={(event) => setForm((current) => ({ ...current, semesterId: event.target.value }))}>
                 <option value="">— Chọn học kỳ —</option>
@@ -368,6 +512,75 @@ function TeachingAssignmentManager() {
               </select>
             </Field>
           </div>
+          {!editing && <Field label={`Lớp học · ${existingTeacherAssignments.length} đã phân công · ${form.classIds.length} chọn thêm`}>
+            <div className="assignment-multi-class-picker">
+              {form.teacherId && <div className="assignment-existing-overview">
+                <div>
+                  <strong>Lớp đã phân công trước đó</strong>
+                  <small>{form.semesterId ? 'Trong học kỳ đang chọn' : 'Trong tất cả học kỳ'} · chỉ hiển thị để đối chiếu, không tạo lại</small>
+                </div>
+                {teacherContextAssignments.loading ? <span className="assignment-existing-loading">Đang tải…</span> : <b>{existingTeacherAssignments.length} phân công</b>}
+                {!teacherContextAssignments.loading && existingTeacherAssignments.length > 0 && <div className="assignment-existing-list">
+                  {existingTeacherAssignments.map((item) => <span key={item.id}><CheckCircle2 size={13} /><strong>{item.classCode}</strong><small>{item.subjectName} · {item.weeklyPeriods} tiết/tuần</small></span>)}
+                </div>}
+                {!teacherContextAssignments.loading && existingTeacherAssignments.length === 0 && <p>Giáo viên chưa có lớp được phân công trong phạm vi này.</p>}
+              </div>}
+              <div className="assignment-multi-class-toolbar">
+                <div className="assignment-class-search"><Search size={16} /><input value={classSearch} onChange={(event) => setClassSearch(event.target.value)} placeholder="Tìm mã hoặc tên lớp…" aria-label="Tìm lớp để phân công" /></div>
+                <button type="button" onClick={selectAllAvailableClasses}>Chọn tất cả kết quả</button>
+                <button type="button" disabled={form.classIds.length === 0} onClick={() => setForm((current) => ({ ...current, classIds: [], classWeeklyPeriods: {} }))}>Bỏ lớp chọn thêm</button>
+              </div>
+              {selectedClassDetails.length > 0 && <div className="assignment-selected-class-config">
+                <div className="assignment-selected-class-heading">
+                  <div><strong>Cấu hình riêng cho từng lớp</strong><small>Mỗi lớp có thể có số tiết dạy trong tuần khác nhau.</small></div>
+                  <b>{selectedClassDetails.length} lớp đã chọn</b>
+                </div>
+                <div className="assignment-selected-class-list">
+                  {selectedClassDetails.map((item) => <article key={item.id}>
+                    <div><strong>{item.code}</strong><small>{item.name}</small></div>
+                    <label>
+                      <span>Số tiết/tuần</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={form.classWeeklyPeriods[item.id] ?? emptyAssignment.weeklyPeriods}
+                        onChange={(event) => setForm((current) => ({
+                          ...current,
+                          classWeeklyPeriods: {
+                            ...current.classWeeklyPeriods,
+                            [item.id]: Number(event.target.value),
+                          },
+                        }))}
+                        aria-label={`Số tiết mỗi tuần của lớp ${item.code}`}
+                      />
+                    </label>
+                    <button type="button" onClick={() => toggleClass(item.id)} aria-label={`Bỏ chọn lớp ${item.code}`}><X size={15} /></button>
+                  </article>)}
+                </div>
+              </div>}
+              <div className="assignment-multi-class-grid">
+                {visibleBatchClasses.map((item) => {
+                  const existingAssignment = assignmentByClassId.get(item.id);
+                  const occupied = Boolean(existingAssignment);
+                  const assignedToSelectedTeacher = existingAssignment?.teacherId === form.teacherId;
+                  const checked = form.classIds.includes(item.id);
+                  return <label key={item.id} className={`${checked || assignedToSelectedTeacher ? 'selected' : ''} ${assignedToSelectedTeacher ? 'existing' : ''} ${occupied ? 'disabled' : ''}`}>
+                    <input type="checkbox" checked={checked || assignedToSelectedTeacher} disabled={occupied} onChange={() => toggleClass(item.id)} />
+                    <span><strong>{item.code}</strong><small>{item.name}</small></span>
+                    <em>{assignedToSelectedTeacher
+                      ? `Đang dạy · ${existingAssignment?.weeklyPeriods} tiết/tuần`
+                      : occupied
+                        ? `Đã giao cho ${existingAssignment?.teacherName}`
+                        : checked ? 'Sẽ thêm mới' : 'Có thể chọn'}</em>
+                  </label>;
+                })}
+              </div>
+              {batchAssignments.loading && <small className="field-help">Đang kiểm tra các lớp đã có giáo viên phụ trách…</small>}
+              {!batchAssignments.loading && visibleBatchClasses.length === 0 && <div className="assignment-class-empty">Không có lớp phù hợp với học kỳ hoặc từ khóa tìm kiếm.</div>}
+            </div>
+            <small className="field-help">Mỗi lớp được tạo thành một phân công riêng nhưng được lưu đồng thời. Nếu có lớp không hợp lệ, hệ thống sẽ không lưu dở dang.</small>
+          </Field>}
           <Field label="Môn học">
             <select disabled={editingHasSchedule} value={form.subjectId} onChange={(event) => setForm((current) => ({ ...current, subjectId: event.target.value }))}>
               <option value="">— Chọn môn học —</option>
@@ -382,10 +595,10 @@ function TeachingAssignmentManager() {
             <small className="field-help">Giáo viên phù hợp chuyên môn được ưu tiên đầu danh sách; phân công này quyết định môn và lớp giáo viên thực tế phụ trách.</small>
             {selectedTeacherWorkload && <div className="selected-teacher-workload"><strong>{selectedTeacherWorkload.classCount} lớp đang phụ trách</strong><span>{selectedTeacherWorkload.classCodes.join(', ') || 'Chưa có lớp'} · {selectedTeacherWorkload.scheduledPeriods}/{selectedTeacherWorkload.weeklyPeriods} tiết/tuần</span></div>}
           </Field>
-          <Field label="Số tiết mỗi tuần">
+          {editing && <Field label="Số tiết mỗi tuần">
             <input type="number" min={Math.max(1, editing?.scheduledPeriods ?? 1)} max={20} value={form.weeklyPeriods} onChange={(event) => setForm((current) => ({ ...current, weeklyPeriods: Number(event.target.value) }))} />
             <small className="field-help">Thời khóa biểu sẽ không cho xếp vượt quá số tiết đã giao.</small>
-          </Field>
+          </Field>}
         </Modal>
       )}
     </Section>
@@ -397,8 +610,22 @@ function TimetableEditor() {
   const rooms = useApi<Room[]>('/rooms');
   const semesters = useApi<Semester[]>('/semesters');
   const toast = useToast();
-  const [classId, setClassId] = useState('');
-  const [semesterId, setSemesterId] = useState('');
+  const [classId, setClassId] = useHashString('tt_class', '');
+  const [semesterId, setSemesterId] = useHashString('tt_semester', '');
+  useEffect(() => {
+    if (!classes.data?.length) return;
+    if (!classes.data.some((item) => item.id === classId)) {
+      setClassId(classes.data[0].id);
+    }
+  }, [classId, classes.data, setClassId]);
+  useEffect(() => {
+    if (!semesters.data?.length) return;
+    if (semesters.data.some((item) => item.id === semesterId)) return;
+    const preferred = semesters.data.find((item) => item.status === 'ACTIVE')
+      ?? semesters.data.find((item) => item.status === 'PLANNED')
+      ?? semesters.data[0];
+    setSemesterId(preferred.id);
+  }, [semesterId, semesters.data, setSemesterId]);
   const slots = useApi<TimetableSlot[]>(classId && semesterId ? `/timetableSlots?classId=${classId}&semesterId=${semesterId}` : null);
   const assignmentSummary = useApi<TeachingAssignment[]>(classId && semesterId ? assignmentQuery(classId, semesterId) : null);
   const [show, setShow] = useState(false);
@@ -406,8 +633,22 @@ function TimetableEditor() {
   const [busy, setBusy] = useState(false);
   const blank = { assignmentId: '', dayOfWeek: 'MON', periodNo: 1, subjectId: '', teacherId: '', roomCode: '', startTime: '07:00', endTime: '07:45' };
   const [form, setForm] = useState({ ...blank });
+  const selectedClass = classes.data?.find((item) => item.id === classId);
+  const studyShift = selectedClass?.studyShift || 'MORNING';
+  const shiftLabel = studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng';
+  const periodTimes = PERIOD_TIME[studyShift];
+  const roomStatus = (room: Room) => {
+    const supportsShift = studyShift === 'AFTERNOON'
+      ? room.supportsAfternoon !== false
+      : room.supportsMorning !== false;
+    const assignedClass = (classes.data ?? []).find((item) => item.id !== classId
+      && item.roomId === room.id
+      && item.academicYearId === selectedClass?.academicYearId
+      && (item.studyShift || 'MORNING') === studyShift);
+    return { available: supportsShift && !assignedClass, assignedClass };
+  };
   const availability = useApi<TeachingAssignment[]>(show && classId && semesterId
-    ? assignmentQuery(classId, semesterId, form.dayOfWeek, form.periodNo) : null);
+    ? assignmentQuery(classId, semesterId, form.dayOfWeek, form.periodNo, form.startTime, form.endTime) : null);
   const selectedAssignment = availability.data?.find((item) => item.id === form.assignmentId);
 
   const cellOf = (day: string, period: number) => (slots.data ?? []).find((slot) => slot.dayOfWeek === day && slot.periodNo === period);
@@ -422,7 +663,7 @@ function TimetableEditor() {
   }, [assignmentSummary.data]);
 
   const openAdd = (day: string, period: number) => {
-    const [startTime, endTime] = PERIOD_TIME[period] ?? ['', ''];
+    const [startTime, endTime] = periodTimes[period] ?? ['', ''];
     setForm({ ...blank, dayOfWeek: day, periodNo: period, startTime, endTime });
     setConflict(null);
     setShow(true);
@@ -440,7 +681,7 @@ function TimetableEditor() {
   };
 
   const changePeriod = (period: number) => {
-    const [startTime, endTime] = PERIOD_TIME[period] ?? ['', ''];
+    const [startTime, endTime] = periodTimes[period] ?? ['', ''];
     setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', periodNo: period, startTime, endTime }));
     setConflict(null);
   };
@@ -502,21 +743,24 @@ function TimetableEditor() {
       <div className="live-toolbar">
         <select className="live-select grow" value={classId} onChange={(event) => setClassId(event.target.value)}>
           <option value="">— Chọn lớp để xếp thời khóa biểu —</option>
-          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name}</option>)}
+          {(classes.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.code} — {item.name} · {item.studyShift === 'AFTERNOON' ? 'Ca chiều' : 'Ca sáng'}</option>)}
         </select>
         <select className="live-select grow" value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>
           <option value="">— Chọn học kỳ —</option>
-          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}
+          {(semesters.data ?? []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}{item.status === 'ACTIVE' ? ' · Đang hoạt động' : item.status === 'PLANNED' ? ' · Sắp diễn ra' : ''}</option>)}
         </select>
       </div>
 
       {classId && semesterId && (
-        <div className="schedule-assignment-strip">
+        <><div className={`schedule-shift-callout ${studyShift.toLowerCase()}`}>
+          <Clock3 size={21} />
+          <div><small>Ca học của lớp {selectedClass?.code}</small><strong>{shiftLabel}</strong><span>{periodTimes[1][0]}–{periodTimes[6][1]} · Tiết 1–6 được tính riêng theo ca</span></div>
+        </div><div className="schedule-assignment-strip">
           <div><small>Phân công</small><strong>{progress.count} môn</strong></div>
           <div><small>Tiến độ</small><strong>{progress.scheduled}/{progress.total} tiết</strong></div>
           <div><small>Đã xếp đủ</small><strong>{progress.completed}/{progress.count} môn</strong></div>
           {progress.count === 0 && <p><AlertTriangle size={16} /> Lớp chưa có phân công bộ môn trong học kỳ này. Hãy tạo phân công trước khi xếp lịch.</p>}
-        </div>
+        </div></>
       )}
 
       {!classId || !semesterId ? (
@@ -528,7 +772,7 @@ function TimetableEditor() {
               <div className="time-head" />
               {DAYS.map((day) => <div key={day} className="time-head">{DAY_LABEL[day]}</div>)}
               {PERIODS.map((period) => [
-                <div key={`p${period}`} className="time-period">Tiết {period}</div>,
+                <div key={`p${period}`} className="time-period"><strong>Tiết {period}</strong><small>{periodTimes[period][0]}–{periodTimes[period][1]}</small></div>,
                 ...DAYS.map((day) => {
                   const slot = cellOf(day, period);
                   return (
@@ -550,7 +794,7 @@ function TimetableEditor() {
 
       {show && (
         <Modal
-          title={`Xếp tiết — ${DAY_LABEL[form.dayOfWeek]} · tiết ${form.periodNo}`}
+          title={`Xếp tiết — ${DAY_LABEL[form.dayOfWeek]} · tiết ${form.periodNo} · ${shiftLabel}`}
           onClose={() => setShow(false)}
           footer={<><button className="live-btn ghost" onClick={() => setShow(false)}>Hủy</button><button className="live-btn" disabled={busy || !selectedAssignment?.canSchedule} onClick={submit}><Plus size={15} /> {busy ? 'Đang lưu…' : 'Thêm tiết'}</button></>}
         >
@@ -573,7 +817,7 @@ function TimetableEditor() {
               ))}
             </select>
             {availability.loading && <small className="field-help">Đang kiểm tra lịch giáo viên…</small>}
-            {!availability.loading && availability.data?.length === 0 && <small className="field-help error">Chưa có phân công nào. Admin cần phân công giáo viên bộ môn trước.</small>}
+            {!availability.loading && availability.data?.length === 0 && <small className="field-help error">Chưa có phân công nào. Giáo vụ cần hoàn thành bước phân công giáo viên bộ môn trước.</small>}
           </Field>
           <div className="assignment-availability-list">
             {(availability.data ?? []).map((item) => (
@@ -587,11 +831,17 @@ function TimetableEditor() {
             <Field label="Phòng học">
               <select value={form.roomCode} onChange={(event) => setForm((current) => ({ ...current, roomCode: event.target.value }))}>
                 <option value="">— Chọn phòng —</option>
-                {(rooms.data ?? []).map((item) => <option key={item.id} value={item.code}>{item.code}{item.name ? ` — ${item.name}` : ''}</option>)}
+                {(rooms.data ?? []).map((item) => {
+                  const status = roomStatus(item);
+                  const isClassRoom = selectedClass?.roomId === item.id;
+                  return <option key={item.id} value={item.code} disabled={!status.available && !isClassRoom}>
+                    {item.code}{item.name ? ` — ${item.name}` : ''}{isClassRoom ? ' · Phòng của lớp' : status.assignedClass ? ` · Đã giao lớp ${status.assignedClass.code} cùng ca` : !status.available ? ` · Không phục vụ ${shiftLabel.toLowerCase()}` : ''}
+                  </option>;
+                })}
               </select>
             </Field>
             <Field label="Khung giờ">
-              <div className="slot-time-pair"><input value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, startTime: event.target.value }))} /><span>—</span><input value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, endTime: event.target.value }))} /></div>
+              <div className="slot-time-pair"><input type="time" value={form.startTime} onChange={(event) => setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', startTime: event.target.value }))} /><span>—</span><input type="time" value={form.endTime} onChange={(event) => setForm((current) => ({ ...current, assignmentId: '', subjectId: '', teacherId: '', endTime: event.target.value }))} /></div>
             </Field>
           </div>
         </Modal>
@@ -600,55 +850,11 @@ function TimetableEditor() {
   );
 }
 
-interface Holiday { id: string; date: string; name: string; description?: string; }
-
-function HolidayManager() {
-  const holidays = useApi<Holiday[]>('/school-holidays');
-  const toast = useToast();
-  const [form, setForm] = useState({ date: '', name: '' });
-
-  const add = async () => {
-    if (!form.date || !form.name) return toast.show('err', 'Vui lòng nhập ngày và lý do nghỉ.');
-    try {
-      await api.post('/school-holidays', form);
-      toast.show('ok', 'Đã thêm ngày nghỉ');
-      setForm({ date: '', name: '' });
-      holidays.reload();
-    } catch (caught: unknown) {
-      toast.show('err', caught instanceof Error ? caught.message : 'Không thể thêm ngày nghỉ.');
-    }
-  };
-
-  const remove = async (holiday: Holiday) => {
-    if (!confirm(`Xóa ngày nghỉ “${holiday.name}” (${fmtDate(holiday.date)})?`)) return;
-    try {
-      await api.del(`/school-holidays/${holiday.id}`);
-      toast.show('ok', 'Đã xóa ngày nghỉ');
-      holidays.reload();
-    } catch (caught: unknown) {
-      toast.show('err', caught instanceof Error ? caught.message : 'Không thể xóa ngày nghỉ.');
-    }
-  };
-
-  return (
-    <Section title="Ngày nghỉ và sự kiện" subtitle="Quản lý các ngày không tổ chức học" wide>
-      {toast.node}
-      <div className="live-toolbar">
-        <input className="live-input" type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
-        <input className="live-input grow" placeholder="Lý do nghỉ" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-        <button className="live-btn" onClick={add}><Plus size={15} /> Thêm ngày nghỉ</button>
-      </div>
-      <Async paginate state={holidays} empty="Chưa có ngày nghỉ" itemLabel="ngày nghỉ">
-        {(items) => <table className="live-table"><thead><tr><th>Ngày</th><th>Lý do</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{fmtDate(item.date)}</strong></td><td>{item.name}</td><td><button className="live-btn danger" onClick={() => remove(item)}><Trash2 size={14} /> Xóa</button></td></tr>)}</tbody></table>}
-      </Async>
-    </Section>
-  );
-}
-
 export function AdminTimetableLive() {
   return <FunctionTabs tabs={[
-    { id: 'assignments', label: 'Phân công bộ môn', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
-    { id: 'timetable', label: 'Xếp thời khóa biểu', Icon: CalendarDays, content: <TimetableEditor /> },
-    { id: 'holiday', label: 'Ngày nghỉ', Icon: CalendarOff, content: <HolidayManager /> },
+    { id: 'planning', label: '1. Phân công giáo viên tự động', Icon: BookOpenCheck, content: <AdminWorkloadPlanningLive /> },
+    { id: 'automatic', label: '2. Tạo thời khóa biểu tự động', Icon: CalendarDays, content: <AdminAutoTimetableLive /> },
+    { id: 'assignments', label: '3. Điều chỉnh phân công thủ công', Icon: UserRoundCheck, content: <TeachingAssignmentManager /> },
+    { id: 'timetable', label: '4. Điều chỉnh thời khóa biểu thủ công', Icon: CalendarDays, content: <TimetableEditor /> },
   ]} />;
 }

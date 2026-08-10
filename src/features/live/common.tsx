@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { AlertCircle, Inbox } from 'lucide-react';
+import type { PageResponse } from '../../api/types';
+import { urlKey, useHashNumber } from '../../api/urlState';
 
 export const vnd = new Intl.NumberFormat('vi-VN');
 export const money = (n: number) => `${vnd.format(n ?? 0)} ₫`;
@@ -21,13 +24,28 @@ export const DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 export const DAY_LABEL: Record<string, string> = { MON: 'T2', TUE: 'T3', WED: 'T4', THU: 'T5', FRI: 'T6', SAT: 'T7' };
 
 export function LoadingBlock() {
-  return <div className="live-loading">Đang tải…</div>;
+  return (
+    <div className="async-state async-state--loading" role="status" aria-live="polite">
+      <span className="async-state__spinner" aria-hidden="true" />
+      <div><strong>Đang tải dữ liệu</strong><span>Vui lòng chờ trong giây lát…</span></div>
+    </div>
+  );
 }
 export function ErrorBlock({ msg }: { msg: string }) {
-  return <div className="live-msg err">{msg}</div>;
+  return (
+    <div className="async-state async-state--error" role="alert">
+      <span className="async-state__icon"><AlertCircle size={21} /></span>
+      <div><strong>Chưa thể tải dữ liệu</strong><span>{msg}</span></div>
+    </div>
+  );
 }
 export function EmptyState({ label = 'Chưa có dữ liệu' }: { label?: string }) {
-  return <div className="empty-state"><strong>{label}</strong></div>;
+  return (
+    <div className="empty-state async-state--empty">
+      <span className="async-state__icon"><Inbox size={21} /></span>
+      <div><strong>{label}</strong><span>Dữ liệu mới sẽ xuất hiện tại đây khi được cập nhật.</span></div>
+    </div>
+  );
 }
 
 /** Bọc trạng thái fetch: loading / error / empty / data. */
@@ -40,6 +58,7 @@ export function Async<T>({
   pageSize = 10,
   itemLabel = 'bản ghi',
   resetKey,
+  urlStateKey,
 }: {
   state: { data: T | null; loading: boolean; error: string | null };
   children: (data: T) => ReactNode;
@@ -49,6 +68,7 @@ export function Async<T>({
   pageSize?: number;
   itemLabel?: string;
   resetKey?: string | number;
+  urlStateKey?: string;
 }) {
   if (state.loading) return <LoadingBlock />;
   if (state.error) return <ErrorBlock msg={state.error} />;
@@ -57,7 +77,7 @@ export function Async<T>({
   }
   if (paginate && Array.isArray(state.data)) {
     return (
-      <PaginatedData items={state.data} pageSize={pageSize} itemLabel={itemLabel} resetKey={resetKey}>
+      <PaginatedData items={state.data} pageSize={pageSize} itemLabel={itemLabel} resetKey={resetKey} urlStateKey={urlStateKey}>
         {(items) => children(items as T)}
       </PaginatedData>
     );
@@ -72,24 +92,30 @@ export function PaginatedData<T>({
   pageSize: initialPageSize = 10,
   itemLabel = 'bản ghi',
   resetKey,
+  urlStateKey,
 }: {
   items: T[];
   children: (items: T[]) => ReactNode;
   pageSize?: number;
   itemLabel?: string;
   resetKey?: string | number;
+  urlStateKey?: string;
 }) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(initialPageSize);
+  const paginationKey = urlStateKey || urlKey(itemLabel);
+  const [page, setPage] = useHashNumber(`p_${paginationKey}`, 1);
+  const [pageSize, setPageSize] = useHashNumber(`s_${paginationKey}`, initialPageSize);
+  const previousResetKey = useRef(resetKey);
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
 
   useEffect(() => {
     setPage((current) => Math.min(current, totalPages));
-  }, [totalPages]);
+  }, [setPage, totalPages]);
 
   useEffect(() => {
+    if (previousResetKey.current === resetKey) return;
+    previousResetKey.current = resetKey;
     setPage(1);
-  }, [resetKey]);
+  }, [resetKey, setPage]);
 
   const pageItems = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -125,7 +151,7 @@ export function PaginatedData<T>({
               {[5, 10, 20, 50].map((size) => <option key={size} value={size}>{size}</option>)}
             </select>
           </label>
-          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1} aria-label="Trang trước">‹</button>
+          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1), 'push')} disabled={page === 1} aria-label="Trang trước">‹</button>
           <div className="data-pagination-pages">
             {visiblePages.map((pageNumber) => (
               <button
@@ -133,25 +159,71 @@ export function PaginatedData<T>({
                 key={pageNumber}
                 className={pageNumber === page ? 'active' : ''}
                 aria-current={pageNumber === page ? 'page' : undefined}
-                onClick={() => setPage(pageNumber)}
+                onClick={() => setPage(pageNumber, 'push')}
               >
                 {pageNumber}
               </button>
             ))}
           </div>
-          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page === totalPages} aria-label="Trang sau">›</button>
+          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1), 'push')} disabled={page === totalPages} aria-label="Trang sau">›</button>
         </nav>
       )}
     </>
   );
 }
 
+export function ServerPagination<T>({
+  data,
+  onPageChange,
+  onPageSizeChange,
+  itemLabel = 'bản ghi',
+  pageSizes = [10, 20, 50, 100],
+}: {
+  data: PageResponse<T>;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  itemLabel?: string;
+  pageSizes?: number[];
+}) {
+  if (data.totalElements === 0) return null;
+  const first = data.page * data.size + 1;
+  const last = Math.min((data.page + 1) * data.size, data.totalElements);
+  const visibleCount = Math.min(5, Math.max(1, data.totalPages));
+  const start = Math.max(0, Math.min(data.page - 2, data.totalPages - visibleCount));
+  const pages = Array.from({ length: visibleCount }, (_, index) => start + index);
+  return (
+    <nav className="data-pagination" aria-label={`Phân trang ${itemLabel}`}>
+      <span className="data-pagination-summary">
+        Hiển thị <strong>{first}–{last}</strong> trong <strong>{data.totalElements}</strong> {itemLabel}
+      </span>
+      <label>
+        <span>Số dòng</span>
+        <select value={data.size} onChange={(event) => onPageSizeChange(Number(event.target.value))}>
+          {pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
+      </label>
+      <button type="button" onClick={() => onPageChange(Math.max(0, data.page - 1))}
+        disabled={data.first} aria-label="Trang trước">‹</button>
+      <div className="data-pagination-pages">
+        {pages.map((page) => (
+          <button type="button" key={page} className={page === data.page ? 'active' : ''}
+            aria-current={page === data.page ? 'page' : undefined} onClick={() => onPageChange(page)}>
+            {page + 1}
+          </button>
+        ))}
+      </div>
+      <button type="button" onClick={() => onPageChange(Math.min(data.totalPages - 1, data.page + 1))}
+        disabled={data.last} aria-label="Trang sau">›</button>
+    </nav>
+  );
+}
+
 export function useToast() {
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-  const show = (kind: 'ok' | 'err', text: string) => {
+  const show = useCallback((kind: 'ok' | 'err', text: string) => {
     setMsg({ kind, text });
     setTimeout(() => setMsg(null), 4000);
-  };
+  }, []);
   const node = msg ? <div className={`live-msg ${msg.kind}`}>{msg.text}</div> : null;
   return { show, node };
 }

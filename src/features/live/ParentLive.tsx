@@ -1,18 +1,15 @@
-import { useEffect } from 'react';
-import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, ClipboardCheck, Copy, Download, FileText, Landmark, ListChecks, RefreshCw, Trophy, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import type { ApiUser, Grade, AttendanceRecord, Invoice, PaymentInitResponse } from '../../api/types';
+import type { ApiUser, Assignment, AttendanceRecord, ExamCategory, Grade, Invoice, PaymentInitResponse, Semester, Submission } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
-import { Async, useToast, ATT_LABEL, fmtDate, money } from './common';
-import { ExtracurricularLive } from './SharedLive';
-
-/* ===== D5 — Đăng ký ngoại khóa cho con (dùng con đang chọn) ===== */
-export function ParentExtracurricularLive() {
-  const { childId } = useActiveChild();
-  return <ExtracurricularLive actor="parent" childId={childId} />;
-}
+import { Async, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
+import { WeeklyTimetable } from './SharedLive';
+import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { useHashString } from '../../api/urlState';
+import { Modal } from './Modal';
 
 function useChildren() {
   return useApi<ApiUser[]>('/me/children');
@@ -60,8 +57,55 @@ export function ParentSwitchLive() {
 /* ===== D2 — Giám sát học tập ===== */
 export function ParentMonitorLive() {
   const { childId } = useActiveChild();
-  const grades = useApi<Grade[]>(childId ? `/grades?studentId=${childId}` : null);
+  const children = useChildren();
+  const activeChild = (children.data || []).find((child) => child.id === childId);
+  const semesters = useApi<Semester[]>('/semesters');
+  const categories = useApi<ExamCategory[]>('/exam-categories');
+  const [semesterId, setSemesterId] = useHashString('semester', '');
+  const effectiveSemesterId = semesterId || semesters.data?.find((item) => item.status === 'ACTIVE')?.id || semesters.data?.[0]?.id || '';
+  const grades = useApi<Grade[]>(childId && effectiveSemesterId ? `/grades?studentId=${childId}&semesterId=${effectiveSemesterId}` : null);
   const att = useApi<AttendanceRecord[]>(childId ? `/attendance?studentId=${childId}` : null);
+  const assignments = useApi<Assignment[]>(childId ? `/children/${childId}/assignments` : null);
+  const submissions = useApi<Submission[]>(childId ? `/children/${childId}/submissions` : null);
+  const toast = useToast();
+
+  const categoryList = useMemo<ExamCategory[]>(() => {
+    if (categories.data?.length) return categories.data;
+    const unique = new Map<string, ExamCategory>();
+    (grades.data || []).forEach((grade) => unique.set(grade.category, {
+      id: grade.category, code: grade.category, name: grade.categoryName, weight: 1,
+    }));
+    return [...unique.values()];
+  }, [categories.data, grades.data]);
+  const columns = useMemo(() => gradeColumns(categoryList), [categoryList]);
+  const subjectRows = useMemo(() => {
+    const grouped = new Map<string, { subjectId: string; subjectName: string; grades: Grade[] }>();
+    (grades.data || []).forEach((grade) => {
+      const row = grouped.get(grade.subjectId) || { subjectId: grade.subjectId, subjectName: grade.subjectName, grades: [] };
+      row.grades.push(grade);
+      grouped.set(grade.subjectId, row);
+    });
+    return [...grouped.values()].map((row) => ({ ...row, average: weightedAverage(row.grades, categoryList) }));
+  }, [grades.data, categoryList]);
+  const submissionMap = useMemo(() => new Map((submissions.data || []).map((item) => [item.assignmentId, item])), [submissions.data]);
+  const averages = subjectRows.map((row) => row.average).filter((score): score is number => score != null);
+  const semesterAverage = averages.length ? Math.round(averages.reduce((sum, score) => sum + score, 0) / averages.length * 10) / 10 : null;
+  const bestSubject = subjectRows.reduce<(typeof subjectRows)[number] | null>((best, row) => (
+    row.average != null && (!best || best.average == null || row.average > best.average) ? row : best
+  ), null);
+
+  const downloadFile = async (fileId?: string | null, fallback?: string | null) => {
+    if (!fileId) return;
+    try {
+      const result = await api.download(`/files/${fileId}/content`);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = result.filename || fallback || 'tep-dinh-kem';
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) { toast.show('err', error.message); }
+  };
 
   if (!childId) {
     return <Section title="Theo dõi học tập" subtitle="Bạn chưa chọn học sinh" wide>
@@ -69,12 +113,51 @@ export function ParentMonitorLive() {
   }
 
   return (
-    <FunctionTabs tabs={[
+    <>{toast.node}<div className="parent-child-context"><Users size={17} /><span>Đang theo dõi</span><strong>{activeChild?.fullName || 'Học sinh'}</strong><small>{activeChild?.className || 'Chưa xếp lớp'}</small></div><FunctionTabs tabs={[
+      { id: 'timetable', label: 'Thời khóa biểu', Icon: CalendarDays, content: (
+        <Section title="Thời khóa biểu của con" subtitle={`Lịch học trong tuần của ${activeChild?.fullName || 'học sinh'}`} wide>
+          {activeChild?.classId
+            ? <WeeklyTimetable path={`/timetableSlots?classId=${encodeURIComponent(activeChild.classId)}`} />
+            : <div className="live-loading">Học sinh chưa được xếp lớp.</div>}
+        </Section>
+      ) },
       { id: 'grades', label: 'Điểm', Icon: BookOpen, content: (
-        <Section title="Điểm của con" subtitle="Kết quả học tập theo từng môn" wide>
-          <Async paginate state={grades} empty="Chưa có điểm" itemLabel="điểm số">
-            {(l) => (<table className="live-table"><thead><tr><th>Môn</th><th>Loại điểm</th><th>Điểm</th><th>Ngày</th></tr></thead>
-              <tbody>{l.map((g) => <tr key={g.id}><td><strong>{g.subjectName}</strong></td><td>{g.categoryName}</td><td><strong>{g.score?.toFixed(1)}</strong></td><td>{fmtDate(g.recordedAt)}</td></tr>)}</tbody></table>)}
+        <Section title="Bảng điểm đầy đủ" subtitle="Từng đầu điểm, hệ số và tổng kết học kỳ của con" wide action={
+          <select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effectiveSemesterId} onChange={(event) => setSemesterId(event.target.value)}>
+            {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+          </select>}>
+          <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
+            {(rows) => <div className="gradebook-shell">
+              <div className="gradebook-summary student-grade-summary">
+                <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình học kỳ</small><strong>{formatScore(semesterAverage)}</strong><p>{averages.length} môn đủ dữ liệu</p></div></article>
+                <article className="gradebook-stat"><span><Trophy size={19} /></span><div><small>Môn nổi bật</small><strong>{bestSubject?.subjectName || '—'}</strong><p>{bestSubject?.average == null ? 'Chưa đủ dữ liệu' : `${formatScore(bestSubject.average)} điểm`}</p></div></article>
+                <article className="gradebook-stat"><span><CheckCircle2 size={19} /></span><div><small>Đầu điểm đã có</small><strong>{grades.data?.length || 0}</strong><p>{subjectRows.length} môn trong kỳ</p></div></article>
+              </div>
+              <div className="gradebook-table-wrap"><table className="gradebook-table student-gradebook-table"><thead><tr>
+                <th className="gradebook-sticky-col">Môn học</th>{columns.map((column) => <th key={`${column.category.code}-${column.assessmentIndex}`}><span>{column.label}</span><small>Hệ số {column.category.weight}</small></th>)}<th className="gradebook-total-head">Tổng kết</th>
+              </tr></thead><tbody>{rows.map((row) => <tr key={row.subjectId}>
+                <td className="gradebook-sticky-col"><strong>{row.subjectName}</strong><small>{row.grades.length} đầu điểm</small></td>
+                {columns.map((column) => { const grade = row.grades.find((item) => item.category === column.category.code && (item.assessmentIndex ?? 1) === column.assessmentIndex); return <td key={`${column.category.code}-${column.assessmentIndex}`}><span className={`grade-score ${scoreTone(grade?.score ?? null)}`}>{formatScore(grade?.score ?? null)}</span></td>; })}
+                <td className="gradebook-total-cell"><strong className={`grade-total ${scoreTone(row.average)}`}>{row.average == null ? '' : formatScore(row.average)}</strong><small>{row.average == null ? 'Chưa đủ điểm' : 'Thang 10'}</small></td>
+              </tr>)}</tbody></table></div>
+              <p className="gradebook-note">Tổng kết chỉ hiển thị khi môn học đã có đủ tất cả đầu điểm bắt buộc.</p>
+            </div>}
+          </Async>
+        </Section>
+      ) },
+      { id: 'assignments', label: 'Bài tập', Icon: ListChecks, content: (
+        <Section title="Bài tập của con" subtitle="Đề bài, hạn nộp, trạng thái bài làm và kết quả chấm" wide>
+          <Async paginate state={assignments} empty="Chưa có bài tập được giao" itemLabel="bài tập">
+            {(items) => <div className="assignment-grid">{items.map((assignment) => {
+              const submission = submissionMap.get(assignment.id);
+              return <article className="assignment-card" key={assignment.id}>
+                <div className="assignment-card-top"><span className="assignment-subject-icon"><FileText size={19} /></span><div><small>{assignment.subjectName}</small><strong>{assignment.title}</strong></div><StatusPill value={submission?.status || assignment.status} /></div>
+                <p>{assignment.description || 'Không có mô tả bổ sung.'}</p>
+                <div className="assignment-meta"><span><Clock3 size={14} /> {assignment.deadline ? `Hạn ${fmtDateTime(assignment.deadline)}` : 'Không giới hạn hạn nộp'}</span></div>
+                {assignment.attachmentFileId && <button className="assignment-attachment" onClick={() => downloadFile(assignment.attachmentFileId, assignment.attachmentName)}><Download size={15} /><span>{assignment.attachmentName}</span><small>Tải đề</small></button>}
+                <div className="parent-assignment-result"><strong>{submission ? `Đã nộp ${fmtDateTime(submission.submittedAt)}` : 'Chưa nộp bài'}</strong>{submission?.score != null && <span>Điểm {formatScore(submission.score)}/10</span>}<p>{submission?.feedback || (submission ? 'Giáo viên chưa để lại nhận xét.' : 'Phụ huynh có thể nhắc con hoàn thành đúng hạn.')}</p></div>
+              </article>;
+            })}</div>}
           </Async>
         </Section>
       ) },
@@ -86,7 +169,7 @@ export function ParentMonitorLive() {
           </Async>
         </Section>
       ) },
-    ]} />
+    ]} /></>
   );
 }
 
@@ -94,20 +177,40 @@ export function ParentMonitorLive() {
 export function ParentInvoiceLive() {
   const invoices = useApi<Invoice[]>('/invoices');
   const toast = useToast();
+  const [pendingPayment, setPendingPayment] = useState<{ invoice: Invoice; initiated: PaymentInitResponse } | null>(null);
+  const [paying, setPaying] = useState(false);
+
   const pay = async (inv: Invoice) => {
+    setPaying(true);
     try {
-      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VNPAY' });
-      if (initiated.callbackUrl && initiated.sandboxCallback) {
-        await api.post(initiated.callbackUrl, initiated.sandboxCallback);
-        toast.show('ok', `Thanh toán ${inv.code} thành công`);
-      } else {
-        toast.show('ok', `Giao dịch ${inv.code} đang chờ cổng thanh toán xác nhận`);
-      }
+      const initiated = await api.post<PaymentInitResponse>('/payments', { invoiceId: inv.id, method: 'VIETQR' });
+      if (!initiated.qrImageUrl) throw new Error('VietQR chưa trả về mã thanh toán');
+      setPendingPayment({ invoice: inv, initiated });
+    } catch (e: any) { toast.show('err', e.message); }
+    finally { setPaying(false); }
+  };
+
+  const markTransferred = async () => {
+    if (!pendingPayment?.initiated.payment.id) return;
+    setPaying(true);
+    try {
+      await api.post(`/payments/${pendingPayment.initiated.payment.id}/submitted`);
+      toast.show('ok', `Đã gửi yêu cầu đối soát ${pendingPayment.invoice.code}. Hóa đơn sẽ cập nhật sau khi nhà trường xác nhận.`);
+      setPendingPayment(null);
       invoices.reload();
     } catch (e: any) { toast.show('err', e.message); }
+    finally { setPaying(false); }
   };
+
+  const copyTransferContent = async () => {
+    const content = pendingPayment?.initiated.transferContent;
+    if (!content) return;
+    await navigator.clipboard.writeText(content);
+    toast.show('ok', 'Đã sao chép nội dung chuyển khoản');
+  };
+
   return (
-    <Section title="Học phí" subtitle="Theo dõi và thanh toán các khoản thu" wide
+    <Section title="Học phí" subtitle="Thanh toán chuyển khoản nhanh bằng VietQR" wide
       action={<button className="live-btn ghost" onClick={() => invoices.reload()}><RefreshCw size={14} /> Tải lại</button>}>
       {toast.node}
       <Async paginate state={invoices} empty="Chưa có hóa đơn. Vui lòng liên hệ nhà trường." itemLabel="hóa đơn">
@@ -119,13 +222,44 @@ export function ParentInvoiceLive() {
                 <td><strong>{i.code}</strong></td><td>{i.studentName}</td><td>{money(i.totalAmount)}</td><td>{money(i.paidAmount)}</td>
                 <td><StatusPill value={i.status} /></td>
                 <td>{i.status !== 'PAID'
-                  ? <button className="live-btn" onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán</button>
+                  ? <button className="live-btn" disabled={paying} onClick={() => pay(i)}><CreditCard size={14} /> Thanh toán VietQR</button>
                   : <Badge tone="green">Đã thanh toán</Badge>}</td>
               </tr>
             ))}</tbody>
           </table>
         )}
       </Async>
+      {pendingPayment?.initiated.qrImageUrl && (
+        <Modal title="Quét mã VietQR để thanh toán" onClose={() => { if (!paying) setPendingPayment(null); }}
+          footer={<>
+            <button className="live-btn ghost" type="button" disabled={paying} onClick={() => setPendingPayment(null)}>Đóng</button>
+            <button className="live-btn" type="button" disabled={paying} onClick={markTransferred}>
+              <CheckCircle2 size={15} /> {paying ? 'Đang gửi đối soát…' : 'Tôi đã chuyển khoản'}
+            </button>
+          </>}>
+          <div className="vietqr-payment">
+            <div className="vietqr-payment-badge"><Landmark size={17} /> Chuyển khoản ngân hàng qua VietQR</div>
+            <div className="vietqr-code">
+              <img src={pendingPayment.initiated.qrImageUrl} alt={`VietQR cho hóa đơn ${pendingPayment.invoice.code}`} />
+            </div>
+            <div className="vietqr-payment-summary">
+              <span><small>Hóa đơn</small><strong>{pendingPayment.invoice.code}</strong></span>
+              <span><small>Số tiền</small><strong>{money(pendingPayment.initiated.payment.amount)}</strong></span>
+              <span><small>Học sinh</small><strong>{pendingPayment.invoice.studentName}</strong></span>
+            </div>
+            <div className="vietqr-bank-detail">
+              <span><small>Ngân hàng</small><strong>{pendingPayment.initiated.bankId}</strong></span>
+              <span><small>Số tài khoản</small><strong>{pendingPayment.initiated.accountNo}</strong></span>
+              <span><small>Chủ tài khoản</small><strong>{pendingPayment.initiated.accountName}</strong></span>
+            </div>
+            <button className="vietqr-transfer-content" type="button" onClick={copyTransferContent}>
+              <span><small>Nội dung chuyển khoản bắt buộc</small><strong>{pendingPayment.initiated.transferContent}</strong></span>
+              <Copy size={17} />
+            </button>
+            <p className="vietqr-payment-note">Sau khi chuyển khoản, chọn “Tôi đã chuyển khoản”. Hệ thống chỉ cập nhật hóa đơn sau khi nhà trường đối soát giao dịch ngân hàng.</p>
+          </div>
+        </Modal>
+      )}
     </Section>
   );
 }

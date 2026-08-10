@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CircleDollarSign,
   ClipboardList,
-  Clock3,
   Database,
   Eye,
   FileSpreadsheet,
@@ -35,7 +34,6 @@ import {
   currency,
   feePeriods,
   gradeBands,
-  holidays,
   importRows,
   notificationTemplates,
   payments,
@@ -239,22 +237,6 @@ export function AdminTimetableFeature({
           ),
         },
         {
-          id: 'holidays',
-          label: 'Ngày nghỉ',
-          Icon: Clock3,
-          content: (
-            <Section title="School holidays" subtitle="Ngày nghỉ dùng để chặn hoặc cảnh báo khi xếp lịch" wide>
-              <InfoGrid
-                items={holidays.map((item) => ({
-                  title: item.date,
-                  value: item.title,
-                  meta: item.scope,
-                }))}
-              />
-            </Section>
-          ),
-        },
-        {
           id: 'publish',
           label: 'Phát hành',
           Icon: Send,
@@ -367,7 +349,7 @@ export function FinanceFeature() {
           label: 'Giao dịch',
           Icon: CircleDollarSign,
           content: (
-            <Section title="Payment gateway transaction log" subtitle="Theo dõi callback VNPAY/MoMo và đối soát" wide>
+            <Section title="Nhật ký giao dịch VietQR" subtitle="Theo dõi chuyển khoản và trạng thái đối soát ngân hàng" wide>
               <div className="compact-table">
                 {payments.map((item) => (
                   <div key={item.ref}>

@@ -21,10 +21,12 @@ export function SidebarMenu({
   role,
   activePage,
   onSelect,
+  badges = {},
 }: {
   role: RoleDefinition;
   activePage: PageId;
   onSelect: (page: PageId) => void;
+  badges?: Partial<Record<PageId, number>>;
 }) {
   return (
     <nav className="menu-nav" aria-label="Menu chức năng">
@@ -37,7 +39,7 @@ export function SidebarMenu({
       </button>
 
       <div className="sidebar-section-title">Chức năng</div>
-      {modules[role.id].map((item) => (
+      {modules[role.id].filter((item) => role.id === 'admin' || item.title !== 'Thông báo').map((item) => (
         <button
           key={item.code}
           className={`menu-button ${activePage === item.code ? 'active' : ''}`}
@@ -47,6 +49,7 @@ export function SidebarMenu({
           <span>
             <strong>{item.title}</strong>
           </span>
+          {(badges[item.code] ?? 0) > 0 && <b className="menu-unread-badge">{badges[item.code]! > 99 ? '99+' : badges[item.code]}</b>}
           <ChevronRight size={16} />
         </button>
       ))}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api, setTokens, hasToken, getRefreshToken } from './client';
+import { api, setTokens, hasToken, refreshSession, AUTH_SESSION_EXPIRED } from './client';
 import type { ApiUser } from './types';
 
 interface AuthContextValue {
@@ -17,16 +17,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     (async () => {
-      if (hasToken()) {
-        try {
+      try {
+        const ready = hasToken() || await refreshSession();
+        if (ready && active) {
           setUser(await api.get<ApiUser>('/me'));
-        } catch {
-          setTokens(null, null);
         }
+      } catch {
+        setTokens(null);
+        if (active) setUser(null);
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
+    const expire = () => {
+      setTokens(null);
+      setUser(null);
+    };
+    window.addEventListener(AUTH_SESSION_EXPIRED, expire);
+    return () => {
+      active = false;
+      window.removeEventListener(AUTH_SESSION_EXPIRED, expire);
+    };
   }, []);
 
   const login = async (username: string, password: string) => {
@@ -34,13 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       '/auth/login',
       { username, password },
     );
-    setTokens(r.accessToken, r.refreshToken);
+    setTokens(r.accessToken);
     setUser(r.user);
   };
 
   const logout = () => {
-    api.post('/auth/logout', { refreshToken: getRefreshToken() }).catch(() => {});
-    setTokens(null, null);
+    api.post('/auth/logout').catch(() => {});
+    setTokens(null);
     setUser(null);
   };
 
