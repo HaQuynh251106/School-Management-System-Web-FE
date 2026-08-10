@@ -3,7 +3,8 @@ import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, Check
 import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { AcademicTrainingPlan, AcademicYear, Announcement, AnnualSubjectSummary, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeachingAssignment } from '../../api/types';
+import type { AcademicTrainingPlan, AcademicYear, Announcement, AnnualSubjectSummary, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, GradeConfiguration, TimetableSlot, Grade, TeacherAnnouncementScope, TeachingAssignment } from '../../api/types';
+import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, PaginatedData } from './common';
 import { Modal } from './Modal';
@@ -402,6 +403,7 @@ export function TeacherAttendanceLive() {
   }, [marks, search, statusFilter, students.data]);
 
   return (
+    <>
     <Section title="Sổ điểm danh điện tử" subtitle="Chỉ điểm danh các tiết đúng môn chuyên ngành được phân công" wide
       action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired}><Send size={15} /> {saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
       {toast.node}
@@ -496,6 +498,8 @@ export function TeacherAttendanceLive() {
         )}
       </div>
     </Section>
+    <AttendanceExcusePanel mode="review" />
+    </>
   );
 }
 
@@ -581,6 +585,9 @@ export function TeacherGradesLive() {
   const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
   const subjectId = selectedSubject?.subjectId || '';
   const canEdit = Boolean(selectedSubject?.editable);
+  const gradeConfigs = useApi<GradeConfiguration[]>(subjectId && semesterId
+    ? `/grade-configurations?subjectId=${encodeURIComponent(subjectId)}&semesterId=${encodeURIComponent(semesterId)}`
+    : null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const existing = useApi<Grade[]>(
     classId && subjectId && semesterId
@@ -588,6 +595,17 @@ export function TeacherGradesLive() {
       : null,
   );
   const [scores, setScores] = useState<Record<string, string>>({});
+  const effectiveCategories = useMemo<ExamCategory[]>(() => {
+    if (!(gradeConfigs.data || []).length) return cats.data || [];
+    const defaults = new Map((cats.data || []).map((category) => [category.code, category]));
+    return (gradeConfigs.data || []).filter((config) => config.active).map((config) => ({
+      id: defaults.get(config.categoryCode)?.id || config.id,
+      code: config.categoryCode,
+      name: config.categoryName || defaults.get(config.categoryCode)?.name || config.categoryCode,
+      weight: config.weight,
+      requiredCount: config.requiredCount,
+    }));
+  }, [cats.data, gradeConfigs.data]);
 
   useEffect(() => {
     const m: Record<string, string> = {};
@@ -595,10 +613,10 @@ export function TeacherGradesLive() {
     setScores(m);
   }, [existing.data]);
 
-  const ready = Boolean(classId && semesterId && subjectId && cats.data?.length);
+  const ready = Boolean(classId && semesterId && subjectId && effectiveCategories.length);
   const classMap = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item.code])), [classes.data]);
   const subjectName = selectedSubject?.subjectName || '';
-  const columns = useMemo(() => gradeColumns(cats.data || []), [cats.data]);
+  const columns = useMemo(() => gradeColumns(effectiveCategories), [effectiveCategories]);
   const gradeVersions = useMemo(() => new Map((existing.data || []).map((grade) => [
     gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1),
     grade.version,
@@ -613,8 +631,8 @@ export function TeacherGradesLive() {
         score: Number(value),
       }];
     });
-    return { student, values, average: weightedAverage(values, cats.data || []) };
-  }), [students.data, cats.data, columns, scores]);
+    return { student, values, average: weightedAverage(values, effectiveCategories) };
+  }), [students.data, effectiveCategories, columns, scores]);
 
   const averages = gradeRows.map((row) => row.average).filter((score): score is number => score != null);
   const classAverage = averages.length

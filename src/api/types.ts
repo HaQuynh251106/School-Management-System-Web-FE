@@ -398,6 +398,33 @@ export interface ScheduleGenerationReadiness {
   sourcePlanSummary?: string | null; classCount: number; assignmentCount: number;
   requiredPeriods: number; issues: ScheduleIssue[];
 }
+export interface TeacherStaffingPolicy {
+  academicYearId: string;
+  schoolType: 'PUBLIC_REGULAR' | 'ETHNIC_BOARDING' | 'SPECIALIZED';
+  schoolTypeLabel: string;
+  weeklyTeachingNorm: number;
+  teachingWeeks: number;
+  teacherClassRatio: number;
+  managementIncluded: boolean;
+}
+export interface SubjectStaffingRow {
+  subjectId: string; subjectCode: string; subjectName: string; subjectType: string;
+  applicableClassCount: number; annualPeriods: number;
+  selectedSemesterPeriods: number; selectedWeeklyPeriods: number;
+  minimumTeachersForSemester: number; minimumTeachersForYear: number;
+  qualifiedTeacherCount: number; assignedTeacherCount: number;
+  shortage: number; countedAsSubjectTeacher: boolean;
+}
+export interface TeacherStaffingAnalysis {
+  academicYearId: string; semesterId: string; scopeGradeLevel?: string | null;
+  schoolClassCount: number; scopeClassCount: number; currentActiveTeacherCount: number;
+  minimumSubjectTeachersForSemester: number; minimumSubjectTeachersForYear: number;
+  maximumTeacherFte: number; maximumWholeTeachers: number;
+  withinLegalCeiling: boolean; sufficientForTimetable: boolean;
+  totalAnnualPeriods: number; totalSelectedSemesterPeriods: number;
+  totalSelectedWeeklyPeriods: number; policy: TeacherStaffingPolicy;
+  subjects: SubjectStaffingRow[]; errors: string[]; warnings: string[];
+}
 export interface ClassLessonProgress {
   id: string; academicYearId: string; semesterId: string; classId: string; subjectId: string;
   curriculumItemId: string; lessonDate: string; plannedPeriods: number; completedPeriods: number;
@@ -431,6 +458,16 @@ export interface AttendanceRecord {
 export interface Grade {
   id: string; studentId: string; subjectId: string; subjectName: string; semesterId: string;
   category: string; categoryName: string; assessmentIndex?: number; score: number; note?: string | null; recordedAt?: string; version?: number;
+}
+export interface GradeConfiguration {
+  id: string; subjectId: string; semesterId: string; categoryCode: string; categoryName: string;
+  requiredCount: number; weight: number; active: boolean; updatedAt?: string;
+}
+
+export interface AttendanceExcuseRequest {
+  id: string; attendanceRecordId: string; studentId: string; requestedBy: string;
+  requesterRole: string; reason: string; status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedAt: string; reviewedBy?: string | null; reviewNote?: string | null; reviewedAt?: string | null;
 }
 
 export interface YearSummaryExpectedSubject {
@@ -619,6 +656,17 @@ export interface Notification {
   id: string; recipientId: string; type: string; title: string; body: string;
   priority?: 'NORMAL' | 'IMPORTANT' | 'URGENT';
   read: boolean; refType?: string; refId?: string; createdAt: string;
+  channel?: string; status?: string; attemptCount?: number; errorMessage?: string | null;
+}
+export interface NotificationDeliveryLog {
+  id: string; notificationId: string; channel: string; provider: string;
+  attemptNo: number; status: string; providerResponse?: string | null;
+  errorMessage?: string | null; attemptedAt: string;
+}
+export interface NotificationOperationsSummary {
+  totalNotifications: number; queued: number; sent: number; failed: number; retrying: number;
+  deliveryAttempts: number; successfulAttempts: number; failedAttempts: number;
+  failureRatePercent: number; notificationsByChannel: Record<string, number>; generatedAt: string;
 }
 export interface Announcement {
   id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string;
@@ -643,6 +691,16 @@ export interface Submission {
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
   attachmentFileId?: string | null; attachmentName?: string | null;
   attachmentContentType?: string | null; attachmentSizeBytes?: number | null; gradedAt?: string | null;
+}
+export interface SubmissionVersion {
+  id: string; submissionId: string; versionNo: number; content?: string | null;
+  attachmentName?: string | null; attachmentFileId?: string | null;
+  submittedBy: string; submittedAt: string;
+}
+export interface SubmissionResubmissionRequest {
+  id: string; submissionId: string; assignmentId: string; studentId: string;
+  reason: string; status: 'OPEN' | 'USED' | 'CANCELLED' | 'EXPIRED';
+  allowedUntil?: string | null; requestedBy: string; requestedAt: string; usedAt?: string | null;
 }
 export interface StoredFile { id: string; originalName: string; contentType: string; sizeBytes: number; createdAt: string; }
 
@@ -810,7 +868,7 @@ export interface StudentYearlySummary {
 }
 
 export interface Club { id: string; name: string; description?: string; capacity: number; schedule?: string; fee: number; status: string; }
-export interface ClubRegistration { id: string; clubId: string; clubName?: string; studentId: string; studentName?: string; status: string; registeredAt?: string; }
+export interface ClubRegistration { id: string; clubId: string; clubName?: string; studentId: string; studentName?: string; status: string; registeredAt?: string; feePeriodId?: string | null; invoiceId?: string | null; }
 
 export interface DashboardMetric {
   key: string;
@@ -835,4 +893,20 @@ export interface DashboardChart {
 export interface DashboardResponse {
   metrics: DashboardMetric[];
   charts: DashboardChart[];
+  shortcuts: Array<{ key: string; label: string; count: number; pageId: string; filter?: string; tone: string }>;
+}
+
+export interface AcademicReportStudent {
+  studentId: string; studentCode?: string | null; studentName: string; classId: string; className: string;
+  gradeEntries: number; averageScore?: number | null; present: number; late: number;
+  absentExcused: number; absentUnexcused: number; attendanceRate?: number | null;
+  assignments: number; submittedAssignments: number; gradedAssignments: number;
+}
+export interface AcademicReportResponse {
+  summary: { studentCount: number; classCount: number; subjectCount: number; gradeEntries: number;
+    averageScore?: number | null; attendanceEntries: number; attendanceRate?: number | null;
+    assignments: number; submittedAssignments: number; gradedAssignments: number };
+  students: AcademicReportStudent[];
+  subjects: Array<{ subjectId: string; subjectName: string; gradeEntries: number; studentCount: number; averageScore?: number | null }>;
+  generatedAt: string;
 }

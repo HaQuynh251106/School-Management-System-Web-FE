@@ -13,7 +13,10 @@ import { ActiveChildProvider } from '../api/activeChild';
 import { useTheme } from '../api/theme';
 import { PaymentReturnPage } from '../features/payment/PaymentReturnPage';
 import { useApi } from '../api/useApi';
+import { api } from '../api/client';
 import type { Notification } from '../api/types';
+import { ShortcutFilterProvider } from '../api/shortcutFilter';
+import { NotificationDetailDialog } from '../components/NotificationDetailDialog';
 
 export default function App() {
   const { user, loading, logout } = useAuth();
@@ -21,9 +24,12 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [locallyReadNotificationIds, setLocallyReadNotificationIds] = useState<Set<string>>(() => new Set());
   const [securityOpen, setSecurityOpen] = useState(false);
+  const [shortcutFilter, setShortcutFilter] = useState({ pageId: '', filter: '' });
   const paymentReturn = new URLSearchParams(window.location.search).get('paymentReturn');
-  const { data: unreadNotificationData, loading: unreadNotificationsLoading, reload: reloadUnreadNotifications } = useApi<Notification[]>(user ? '/notifications?unread=true' : null);
+  const { data: notificationData, loading: notificationsLoading, reload: reloadNotificationInbox } = useApi<Notification[]>(user ? '/notifications' : null);
   const { data: financeUnreadData, reload: reloadFinanceUnread } = useApi<{ count: number }>(user?.role === 'PARENT' ? '/notifications/finance/unread-count' : null);
 
   // Reset về Dashboard mỗi khi đổi người đăng nhập (tránh giữ trang của vai trò cũ).
@@ -31,6 +37,8 @@ export default function App() {
     setActivePage('dashboard');
     setSidebarOpen(false);
     setNotificationOpen(false);
+    setSelectedNotification(null);
+    setLocallyReadNotificationIds(new Set());
   }, [user?.id]);
 
   useEffect(() => {
@@ -46,19 +54,32 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    const reloadNotifications = () => {
-      reloadUnreadNotifications();
+    const refreshNotifications = () => {
+      reloadNotificationInbox();
       reloadFinanceUnread();
     };
-    const timer = window.setInterval(reloadNotifications, 10_000);
-    window.addEventListener('focus', reloadNotifications);
-    window.addEventListener('sse:notifications-changed', reloadNotifications);
+    const timer = window.setInterval(refreshNotifications, 10_000);
+    window.addEventListener('focus', refreshNotifications);
+    window.addEventListener('sse:notifications-changed', refreshNotifications);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('focus', reloadNotifications);
-      window.removeEventListener('sse:notifications-changed', reloadNotifications);
+      window.removeEventListener('focus', refreshNotifications);
+      window.removeEventListener('sse:notifications-changed', refreshNotifications);
     };
-  }, [user, reloadUnreadNotifications, reloadFinanceUnread]);
+  }, [user, reloadNotificationInbox, reloadFinanceUnread]);
+
+  useEffect(() => {
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ pageId?: string; filter?: string }>).detail;
+      if (!detail?.pageId) return;
+      setShortcutFilter({ pageId: detail.pageId, filter: detail.filter || '' });
+      setActivePage(detail.pageId);
+      setSidebarOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('sse:navigate', navigate);
+    return () => window.removeEventListener('sse:navigate', navigate);
+  }, []);
 
   if (paymentReturn) {
     return <PaymentReturnPage provider={paymentReturn} />;
@@ -80,28 +101,80 @@ export default function App() {
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
   const today = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date());
   const selectPage = (page: PageId) => {
+    setShortcutFilter({ pageId: '', filter: '' });
     setActivePage(page);
     setSidebarOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const openNotification = (notification: Notification) => {
+  const notificationTarget = (notification: Notification): { pageId: PageId; label: string } | null => {
+    const keys = [notification.type, notification.refType].filter(Boolean).map((value) => String(value).toUpperCase());
     const financeRelated = ['INVOICE', 'PAYMENT'].includes(notification.type)
       || ['INVOICE', 'PAYMENT_PROOF'].includes(notification.refType || '');
     const yearResult = notification.type === 'YEAR_RESULT' || notification.refType === 'YEAR_RESULT';
     if (yearResult) {
-      selectPage(role.id === 'admin' ? 'A8' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard');
-    } else if (financeRelated) {
-      selectPage(role.id === 'admin' ? 'A7' : role.id === 'parent' ? 'D4' : 'dashboard');
-    } else if (role.id === 'admin') {
-      selectPage('A9');
-    } else if (role.id === 'teacher') {
-      selectPage('B7');
-    } else if (role.id === 'student') {
-      selectPage('C5');
+      return { pageId: role.id === 'admin' ? 'A8' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem kết quả năm học' };
     }
-    setNotificationOpen(false);
+    if (financeRelated) return { pageId: role.id === 'admin' ? 'A7' : role.id === 'parent' ? 'D4' : 'dashboard', label: 'Mở mục học phí' };
+    if (keys.some((key) => key.includes('ASSIGNMENT'))) return { pageId: role.id === 'teacher' ? 'B5' : role.id === 'student' ? 'C4' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem bài tập' };
+    if (keys.some((key) => key.includes('ATTENDANCE'))) return { pageId: role.id === 'teacher' ? 'B3' : role.id === 'student' ? 'C3' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem chuyên cần' };
+    if (keys.some((key) => key.includes('GRADE'))) return { pageId: role.id === 'teacher' ? 'B4' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem điểm số' };
+    if (keys.some((key) => key.includes('TIMETABLE'))) return { pageId: role.id === 'teacher' ? 'B2' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem thời khóa biểu' };
+    if (keys.some((key) => key.includes('CHAT'))) return { pageId: role.id === 'teacher' ? 'B6' : role.id === 'student' ? 'C7' : role.id === 'parent' ? 'D3' : 'dashboard', label: 'Mở trao đổi' };
+    if (role.id === 'admin') return { pageId: 'A9', label: 'Mở trung tâm thông báo' };
+    if (role.id === 'teacher') return { pageId: 'B10', label: 'Mở hộp thông báo' };
+    if (role.id === 'student') return { pageId: 'C5', label: 'Mở hộp thông báo' };
+    if (role.id === 'parent') return { pageId: 'D6', label: 'Mở hộp thông báo' };
+    return null;
   };
-  const unreadCount = unreadNotificationData?.length || 0;
+  const unreadNotifications = (notificationData || []).filter((item) => !item.read && !locallyReadNotificationIds.has(item.id));
+  const unreadCount = unreadNotifications.length;
+  const markAllNotificationsRead = async () => {
+    if (!unreadCount) return;
+    const ids = unreadNotifications.map((item) => item.id);
+    setLocallyReadNotificationIds((current) => new Set([...current, ...ids]));
+    try {
+      await api.post('/notifications/read-all');
+      reloadNotificationInbox();
+      reloadFinanceUnread();
+      window.dispatchEvent(new Event('sse:notifications-changed'));
+    } catch {
+      setLocallyReadNotificationIds((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+  };
+  const toggleNotificationPopover = () => {
+    if (notificationOpen) return setNotificationOpen(false);
+    setNotificationOpen(true);
+    void markAllNotificationsRead();
+  };
+  const openNotification = async (notification: Notification) => {
+    setNotificationOpen(false);
+    setSelectedNotification(notification);
+    if (!notification.read && !locallyReadNotificationIds.has(notification.id)) {
+      setLocallyReadNotificationIds((current) => new Set(current).add(notification.id));
+      try {
+        await api.post(`/notifications/${encodeURIComponent(notification.id)}/read`);
+        reloadNotificationInbox();
+        reloadFinanceUnread();
+        window.dispatchEvent(new Event('sse:notifications-changed'));
+      } catch {
+        setLocallyReadNotificationIds((current) => {
+          const next = new Set(current);
+          next.delete(notification.id);
+          return next;
+        });
+      }
+    }
+  };
+  const selectedNotificationTarget = selectedNotification ? notificationTarget(selectedNotification) : null;
+  const openSelectedNotificationTarget = () => {
+    if (!selectedNotificationTarget) return;
+    selectPage(selectedNotificationTarget.pageId);
+    setSelectedNotification(null);
+  };
   const financeUnreadCount = financeUnreadData?.count || 0;
 
   return (
@@ -123,8 +196,14 @@ export default function App() {
           </div>
 
           <SessionCard role={role} name={user.fullName} />
-          <SidebarMenu role={role} activePage={activePage} onSelect={selectPage}
-            badges={role.id === 'parent' ? { D4: financeUnreadCount } : {}} />
+          <SidebarMenu role={role} activePage={activePage} onSelect={(page) => {
+            if (['B10', 'C5', 'D6'].includes(page)) void markAllNotificationsRead();
+            selectPage(page);
+          }}
+            badges={role.id === 'teacher' ? { B10: unreadCount }
+              : role.id === 'student' ? { C5: unreadCount }
+                : role.id === 'parent' ? { D4: financeUnreadCount, D6: unreadCount }
+                  : {}} />
           <div className="sidebar-footer">
             <span>Hệ thống quản lý học đường</span>
             <small>Phiên bản 2026.1</small>
@@ -143,21 +222,21 @@ export default function App() {
             <div className="topbar-actions">
               <span className="topbar-date"><CalendarDays size={16} /> {today}</span>
               <div className="topbar-notification">
-                <button className="notification-bell" type="button" aria-label={`Thông báo, ${unreadCount} chưa đọc`} aria-expanded={notificationOpen} onClick={() => setNotificationOpen((open) => !open)}>
+                <button className="notification-bell" type="button" aria-label={`Thông báo, ${unreadCount} chưa đọc`} aria-expanded={notificationOpen} onClick={toggleNotificationPopover}>
                   <Bell size={18} />
                   {unreadCount > 0 && <b>{unreadCount > 99 ? '99+' : unreadCount}</b>}
                 </button>
                 {notificationOpen && (
                   <div className="notification-popover" role="dialog" aria-label="Thông báo mới">
-                    <header><strong>Thông báo mới</strong><span>{unreadCount} chưa đọc</span></header>
+                    <header><strong>Thông báo gần đây</strong><span>{unreadCount ? `${unreadCount} chưa đọc` : 'Đã đọc hết'}</span></header>
                     <div className="notification-popover-list">
-                      {(unreadNotificationData || []).slice(0, 6).map((notification) => (
-                        <button type="button" key={notification.id} onClick={() => openNotification(notification)}>
+                      {(notificationData || []).slice(0, 6).map((notification) => (
+                        <button type="button" className={!notification.read && !locallyReadNotificationIds.has(notification.id) ? 'is-unread' : ''} key={notification.id} onClick={() => void openNotification(notification)}>
                           <span>{notification.title}</span>
                           <small>{notification.body}</small>
                         </button>
                       ))}
-                      {!unreadNotificationsLoading && unreadCount === 0 && <p>Không có thông báo mới</p>}
+                      {!notificationsLoading && (notificationData || []).length === 0 && <p>Chưa có thông báo</p>}
                     </div>
                   </div>
                 )}
@@ -178,11 +257,19 @@ export default function App() {
           {activePage === 'dashboard' ? (
             <GeneralDashboard roleId={role.id} />
           ) : (
-            <FeaturePage module={activeModule} role={role} />
+            <ShortcutFilterProvider value={shortcutFilter}>
+              <FeaturePage module={activeModule} role={role} />
+            </ShortcutFilterProvider>
           )}
         </main>
       </div>
       {securityOpen && <AccountSecurityModal onClose={() => setSecurityOpen(false)} />}
+      {selectedNotification && <NotificationDetailDialog
+        notification={selectedNotification}
+        onClose={() => setSelectedNotification(null)}
+        onOpenRelated={selectedNotificationTarget ? openSelectedNotificationTarget : undefined}
+        relatedLabel={selectedNotificationTarget?.label}
+      />}
     </ActiveChildProvider>
   );
 }

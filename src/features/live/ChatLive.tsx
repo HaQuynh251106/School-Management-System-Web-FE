@@ -5,7 +5,7 @@ import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
 import { Section } from '../../components/ui';
 import { Async, fmtDateTime, useToast } from './common';
-import type { ApiUser, SchoolClass } from '../../api/types';
+import type { ApiUser, TeachingAssignment } from '../../api/types';
 
 interface Thread {
   userId: string;
@@ -43,7 +43,13 @@ export function ChatLive() {
   const { user } = useAuth();
   const threads = useApi<Thread[]>('/chat/threads');
   const contacts = useApi<ApiUser[]>('/chat/contacts');
-  const teachingClasses = useApi<SchoolClass[]>(user?.role === 'TEACHER' ? '/me/teaching-classes' : null);
+  const teachingScopes = useApi<TeachingAssignment[]>(user?.role === 'TEACHER' ? '/me/teacher-class-subjects' : null);
+  const teachingClasses = useMemo(() => {
+    const classes = new Map<string, string>();
+    (teachingScopes.data || []).forEach((scope) => classes.set(scope.classId, scope.classCode || scope.classId));
+    return [...classes].map(([id, code]) => ({ id, code }))
+      .sort((left, right) => left.code.localeCompare(right.code, 'vi', { numeric: true }));
+  }, [teachingScopes.data]);
   const [withId, setWithId] = useState<string | null>(null);
   const msgs = useApi<ChatMsg[]>(withId ? `/chat/messages?withUserId=${encodeURIComponent(withId)}` : null);
   const reloadThreads = threads.reload;
@@ -154,7 +160,7 @@ export function ChatLive() {
           <div><strong>Thông báo tới lớp</strong><small>Gửi một thông báo chung tới học sinh trong lớp phụ trách</small></div>
           <select className="live-select" value={broadcastClassId} onChange={(event) => setBroadcastClassId(event.target.value)} aria-label="Chọn lớp nhận thông báo">
             <option value="">— Chọn lớp —</option>
-            {(teachingClasses.data ?? []).map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
+            {teachingClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
           </select>
           <input className="live-input grow" maxLength={2000} placeholder="Nội dung thông báo…" value={broadcastText} onChange={(event) => setBroadcastText(event.target.value)} />
           <button className="live-btn" onClick={sendBroadcast}><Send size={14} /> Gửi lớp</button>

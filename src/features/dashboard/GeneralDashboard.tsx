@@ -3,6 +3,7 @@ import {
   GraduationCap, School, ShieldCheck, Sparkles, Users, WalletCards,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useEffect } from 'react';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
 import type {
@@ -78,6 +79,8 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
   const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
   const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
   const notifications = useApi<Notification[]>('/notifications');
+  const reloadDashboard = dashboard.reload;
+  const reloadDashboardNotifications = notifications.reload;
   const intro = roleDashboardIntros[roleId];
   const IntroIcon = intro.Icon;
   const metrics = (dashboard.data?.metrics ?? []).map(toMetric);
@@ -88,6 +91,15 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
   }).format(new Date());
   const error = dashboard.error || users.error || classes.error || notifications.error;
   const loading = dashboard.loading;
+
+  useEffect(() => {
+    const refreshNotificationMetrics = () => {
+      reloadDashboard();
+      reloadDashboardNotifications();
+    };
+    window.addEventListener('sse:notifications-changed', refreshNotificationMetrics);
+    return () => window.removeEventListener('sse:notifications-changed', refreshNotificationMetrics);
+  }, [reloadDashboard, reloadDashboardNotifications]);
 
   return (
     <div className={`dashboard role-dashboard role-dashboard--${roleId}`}>
@@ -111,6 +123,17 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
       {!loading && metrics.length > 0 && (
         <section className="metric-grid">
           {metrics.map((metric) => <MetricCard key={metric.label} metric={metric} />)}
+        </section>
+      )}
+
+      {!loading && (dashboard.data?.shortcuts?.length ?? 0) > 0 && (
+        <section className="dashboard-shortcuts" aria-label="Việc cần xử lý">
+          <div className="dashboard-shortcuts-head"><div><strong>Việc cần xử lý</strong><small>Số liệu theo đúng phạm vi tài khoản đang đăng nhập</small></div></div>
+          <div className="dashboard-shortcut-grid">{dashboard.data!.shortcuts.map((item) => (
+            <button key={item.key} data-tone={item.tone} onClick={() => window.dispatchEvent(new CustomEvent('sse:navigate', { detail: { pageId: item.pageId, filter: item.filter } }))}>
+              <span>{item.count}</span><strong>{item.label}</strong>
+            </button>
+          ))}</div>
         </section>
       )}
 

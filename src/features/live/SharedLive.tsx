@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BookOpen, CalendarClock, CheckCircle2, Clock3, Download, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
+import { BookOpen, CalendarClock, CheckCircle2, Clock3, Download, Eye, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
+import { NotificationDetailDialog } from '../../components/NotificationDetailDialog';
 import { Async, useToast, DAYS, DAY_LABEL, fmtDateTime, money } from './common';
 import { TeacherLessonProgress } from './AutomaticTimetableWorkspace';
 
@@ -339,6 +340,14 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
     } catch (e: any) { toast.show('err', e.message); }
   };
 
+  const cancelRegistration = async (registration: ClubRegistration) => {
+    try {
+      await api.post(`/club-registrations/${registration.id}/cancel`);
+      toast.show('ok', 'Đã hủy đăng ký và hủy hóa đơn chưa thanh toán (nếu có)');
+      myRegs.reload();
+    } catch (e: any) { toast.show('err', e.message); }
+  };
+
   const joined = new Set((myRegs.data || []).filter((r) => r.status === 'REGISTERED').map((r) => r.clubId));
 
   return (
@@ -352,7 +361,7 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
               <tr key={c.id}>
                 <td><strong>{c.name}</strong></td><td>{c.schedule || '—'}</td><td>{c.capacity}</td><td>{money(c.fee)}</td>
                 <td>{joined.has(c.id)
-                  ? <Badge tone="green">Đã đăng ký</Badge>
+                  ? <div className="club-registration-actions"><Badge tone="green">Đã đăng ký</Badge>{myRegs.data?.find((item) => item.clubId === c.id && item.status === 'REGISTERED')?.invoiceId && <small>Đã sinh hóa đơn trong mục Học phí</small>}<button className="live-btn ghost" onClick={() => cancelRegistration(myRegs.data!.find((item) => item.clubId === c.id && item.status === 'REGISTERED')!)}>Hủy đăng ký</button></div>
                   : <button className="live-btn" onClick={() => register(c.id)}><Plus size={14} /> Đăng ký</button>}</td>
               </tr>
             ))}</tbody>
@@ -366,13 +375,23 @@ export function ExtracurricularLive({ actor, childId }: { actor: 'student' | 'pa
 /* ===== Thông báo in-app (C5) ===== */
 export function NotificationsLive() {
   const inbox = useApi<Notification[]>('/notifications');
-  const preferences = useApi<NotificationPreference[]>('/notification-preferences');
+  const preferences = useApi<NotificationPreference[]>('/me/notification-preferences');
   const toast = useToast();
-  const markRead = async (id: string) => { try { await api.post(`/notifications/${id}/read`); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
-  const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); } catch (e: any) { toast.show('err', e.message); } };
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const notifyChanged = () => window.dispatchEvent(new Event('sse:notifications-changed'));
+  const markRead = async (id: string) => { try { await api.post(`/notifications/${id}/read`); inbox.reload(); notifyChanged(); } catch (e: any) { toast.show('err', e.message); } };
+  const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); notifyChanged(); } catch (e: any) { toast.show('err', e.message); } };
+  const openDetail = async (notification: Notification) => {
+    setSelectedNotification(notification);
+    if (!notification.read) await markRead(notification.id);
+  };
+  const channels: NotificationPreference[] = (['IN_APP', 'EMAIL', 'PUSH'] as const).map((channel) =>
+    (preferences.data || []).find((item) => item.channel === channel) || {
+      id: `default-${channel}`, userId: '', channel, enabled: channel === 'IN_APP', updatedAt: '',
+    });
   const togglePreference = async (preference: NotificationPreference) => {
     try {
-      await api.put('/notification-preferences', { channel: preference.channel, enabled: !preference.enabled });
+      await api.put('/me/notification-preferences', { notificationType: 'ALL', channel: preference.channel, enabled: !preference.enabled });
       toast.show('ok', 'Đã cập nhật tùy chọn thông báo'); preferences.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
@@ -381,15 +400,14 @@ export function NotificationsLive() {
     <div className="notification-page-grid">
       {toast.node}
       <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
-        <Async state={preferences} empty="Chưa có tùy chọn thông báo">
-          {(items) => <div className="notification-preferences">{items.map((preference) => (
+        {preferences.loading ? <div className="live-loading">Đang tải tùy chọn…</div> : preferences.error ? <div className="live-error">{preferences.error}</div> :
+          <div className="notification-preferences">{channels.map((preference) => (
             <label key={preference.id}>
               <span><strong>{{ IN_APP: 'Trong ứng dụng', PUSH: 'Thông báo đẩy', EMAIL: 'Email' }[preference.channel]}</strong>
                 <small>{preference.channel === 'IN_APP' ? 'Hiển thị trong hộp thư của hệ thống' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
               <input type="checkbox" checked={preference.enabled} onChange={() => togglePreference(preference)} />
             </label>
           ))}</div>}
-        </Async>
       </Section>
       <Section title="Thông báo" subtitle="Cập nhật mới từ nhà trường" wide
         action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
@@ -404,13 +422,14 @@ export function NotificationsLive() {
                   <td><strong>{n.title}</strong><small>{n.body}</small></td>
                   <td>{n.priority && n.priority !== 'NORMAL' ? <Badge tone={n.priority === 'URGENT' ? 'red' : 'orange'}>{n.priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge> : <Badge tone="green">Thông thường</Badge>}</td>
                   <td><StatusPill value={n.read ? 'READ' : 'UNREAD'} /></td>
-                  <td>{!n.read ? <button className="live-btn subtle" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button> : <span>—</span>}</td>
+                  <td><div className="notification-row-actions"><button className="live-btn subtle" onClick={() => void openDetail(n)}><Eye size={14} /> Xem chi tiết</button>{!n.read && <button className="live-btn ghost" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button>}</div></td>
                 </tr>
               ))}</tbody>
             </table></div>
           )}
         </Async>
       </Section>
+      {selectedNotification && <NotificationDetailDialog notification={selectedNotification} onClose={() => setSelectedNotification(null)} />}
     </div>
   );
 }

@@ -1,19 +1,23 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
+  Bell,
   Download,
   Eye,
   FileText,
   Save,
   Send,
+  RotateCcw,
+  Layers3,
   Upload,
   X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
-import type { Assignment, Submission, TeachingAssignment } from '../../api/types';
+import type { Assignment, Submission, SubmissionResubmissionRequest, SubmissionVersion, TeachingAssignment } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async, fmtDateTime, useToast } from './common';
+import { useShortcutFilter } from '../../api/shortcutFilter';
 
 type AssignmentActor = 'teacher' | 'student' | 'parent';
 type PresignedUpload = { id: string; uploadUrl: string; method: string };
@@ -61,11 +65,14 @@ const emptyForm = {
 };
 
 export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; childId?: string | null }) {
+  const shortcut = useShortcutFilter(actor === 'teacher' ? 'B5' : actor === 'student' ? 'C4' : '');
+  const [currentTime, setCurrentTime] = useState(0);
+  useEffect(() => setCurrentTime(Date.now()), []);
   const toast = useToast();
   const feedbackAnchorRef = useRef<HTMLDivElement>(null);
   const encodedChildId = childId ? encodeURIComponent(childId) : '';
   const assignmentPath = actor === 'teacher'
-    ? '/assignments'
+    ? shortcut.get('status') === 'SUBMITTED' ? '/assignments?status=NEEDS_GRADING' : '/assignments'
     : actor === 'student'
       ? '/me/assignments'
       : childId ? `/me/children/${encodedChildId}/assignments` : null;
@@ -94,13 +101,32 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
   const [gradeTarget, setGradeTarget] = useState<Submission | null>(null);
   const [gradeForm, setGradeForm] = useState({ score: '', feedback: '', reason: '' });
   const [grading, setGrading] = useState(false);
+  const [selectedSubmissions, setSelectedSubmissions] = useState<string[]>([]);
+  const [batchForm, setBatchForm] = useState({ score: '', feedback: '' });
+  const [resubmitTarget, setResubmitTarget] = useState<Submission | null>(null);
+  const [resubmitForm, setResubmitForm] = useState({ reason: '', allowedUntil: '' });
 
   const submissionsByAssignment = useMemo(
     () => new Map((mySubmissions.data || []).map((submission) => [submission.assignmentId, submission])),
     [mySubmissions.data],
   );
+  const visibleAssignmentData = useMemo(() => {
+    const rows = assignments.data || [];
+    if (actor !== 'student' || shortcut.get('status') !== 'OVERDUE') return rows;
+    return rows.filter((assignment) => assignment.deadline
+      && new Date(assignment.deadline).getTime() < currentTime
+      && !submissionsByAssignment.has(assignment.id));
+  }, [actor, assignments.data, currentTime, shortcut, submissionsByAssignment]);
+  const visibleAssignments = { ...assignments, data: visibleAssignmentData };
   const detailAssignment = (assignments.data || []).find((item) => item.id === detailAssignmentId) || null;
   const detailSubmission = detailAssignment ? submissionsByAssignment.get(detailAssignment.id) : undefined;
+  const submissionHistoryBase = detailSubmission
+    ? actor === 'parent' && childId
+      ? `/me/children/${encodedChildId}/submissions/${encodeURIComponent(detailSubmission.id)}`
+      : `/submissions/${encodeURIComponent(detailSubmission.id)}`
+    : null;
+  const submissionVersions = useApi<SubmissionVersion[]>(submissionHistoryBase ? `${submissionHistoryBase}/versions` : null);
+  const resubmissionHistory = useApi<SubmissionResubmissionRequest[]>(submissionHistoryBase ? `${submissionHistoryBase}/resubmission-requests` : null);
   const detailHasSubmissionFile = Boolean(submissionFile || detailSubmission?.attachmentFileId);
   const selectedTeacherAssignment = (assignments.data || [])
     .find((item) => item.id === selectedTeacherAssignmentId) || null;
@@ -300,6 +326,73 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
     }
   };
 
+  const batchGrade = async () => {
+    const score = Number(batchForm.score);
+    if (!selectedSubmissions.length) return toast.show('err', 'Chọn ít nhất một bài nộp');
+    if (!Number.isFinite(score) || score < 0 || score > 10) return toast.show('err', 'Điểm phải từ 0 đến 10');
+    setGrading(true);
+    try {
+      await api.post('/submissions/batch-grade', {
+        entries: selectedSubmissions.map((submissionId) => ({
+          submissionId,
+          score,
+          feedback: batchForm.feedback.trim() || null,
+          reason: null,
+        })),
+      });
+      toast.show('ok', `Đã chấm ${selectedSubmissions.length} bài và gửi thông báo`);
+      setSelectedSubmissions([]);
+      setBatchForm({ score: '', feedback: '' });
+      teacherSubmissions.reload();
+    } catch (error: any) {
+      toast.show('err', error.message);
+    } finally {
+      setGrading(false);
+    }
+  };
+
+  const requestResubmission = async () => {
+    if (!resubmitTarget) return;
+    if (!resubmitForm.reason.trim()) return toast.show('err', 'Nhập lý do yêu cầu nộp lại');
+    try {
+      await api.post(`/submissions/${encodeURIComponent(resubmitTarget.id)}/request-resubmission`, {
+        reason: resubmitForm.reason.trim(),
+        allowedUntil: resubmitForm.allowedUntil ? new Date(resubmitForm.allowedUntil).toISOString() : null,
+      });
+      toast.show('ok', 'Đã mở quyền nộp lại và thông báo cho học sinh');
+      setResubmitTarget(null);
+      setResubmitForm({ reason: '', allowedUntil: '' });
+      teacherSubmissions.reload();
+    } catch (error: any) {
+      toast.show('err', error.message);
+    }
+  };
+
+  const remindDue = async () => {
+    if (!selectedTeacherAssignment) return;
+    try {
+      const result = await api.post<{ recipientStudents: number }>(`/assignments/${selectedTeacherAssignment.id}/remind-due`);
+      toast.show('ok', `Đã nhắc ${result.recipientStudents} học sinh chưa nộp`);
+    } catch (error: any) {
+      toast.show('err', error.message);
+    }
+  };
+
+  const exportSubmissions = async () => {
+    if (!selectedTeacherAssignment) return;
+    try {
+      const response = await api.download(`/assignments/${selectedTeacherAssignment.id}/submissions/export`);
+      const url = URL.createObjectURL(response.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = response.filename || `bai-nop-${selectedTeacherAssignment.id}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.show('err', error.message);
+    }
+  };
+
   const title = actor === 'teacher'
     ? 'Quản lý bài tập (B5)'
     : actor === 'student' ? 'Bài tập của tôi (C4)' : 'Bài tập của con';
@@ -385,7 +478,7 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
         </div>
       )}
 
-      <Async state={assignments} empty="Chưa có bài tập">
+      <Async state={visibleAssignments} empty="Chưa có bài tập">
         {(items) => (
           <div className="live-table-wrap">
             <table className="live-table assignment-table">
@@ -557,6 +650,14 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
           ) : (
             <div className="live-loading">Con chưa nộp bài tập này.</div>
           )}
+          {detailSubmission && <div className="submission-history-grid">
+            <div><strong><Layers3 size={15} /> Lịch sử nộp bài</strong>
+              <Async state={submissionVersions} empty="Chưa có phiên bản lưu trữ">{(versions) => <ul>{versions.map((version) => <li key={version.id}>Lần {version.versionNo} · {fmtDateTime(version.submittedAt)} · {version.attachmentName || 'Không có file'}</li>)}</ul>}</Async>
+            </div>
+            <div><strong><RotateCcw size={15} /> Yêu cầu nộp lại</strong>
+              <Async state={resubmissionHistory} empty="Không có yêu cầu nộp lại">{(requests) => <ul>{requests.map((request) => <li key={request.id}><StatusPill value={request.status} /> {request.reason}{request.allowedUntil ? ` · đến ${fmtDateTime(request.allowedUntil)}` : ''}</li>)}</ul>}</Async>
+            </div>
+          </div>}
         </div>
       )}
 
@@ -572,14 +673,19 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
               setGradeTarget(null);
             }}><X size={14} /> Đóng</button>
           </div>
+          <div className="assignment-advanced-toolbar">
+            <button className="live-btn subtle" onClick={remindDue}><Bell size={14} /> Nhắc học sinh chưa nộp</button>
+            <button className="live-btn subtle" onClick={exportSubmissions}><Download size={14} /> Xuất danh sách</button>
+          </div>
           <Async state={teacherSubmissions} empty="Chưa có học sinh nộp bài">
             {(items) => (
               <div className="live-table-wrap">
                 <table className="live-table">
-                  <thead><tr><th>Học sinh</th><th>Trạng thái</th><th>Ghi chú</th><th>File bài nộp</th><th>Điểm</th><th /></tr></thead>
+                  <thead><tr><th><input type="checkbox" aria-label="Chọn tất cả bài chưa chấm" checked={items.length > 0 && items.filter((item) => item.status !== 'GRADED').every((item) => selectedSubmissions.includes(item.id))} onChange={(event) => setSelectedSubmissions(event.target.checked ? items.filter((item) => item.status !== 'GRADED').map((item) => item.id) : [])} /></th><th>Học sinh</th><th>Trạng thái</th><th>Ghi chú</th><th>File bài nộp</th><th>Điểm</th><th /></tr></thead>
                   <tbody>
                     {items.map((submission) => (
                       <tr key={submission.id}>
+                        <td><input type="checkbox" disabled={submission.status === 'GRADED'} checked={selectedSubmissions.includes(submission.id)} onChange={(event) => setSelectedSubmissions((current) => event.target.checked ? [...new Set([...current, submission.id])] : current.filter((id) => id !== submission.id))} /></td>
                         <td><strong>{submission.studentName}</strong></td>
                         <td><StatusPill value={submission.status} /></td>
                         <td>{submission.content || '—'}</td>
@@ -592,6 +698,7 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
                         </td>
                         <td>{submission.score ?? '—'}</td>
                         <td>
+                          {submission.status === 'GRADED' && <button className="live-btn ghost" onClick={() => setResubmitTarget(submission)}><RotateCcw size={14} /> Nộp lại</button>}
                           <button className="live-btn subtle" onClick={() => startGrading(submission)}>
                             <CheckCircle2 size={14} /> {submission.status === 'GRADED' ? 'Sửa kết quả' : 'Chấm bài'}
                           </button>
@@ -603,6 +710,19 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
               </div>
             )}
           </Async>
+
+          {selectedSubmissions.length > 0 && <div className="batch-grading-panel">
+            <strong>Chấm hàng loạt {selectedSubmissions.length} bài</strong>
+            <input className="live-input" type="number" min="0" max="10" step="0.1" value={batchForm.score} onChange={(event) => setBatchForm({ ...batchForm, score: event.target.value })} placeholder="Điểm 0-10" />
+            <input className="live-input" value={batchForm.feedback} onChange={(event) => setBatchForm({ ...batchForm, feedback: event.target.value })} placeholder="Nhận xét chung (không bắt buộc)" />
+            <button className="live-btn" disabled={grading} onClick={batchGrade}><CheckCircle2 size={14} /> Lưu hàng loạt</button>
+          </div>}
+
+          {resubmitTarget && <div className="grading-panel">
+            <div className="grading-panel-head"><div><strong>Yêu cầu {resubmitTarget.studentName} nộp lại</strong><small>Bài cũ vẫn được giữ trong lịch sử phiên bản</small></div><button className="icon-inline-btn" onClick={() => setResubmitTarget(null)}><X size={16} /></button></div>
+            <div className="grading-fields"><label><span>Lý do *</span><textarea className="live-input" value={resubmitForm.reason} onChange={(event) => setResubmitForm({ ...resubmitForm, reason: event.target.value })} /></label><label><span>Cho phép nộp đến</span><input className="live-input" type="datetime-local" value={resubmitForm.allowedUntil} onChange={(event) => setResubmitForm({ ...resubmitForm, allowedUntil: event.target.value })} /></label></div>
+            <div className="grading-actions"><button className="live-btn ghost" onClick={() => setResubmitTarget(null)}>Hủy</button><button className="live-btn" onClick={requestResubmission}><Send size={14} /> Gửi yêu cầu</button></div>
+          </div>}
 
           {gradeTarget && (
             <div className="grading-panel">

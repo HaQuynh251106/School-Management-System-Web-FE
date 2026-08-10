@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw, CalendarDays, ExternalLink, ShieldCheck, Landmark, WalletCards, QrCode, Upload, Copy, FileCheck2, AlertTriangle, Download, History, Search } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
+import { useShortcutFilter } from '../../api/shortcutFilter';
 import { useActiveChild } from '../../api/activeChild';
 import type { ApiUser, Grade, AttendanceRecord, Invoice, PaymentInitResponse, PaymentProof, PaymentHistory, PaymentRefund, PaymentReceiptDownload } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
@@ -13,6 +14,7 @@ import { Modal } from './Modal';
 import { YearResultPanel } from './YearResultPanel';
 import { PublishedExamSchedule } from './ExamScheduleWorkspace';
 import { PublishedEducationPlan } from './StudentLive';
+import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CASH: 'Tiền mặt',
@@ -121,6 +123,7 @@ export function ParentMonitorLive() {
         </Section>
       ) },
       { id: 'att', label: 'Chuyên cần', Icon: ClipboardCheck, content: (
+        <>
         <Section title="Chuyên cần của con" subtitle="Lịch sử đi học và ghi chú" wide>
           {(att.data?.length ?? 0) > 0 && <AttendanceOverview records={att.data ?? []} />}
           <Async paginate state={att} empty="Chưa có dữ liệu" itemLabel="lượt điểm danh">
@@ -128,6 +131,8 @@ export function ParentMonitorLive() {
               <tbody>{l.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((r) => <tr key={r.id}><td>{fmtDate(r.date)}</td><td>{r.subjectName}</td><td><StatusPill value={ATT_LABEL[r.status] || r.status} /></td><td><small>{r.note || '—'}</small></td></tr>)}</tbody></table>)}
           </Async>
         </Section>
+        <AttendanceExcusePanel mode="request" studentId={childId} records={att.data || []} />
+        </>
       ) },
       { id: 'year-result', label: 'Kết quả năm', Icon: FileCheck2, content: (
         <YearResultPanel studentId={childId} />
@@ -141,6 +146,7 @@ export function ParentMonitorLive() {
 
 /* ===== D4 — Học phí ===== */
 export function ParentInvoiceLive() {
+  const shortcut = useShortcutFilter('D4');
   const children = useChildren();
   const { childId, setChildId } = useActiveChild();
   const [noticeChecked, setNoticeChecked] = useState(false);
@@ -168,7 +174,9 @@ export function ParentInvoiceLive() {
 
   const activeChild = (children.data || []).find((child) => child.id === childId) || children.data?.[0] || null;
   const selectedChildInvoices = useMemo(() => (invoices.data || [])
-    .filter((invoice) => invoice.studentId === activeChild?.id), [invoices.data, activeChild?.id]);
+    .filter((invoice) => invoice.studentId === activeChild?.id)
+    .filter((invoice) => shortcut.get('status') !== 'OVERDUE' || invoice.status === 'OVERDUE'),
+  [invoices.data, activeChild?.id, shortcut]);
   const childInvoiceStats = useMemo(() => {
     const stats = new Map<string, { unpaid: number; remaining: number }>();
     for (const child of children.data || []) stats.set(child.id, { unpaid: 0, remaining: 0 });

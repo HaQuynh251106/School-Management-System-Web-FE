@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
 import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass, PublishedEducationPlanView } from '../../api/types';
+import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
@@ -260,6 +261,7 @@ export function PublishedEducationPlan({ studentId }: { studentId?: string }) {
 export function StudentAttendanceLive() {
   const att = useApi<AttendanceRecord[]>('/attendance');
   return (
+    <>
     <Section title="Chuyên cần cá nhân" subtitle="Lịch sử đi học của bạn" wide>
       <Async paginate state={att} empty="Chưa có dữ liệu điểm danh" itemLabel="lượt điểm danh">
         {(l) => (
@@ -273,5 +275,7 @@ export function StudentAttendanceLive() {
         )}
       </Async>
     </Section>
+    <AttendanceExcusePanel mode="request" records={att.data || []} />
+    </>
   );
 }

@@ -46,6 +46,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B7': return <TeacherNotificationsLive />;
     case 'B8': return <AdminAcademicLive />;
     case 'B9': return <PublishedExamSchedule path="/exam-periods/me/schedule" teacher />;
+    case 'B10': return <NotificationsLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
@@ -60,6 +61,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'D3': return <ChatLive />;
     case 'D4': return <ParentInvoiceLive />;
     case 'D5': return <ParentExtracurricularLive />;
+    case 'D6': return <NotificationsLive />;
     default: return <GeneralDashboard roleId="admin" />;
   }
 }

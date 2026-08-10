@@ -83,6 +83,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B7', title: 'Thông báo tự động', phase: 'GĐ2', priority: 1, summary: 'Theo dõi cơ chế báo điểm, điểm danh và trao đổi tình hình lớp.', Icon: Bell },
     { code: 'B8', title: 'Kế hoạch giáo dục năm học', phase: 'GĐ2', priority: 1, summary: 'Xem và quản lý kế hoạch môn học, tiến độ và lịch kiểm tra dự kiến.', Icon: ClipboardCheck },
     { code: 'B9', title: 'Lịch coi thi', phase: 'GĐ2', priority: 1, summary: 'Xem ngày, giờ, phòng và nhiệm vụ coi thi đã được phát hành.', Icon: CalendarDays },
+    { code: 'B10', title: 'Thông báo', phase: 'GĐ2', priority: 1, summary: 'Xem thông báo cá nhân, nội dung mới và trạng thái đã đọc.', Icon: Bell },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh, lớp hiện tại, người giám hộ.', Icon: GraduationCap },
@@ -99,6 +100,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'D3', title: 'Liên lạc GVCN', phase: 'GĐ2', priority: 2, summary: 'Nhắn tin với giáo viên chủ nhiệm.', Icon: MessageSquareText },
     { code: 'D4', title: 'Học phí', phase: 'GĐ2', priority: 1, summary: 'Hóa đơn, thanh toán online, lịch sử thanh toán.', Icon: WalletCards },
     { code: 'D5', title: 'Đăng ký ngoại khóa', phase: 'GĐ2', priority: 3, summary: 'Đăng ký lớp ngoại khóa cho con.', Icon: Plus },
+    { code: 'D6', title: 'Thông báo', phase: 'GĐ2', priority: 1, summary: 'Xem thông báo từ nhà trường và thông tin liên quan đến các con.', Icon: Bell },
   ],
 };
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   AlertTriangle, CalendarCheck2, CalendarPlus2, Check, CheckCircle2, Clock3,
-  GripVertical, RefreshCw, Rocket, RotateCcw, Search, Send, Sparkles, Trash2,
+  GripVertical, RefreshCw, Rocket, RotateCcw, Save, Search, Send, Sparkles, Trash2, UsersRound,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
@@ -10,11 +10,12 @@ import type {
   AcademicCurriculumItem, AcademicYear, ClassLessonProgress,
   ProgressComparison, Room, ScheduleGenerationReadiness, ScheduleGenerationResult, ScheduleValidation,
   SchoolClass, Semester, Subject, TeachingAssignment, TimetableDraftSlot,
-  TimetableMakeupProposal, TimetableSchedule,
+  TeacherStaffingAnalysis, TimetableMakeupProposal, TimetableSchedule,
 } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async, DAY_LABEL, fmtDate, useToast } from './common';
 import { FormValidationSummary, Modal } from './Modal';
+import { TeacherStaffingPanel } from './TeacherStaffingPanel';
 
 const DAY_OPTIONS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const PERIOD_INFO: Record<number, { session: string; time: string }> = {
@@ -114,6 +115,14 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
     ? `/timetable/schedules/generation-readiness?academicYearId=${encodeURIComponent(activeYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
     : null;
   const readiness = useApi<ScheduleGenerationReadiness>(readinessPath);
+  const staffingPath = activeYear && semesterId
+    ? `/academic/teacher-staffing?academicYearId=${encodeURIComponent(activeYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
+    : null;
+  const staffing = useApi<TeacherStaffingAnalysis>(staffingPath);
+  const [staffingPolicy, setStaffingPolicy] = useState({
+    schoolType: 'PUBLIC_REGULAR', weeklyTeachingNorm: 17, teachingWeeks: 35,
+  });
+  const [savingStaffingPolicy, setSavingStaffingPolicy] = useState(false);
   const visibleSchedules = useMemo(() => (schedules.data || []).filter((item) =>
     form.scopeGradeLevel === 'ALL'
       ? !item.scopeGradeLevel
@@ -284,6 +293,21 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
     finally { setBusy(false); }
   };
 
+  const saveStaffingPolicy = async () => {
+    if (!activeYear) return;
+    setSavingStaffingPolicy(true);
+    try {
+      await api.put(`/academic/teacher-staffing/policy/${activeYear.id}`, {
+        ...staffingPolicy,
+        schoolType: 'PUBLIC_REGULAR',
+      });
+      toast.show('ok', 'Đã lưu định mức nhân sự và tính lại nhu cầu giáo viên.');
+      staffing.reload();
+      readiness.reload();
+    } catch (error) { toast.show('err', err(error)); }
+    finally { setSavingStaffingPolicy(false); }
+  };
+
   const deleteDraft = async () => {
     if (!selectedSchedule || selectedSchedule.status !== 'DRAFT') return;
     setBusy(true);
@@ -339,6 +363,50 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
         <input className="grow" placeholder="Tên bản lịch" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <label>{form.scopeGradeLevel === 'ALL' ? 'Thời gian/khối' : 'Thời gian giải'} <input type="number" min={form.scopeGradeLevel === 'ALL' ? 60 : 1} max={120} value={form.solveSeconds} onChange={(event) => setForm({ ...form, solveSeconds: Number(event.target.value) })} /> giây</label>
         <button className="live-btn" disabled={busy || generationBusy || readiness.loading || generationIssues.length > 0} onClick={generate}><Sparkles size={16} /> {generationBusy ? 'Đang tạo lịch…' : readiness.loading ? 'Đang kiểm tra…' : 'Tạo lịch tự động'}</button>
+      </div>
+      <TeacherStaffingPanel
+        analysis={staffing.data}
+        loading={staffing.loading}
+        error={staffing.error}
+        readiness={readiness.data}
+      />
+      <div className="staffing-analysis-panel staffing-analysis-legacy">
+        <header>
+          <div><UsersRound size={19} /><span><strong>Nhu cầu giáo viên để xếp lịch</strong><small>Tính từ kế hoạch GĐ3, tổ hợp môn và định mức của năm học</small></span></div>
+          <div className="staffing-policy-controls">
+            <select aria-label="Loại trường" value={staffingPolicy.schoolType} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, schoolType: event.target.value })}>
+              <option value="PUBLIC_REGULAR">THPT công lập thông thường</option>
+              <option value="ETHNIC_BOARDING">Phổ thông dân tộc nội trú</option>
+              <option value="SPECIALIZED">THPT chuyên</option>
+            </select>
+            <label>Định mức <input type="number" min={1} max={30} value={staffingPolicy.weeklyTeachingNorm} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, weeklyTeachingNorm: Number(event.target.value) })} /> tiết/tuần</label>
+            <label><input type="number" min={1} max={52} value={staffingPolicy.teachingWeeks} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, teachingWeeks: Number(event.target.value) })} /> tuần/năm</label>
+            <button className="live-btn compact ghost" disabled={savingStaffingPolicy || !activeYear} onClick={saveStaffingPolicy}><Save size={14} /> {savingStaffingPolicy ? 'Đang lưu…' : 'Lưu định mức'}</button>
+          </div>
+        </header>
+        <Async state={staffing} empty="Chưa có dữ liệu để tính nhu cầu giáo viên.">
+          {(analysis) => <>
+            <div className="staffing-metrics">
+              <article><small>Tối thiểu theo kế hoạch năm</small><strong>{analysis.minimumSubjectTeachersForYear}</strong><span>giáo viên bộ môn</span></article>
+              <article><small>Tối thiểu trong học kỳ</small><strong>{analysis.minimumSubjectTeachersForSemester}</strong><span>{analysis.totalSelectedWeeklyPeriods} tiết/tuần</span></article>
+              <article><small>Hiện có</small><strong>{analysis.currentActiveTeacherCount}</strong><span>giáo viên đang hoạt động</span></article>
+              <article><small>Trần theo loại trường</small><strong>{analysis.maximumWholeTeachers}</strong><span>{analysis.maximumTeacherFte.toLocaleString('vi-VN')} FTE · {analysis.schoolClassCount} lớp</span></article>
+            </div>
+            {(analysis.errors.length > 0 || analysis.warnings.length > 0) && <div className={`staffing-status ${analysis.errors.length ? 'invalid' : 'warning'}`}>
+              <AlertTriangle size={17} />
+              <div><strong>{analysis.errors.length ? 'Chưa đủ nhân sự để tạo lịch' : 'Có cảnh báo biên chế cần xem lại'}</strong>
+                {[...analysis.errors, ...analysis.warnings].map((message) => <small key={message}>{message}</small>)}</div>
+            </div>}
+            {analysis.errors.length === 0 && analysis.warnings.length === 0 && <div className="staffing-status valid"><CheckCircle2 size={17} /><div><strong>Đủ giáo viên đúng chuyên môn</strong><small>Có thể tiếp tục kiểm tra phân công từng lớp và tạo lịch.</small></div></div>}
+            <details className="staffing-subject-details">
+              <summary>Xem nhu cầu theo từng môn ({analysis.subjects.filter((item) => item.countedAsSubjectTeacher).length} môn)</summary>
+              <div className="live-table-scroll"><table className="live-table staffing-table"><thead><tr><th>Môn học</th><th>Lớp áp dụng</th><th>Tiết/năm</th><th>Tiết kỳ này</th><th>Tối thiểu</th><th>Đúng chuyên môn</th><th>Đã phân công</th><th>Kết quả</th></tr></thead><tbody>
+                {analysis.subjects.map((item) => <tr key={item.subjectId} className={item.shortage > 0 ? 'staffing-shortage-row' : ''}><td><strong>{item.subjectName}</strong><small>{item.subjectCode} · {item.countedAsSubjectTeacher ? 'Giáo viên bộ môn' : 'Hoạt động giáo dục'}</small></td><td>{item.applicableClassCount}</td><td>{item.annualPeriods.toLocaleString('vi-VN')}</td><td>{item.selectedSemesterPeriods.toLocaleString('vi-VN')}<small>{item.selectedWeeklyPeriods} tiết/tuần</small></td><td><strong>{item.minimumTeachersForYear}</strong><small>Kỳ này: {item.minimumTeachersForSemester}</small></td><td>{item.qualifiedTeacherCount}</td><td>{item.assignedTeacherCount}</td><td><span className={`staffing-result ${item.shortage > 0 ? 'shortage' : 'enough'}`}>{item.countedAsSubjectTeacher ? item.shortage > 0 ? `Thiếu ${item.shortage}` : 'Đủ' : 'GVCN phụ trách'}</span></td></tr>)}
+              </tbody></table></div>
+            </details>
+            <p className="staffing-legal-note">Trần giáo viên/lớp không bao gồm Ban giám hiệu và nhân viên hỗ trợ. Số thập phân được hiển thị theo FTE; trần nguyên người được làm tròn xuống để không vượt tỷ lệ tối đa.</p>
+          </>}
+        </Async>
       </div>
       <FormValidationSummary
         errors={generationIssues}

@@ -6,14 +6,16 @@ import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, InvoicePreview, FinanceTargetType, Payment, PaymentInitResponse, PaymentProof, PaymentProofDecision, PaymentHistory, PaymentRefund, PaymentReconciliation, PaymentReceipt, PaymentReceiptDownload, NotificationTemplate, Club, ClubRegistration,
-  StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice,
+  StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice, Notification, NotificationDeliveryLog, NotificationOperationsSummary,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, useToast, money, fmtDate, fmtDateTime } from './common';
 import { Modal, Field } from './Modal';
 import { AcademicStructureWorkspace } from './AcademicStructureWorkspace';
 import { ExamScheduleWorkspace } from './ExamScheduleWorkspace';
+import { GradeConfigurationWorkspace } from './GradeConfigurationWorkspace';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
+import { useShortcutFilter } from '../../api/shortcutFilter';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
@@ -958,6 +960,7 @@ export function AdminExamCategoriesLive() {
   return <FunctionTabs tabs={[
     { id: 'exam-schedule', label: 'Lịch thi & coi thi', Icon: CalendarDays, content: <ExamScheduleWorkspace /> },
     { id: 'score-types', label: 'Loại điểm', Icon: BookOpen, content: scoreTypes },
+    { id: 'grade-config', label: 'Cấu hình theo môn', Icon: GraduationCap, content: <GradeConfigurationWorkspace /> },
   ]} />;
 }
 
@@ -1077,6 +1080,7 @@ const schoolToday = () => new Intl.DateTimeFormat('sv-SE', {
 }).format(new Date());
 
 export function AdminFinanceLive() {
+  const shortcut = useShortcutFilter('A7');
   const { user: currentAdmin } = useAuth();
   const periods = useApi<FeePeriod[]>('/fee-periods');
   const invoices = useApi<Invoice[]>('/invoices');
@@ -1101,7 +1105,7 @@ export function AdminFinanceLive() {
   const [periodClassId, setPeriodClassId] = useState('');
   const [invoiceFeeType, setInvoiceFeeType] = useState('');
   const [invoiceSemesterId, setInvoiceSemesterId] = useState('');
-  const [invoiceSettlement, setInvoiceSettlement] = useState('');
+  const [invoiceSettlement, setInvoiceSettlement] = useState(shortcut.get('status') === 'OVERDUE' ? 'OVERDUE' : '');
   const [invoiceGrade, setInvoiceGrade] = useState('');
   const [invoiceClassId, setInvoiceClassId] = useState('');
   const [invoiceQuery, setInvoiceQuery] = useState('');
@@ -1215,6 +1219,7 @@ export function AdminFinanceLive() {
       if (invoiceSettlement === 'UNPAID' && !['PENDING', 'PARTIAL', 'OVERDUE'].includes(invoice.status)) return false;
       if (invoiceSettlement === 'PAID' && invoice.status !== 'PAID') return false;
       if (invoiceSettlement === 'INACTIVE' && !['CANCELLED', 'VOID'].includes(invoice.status)) return false;
+      if (invoiceSettlement === 'OVERDUE' && invoice.status !== 'OVERDUE') return false;
       if (!query) return true;
       return normalizeFinanceSearch([
         invoice.code, invoice.studentName, student?.username, student?.studentCode,
@@ -2185,6 +2190,7 @@ export function AdminFinanceLive() {
                 <option value="">Tất cả lớp</option>{invoiceClassOptions.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}</select></label>
               <label><span>Tình trạng đóng phí</span><select className="live-select" aria-label="Lọc tình trạng đóng phí" value={invoiceSettlement} onChange={(event) => setInvoiceSettlement(event.target.value)}>
                 <option value="">Tất cả tình trạng</option>
+                <option value="OVERDUE">Chỉ hóa đơn quá hạn</option>
                 <option value="UNPAID">Chưa đóng / còn thiếu</option>
                 <option value="PAID">Đã đóng đủ</option>
                 <option value="INACTIVE">Đã hủy / không hiệu lực</option>
@@ -2441,6 +2447,9 @@ export function AdminNotificationsLive() {
   const tpls = useApi<NotificationTemplate[]>('/notification-templates');
   const announcements = useApi<Announcement[]>('/admin/announcements');
   const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
+  const operationSummary = useApi<NotificationOperationsSummary>('/admin/notification-operations/summary');
+  const failedNotifications = useApi<Notification[]>('/admin/notifications/failed');
+  const deliveryLogs = useApi<NotificationDeliveryLog[]>('/admin/notification-deliveries');
   const toast = useToast();
   const [sending, setSending] = useState(false);
   const [form, setForm] = useState({ audience: 'ALL', category: 'GENERAL', priority: 'NORMAL', title: '', body: '' });
@@ -2471,6 +2480,13 @@ export function AdminNotificationsLive() {
     } finally {
       setSending(false);
     }
+  };
+  const retryNotification = async (notificationId: string) => {
+    try {
+      await api.post(`/admin/notifications/${encodeURIComponent(notificationId)}/retry`);
+      toast.show('ok', 'Đã chạy lại kênh gửi thông báo');
+      failedNotifications.reload(); operationSummary.reload(); deliveryLogs.reload();
+    } catch (error: any) { toast.show('err', error.message); }
   };
 
   return (
@@ -2546,6 +2562,21 @@ export function AdminNotificationsLive() {
             <tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.createdAt)}</td><td><Badge tone="blue">{ANNOUNCEMENT_CATEGORY_LABEL[item.category || 'GENERAL'] || item.category}</Badge></td><td><strong>{ANNOUNCEMENT_AUDIENCE_LABEL[item.audience] || item.audience}</strong></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td><span className={`announcement-priority priority-${(item.priority || 'NORMAL').toLowerCase()}`}>{ANNOUNCEMENT_PRIORITY_LABEL[item.priority || 'NORMAL'] || item.priority}</span></td><td><strong>{item.recipientCount ? item.recipientCount : '—'}</strong></td><td><StatusPill value={item.status === 'SENT' ? 'Đã gửi' : item.status || 'Đã gửi'} /></td></tr>)}</tbody>
           </table></div>}
         </Async>
+      </Section>
+
+      <Section title="Vận hành Email và Push" subtitle="Theo dõi SendGrid, FCM, số lần thử và gửi lại thông báo lỗi" wide
+        action={<button className="live-btn ghost" onClick={() => { operationSummary.reload(); failedNotifications.reload(); deliveryLogs.reload(); }}><RefreshCw size={14} /> Làm mới</button>}>
+        {operationSummary.data && <div className="notification-operation-summary">
+          <span><small>Đã gửi</small><strong>{operationSummary.data.sent}</strong></span>
+          <span><small>Đang chờ</small><strong>{operationSummary.data.queued + operationSummary.data.retrying}</strong></span>
+          <span><small>Thất bại</small><strong>{operationSummary.data.failed}</strong></span>
+          <span><small>Tỷ lệ lỗi</small><strong>{operationSummary.data.failureRatePercent}%</strong></span>
+          <span><small>Lần gọi provider</small><strong>{operationSummary.data.deliveryAttempts}</strong></span>
+        </div>}
+        <FunctionTabs tabs={[
+          { id: 'failed', label: `Cần gửi lại (${failedNotifications.data?.length || 0})`, Icon: AlertTriangle, content: <Async state={failedNotifications} empty="Không có thông báo gửi thất bại">{(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Kênh</th><th>Nội dung</th><th>Số lần</th><th>Lỗi cuối</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Badge tone="blue">{item.channel || 'IN_APP'}</Badge></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td>{item.attemptCount || 0}</td><td>{item.errorMessage || '—'}</td><td><button className="live-btn subtle" onClick={() => retryNotification(item.id)}><RefreshCw size={14} /> Gửi lại</button></td></tr>)}</tbody></table></div>}</Async> },
+          { id: 'logs', label: 'Nhật ký gửi', Icon: History, content: <Async paginate state={deliveryLogs} empty="Chưa có lượt gửi nào" itemLabel="lượt gửi">{(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Thời gian</th><th>Kênh / provider</th><th>Lần</th><th>Trạng thái</th><th>Phản hồi</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.attemptedAt)}</td><td><strong>{item.channel}</strong><small>{item.provider}</small></td><td>{item.attemptNo}</td><td><StatusPill value={item.status} /></td><td>{item.errorMessage || item.providerResponse || '—'}</td></tr>)}</tbody></table></div>}</Async> },
+        ]} />
       </Section>
 
       <Section title="Mẫu thông báo tự động" subtitle="Các mẫu dùng cho điểm số, chuyên cần, hóa đơn và tác vụ hệ thống" wide>

@@ -8,6 +8,7 @@ import { YearSummaryPreviewWorkspace } from './YearSummaryPreviewWorkspace';
 import { YearReviewWorkspace } from './YearReviewWorkspace';
 import { StudentPromotionWorkspace } from './StudentPromotionWorkspace';
 import { YearResultPublicationWorkspace } from './YearResultPublicationWorkspace';
+import { AcademicReportsWorkspace } from './AcademicReportsWorkspace';
 
 /** A8: Báo cáo & thống kê — GỘP tất cả vào một trang (tổng quan + phổ điểm + chuyên cần + doanh thu). */
 export function AdminReportsLive() {
@@ -21,6 +22,7 @@ export function AdminReportsLive() {
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <AcademicReportsWorkspace />
       <YearSummaryPreviewWorkspace />
       <YearReviewWorkspace />
       <YearResultPublicationWorkspace />
