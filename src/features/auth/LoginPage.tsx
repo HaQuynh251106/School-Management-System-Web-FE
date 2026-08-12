@@ -6,6 +6,8 @@ import {
 import { useAuth } from '../../api/auth';
 import { api, ApiError } from '../../api/client';
 import { useTheme } from '../../api/theme';
+import { readHashRoute } from '../../api/urlState';
+import { loginHash } from '../../api/routes';
 import type { CSSProperties } from 'react';
 
 const env = (import.meta as any).env || {};
@@ -17,16 +19,18 @@ const demos = showDemoAccounts ? [
   { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.pham', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ].filter((account) => account.username && account.password) : [];
 
-type View = 'login' | 'forgot' | 'reset' | 'activate';
+type View = 'login' | 'forgot' | 'reset' | 'activate' | 'activation-success';
 
 const strongPassword = (value: string) => value.length >= 10
   && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9]/.test(value);
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
-  const resetToken = new URLSearchParams(window.location.search).get('token');
-  const activationToken = new URLSearchParams(window.location.search).get('activationToken');
+  const hashRoute = readHashRoute();
+  const searchParams = new URLSearchParams(window.location.search);
+  const resetToken = hashRoute.params.get('token') ?? searchParams.get('token');
+  const activationToken = hashRoute.params.get('activationToken') ?? searchParams.get('activationToken');
   const [view, setView] = useState<View>(activationToken ? 'activate' : resetToken ? 'reset' : 'login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -79,10 +83,17 @@ export function LoginPage() {
     if (!strongPassword(newPassword)) throw new Error('Mật khẩu cần ít nhất 10 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt');
     if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp');
     await api.post('/auth/activate', { token: activationToken, newPassword });
-    window.history.replaceState({}, '', window.location.pathname);
-    setMessage('Kích hoạt tài khoản thành công. Bạn có thể đăng nhập bằng mật khẩu vừa tạo.');
-    setView('login');
+    setNewPassword('');
+    setConfirmPassword('');
+    setView('activation-success');
   });
+
+  const openNewAccountLogin = () => {
+    logout();
+    window.history.replaceState({}, '', loginHash());
+    setView('login');
+    setMessage('Tài khoản đã được kích hoạt. Hãy đăng nhập bằng tên đăng nhập trong email và mật khẩu bạn vừa tạo.');
+  };
 
   return (
     <div className="login-screen">
@@ -175,6 +186,17 @@ export function LoginPage() {
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy}>{busy ? 'Đang kích hoạt...' : 'Kích hoạt tài khoản'}</button>
               </form>
+            </>}
+
+            {view === 'activation-success' && <>
+              <div className="login-heading">
+                <span>Kích hoạt hoàn tất</span>
+                <h1>Tài khoản đã sẵn sàng</h1>
+                <p className="login-sub">Mật khẩu mới đã được lưu an toàn. Bạn có thể đăng nhập bằng tên đăng nhập trong email kích hoạt.</p>
+              </div>
+              <div className="login-success"><ShieldCheck size={18} /> Kích hoạt tài khoản thành công.</div>
+              <button className="login-submit" type="button" onClick={openNewAccountLogin}><LogIn size={18} />Đăng nhập tài khoản mới</button>
+              <p className="password-policy-hint">Nếu bạn đang mở liên kết từ máy của quản trị viên, thao tác này sẽ kết thúc phiên quản trị hiện tại.</p>
             </>}
           </div>
           <p className="login-footer">© 2026 Trường học số · Hỗ trợ người dùng an toàn và hiệu quả</p>

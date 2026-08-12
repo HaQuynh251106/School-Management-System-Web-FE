@@ -39,6 +39,8 @@ describe('SidebarMenu quản trị viên', () => {
     expect(screen.getByRole('button', { name: 'Giáo viên' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Phụ huynh' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Nhân sự vận hành' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: /Trung tâm vận hành/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Hồ sơ & bảo mật/i })).not.toBeInTheDocument();
 
     fireEvent.click(group);
     expect(group).toHaveAttribute('aria-expanded', 'false');
@@ -64,14 +66,14 @@ describe('SidebarMenu giáo vụ', () => {
 
     expect(screen.getByRole('button', { name: /2\. Chuẩn bị năm học/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /3\. Vận hành năm học/i })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /4\. Tổng kết & học bạ/i })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: /4\. Tổng kết & chuyển năm/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: /5\. Kho lưu trữ niên khóa/i })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: 'Chuẩn bị năm học' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Phân công & xếp lịch' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Tổ chức kỳ thi' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Tổng kết & chuyển năm' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Kho lưu trữ niên khóa' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Học bạ điện tử' })).not.toBeInTheDocument();
   });
 
   it('ghi nhớ trạng thái đóng mở độc lập của từng nhóm', () => {
@@ -81,7 +83,7 @@ describe('SidebarMenu giáo vụ', () => {
     expect(localStorage.getItem('school.sidebar.group.academic-operations.open')).toBe('false');
     expect(screen.queryByRole('button', { name: 'Phân công & xếp lịch' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Chuẩn bị năm học' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Học bạ điện tử' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Học bạ điện tử' })).not.toBeInTheDocument();
   });
 });
 

@@ -18,7 +18,7 @@ import { confirmAction } from '../../components/confirmAction';
 
 const genderLabel = (gender?: string | null) => gender === 'MALE' ? 'Nam' : gender === 'FEMALE' ? 'Nữ' : 'Khác';
 
-export function IntakeClassPlacementLive() {
+export function IntakeClassPlacementLive({ onApplied }: { onApplied?: () => void } = {}) {
   const years = useApi<AcademicYear[]>('/academicYears');
   const toast = useToast();
   const [academicYearId, setAcademicYearId] = useState('');
@@ -79,7 +79,7 @@ export function IntakeClassPlacementLive() {
     try {
       const result = await api.post<{ assignedCount: number; createdClassCount: number }>('/intake-class-placement/apply', payload());
       toast.show('ok', `Đã phân lớp ${result.assignedCount} học sinh${result.createdClassCount ? ` và tạo ${result.createdClassCount} lớp mới` : ''}`);
-      setPreview(null); setLocks({}); candidates.reload(); history.reload();
+      setPreview(null); setLocks({}); candidates.reload(); history.reload(); onApplied?.();
     } catch (error: any) { toast.show('err', error.message); }
     finally { setBusy(false); }
   };
@@ -90,7 +90,7 @@ export function IntakeClassPlacementLive() {
     try {
       const result = await api.post<{ restoredStudents: number; removedClasses: number }>('/intake-class-placement/undo-last', { academicYearId, gradeLevel });
       toast.show('ok', `Đã hoàn tác ${result.restoredStudents} học sinh và gỡ ${result.removedClasses} lớp tự tạo`);
-      setPreview(null); setLocks({}); candidates.reload(); history.reload();
+      setPreview(null); setLocks({}); candidates.reload(); history.reload(); onApplied?.();
     } catch (error: any) { toast.show('err', error.message); }
     finally { setBusy(false); }
   };

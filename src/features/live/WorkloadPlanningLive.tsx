@@ -652,6 +652,21 @@ export function AdminWorkloadPlanningLive({
     });
     return values;
   }, [plan]);
+  const classMeetingItems = useMemo(
+    () => (plan?.items || []).filter((item) => item.status === "HOMEROOM"),
+    [plan],
+  );
+  const schoolWideItems = useMemo(
+    () => (plan?.items || []).filter((item) => item.status === "SCHOOL_WIDE"),
+    [plan],
+  );
+  const subjectAssignmentItems = useMemo(
+    () =>
+      (plan?.items || []).filter(
+        (item) => item.status !== "HOMEROOM" && item.status !== "SCHOOL_WIDE",
+      ),
+    [plan],
+  );
   const filteredRegistrations = useMemo(() => {
     const normalized = teacherQuery.trim().toLocaleLowerCase("vi");
     return (registrations.data || []).filter((item) => {
@@ -821,6 +836,16 @@ export function AdminWorkloadPlanningLive({
               </strong>
             </div>
           </div>
+
+          {!activeReadiness && (
+            <div className="curriculum-grade-setup-hint">
+              <BookOpenCheck size={18} />
+              <span>
+                <strong>Chưa có lớp {grade.replace("K", "")} trong năm học này.</strong>
+                Bạn vẫn có thể khai báo định mức trước; hệ thống sẽ dùng dữ liệu này khi tạo lớp và xếp lịch.
+              </span>
+            </div>
+          )}
 
           {missingSubjects.length > 0 && (
             <div className="curriculum-missing-panel">
@@ -1409,7 +1434,11 @@ export function AdminWorkloadPlanningLive({
             >
               Quay lại dữ liệu
             </button>
-            <span>{availableTeachers} giáo viên có chỉ tiêu hệ thống</span>
+            <span>
+              {curriculumComplete
+                ? `${availableTeachers} giáo viên có chỉ tiêu hệ thống`
+                : "Có thể xem trước để kiểm tra; cần đủ 25 tiết/tuần mới được phát hành"}
+            </span>
             <button
               className="live-btn primary"
               disabled={busy || !availableTeachers}
@@ -1524,6 +1553,28 @@ export function AdminWorkloadPlanningLive({
                   <Badge tone="green">Tất cả đều trong giới hạn tải</Badge>
                 )}
               </div>
+              <section className="activity-planning-dashboard" aria-label="Tổng quan hoạt động lớp và toàn trường">
+                <article className="activity-planning-card homeroom">
+                  <div className="activity-planning-icon"><UserRoundCheck size={21} /></div>
+                  <div>
+                    <small>Sinh hoạt lớp</small>
+                    <strong>{classMeetingItems.length} lớp</strong>
+                    <p>Gắn tự động với GVCN, không tính vào định mức 17 tiết.</p>
+                  </div>
+                  <Badge tone={classMeetingItems.some((item) => !item.teacherId) ? "red" : "green"}>
+                    {classMeetingItems.some((item) => !item.teacherId) ? "Cần bổ nhiệm GVCN" : "Đã xử lý"}
+                  </Badge>
+                </article>
+                <article className="activity-planning-card school-wide">
+                  <div className="activity-planning-icon"><CalendarCheck2 size={21} /></div>
+                  <div>
+                    <small>Sinh hoạt toàn trường</small>
+                    <strong>{schoolWideItems.length} lớp</strong>
+                    <p>Hoạt động chung toàn trường, không phân công và không tính tải dạy.</p>
+                  </div>
+                  <Badge tone="blue">Tự quản lý lịch</Badge>
+                </article>
+              </section>
               {stage === "warnings" && plan.warnings.length > 0 && (
                 <div className="schedule-global-issues">
                   <AlertTriangle size={20} />
@@ -1543,7 +1594,7 @@ export function AdminWorkloadPlanningLive({
               >
                 <summary>
                   <span>Chi tiết phương án theo môn–lớp</span>
-                  <b>{plan.items.length} dòng</b>
+                  <b>{subjectAssignmentItems.length} phân công bộ môn</b>
                 </summary>
                 <div
                   className={`teacher-load-table ${stage === "publish" ? "publish-review-table" : ""}`}
@@ -1560,7 +1611,7 @@ export function AdminWorkloadPlanningLive({
                       </tr>
                     </thead>
                     <tbody>
-                      {plan.items.map((item) => {
+                      {subjectAssignmentItems.map((item) => {
                         const registration = item.teacherId
                           ? registrationByTeacher.get(item.teacherId)
                           : undefined;
@@ -2100,9 +2151,13 @@ export function AdminAutoTimetableLive({
         classId,
         classCode: items[0]?.classCode || classId,
         shift: items[0]?.studyShift === "AFTERNOON" ? "Ca chiều" : "Ca sáng",
-        roomCode: items[0]?.roomCode || "Chưa có phòng",
+        roomCode:
+          items.find((item) => Boolean(item.roomCode))?.roomCode ||
+          "Chưa có phòng",
         items,
-        scheduled: items.filter((item) => item.status === "PROPOSED").length,
+        scheduled: items.filter(
+          (item) => item.status === "PROPOSED" || item.status === "SCHOOL_WIDE",
+        ).length,
         issues: items.filter((item) => item.status === "UNSCHEDULED").length,
       }))
       .sort((a, b) => a.classCode.localeCompare(b.classCode, "vi"));
@@ -2722,7 +2777,7 @@ export function AdminAutoTimetableLive({
                             {item.studyShift === "AFTERNOON" ? "Chiều" : "Sáng"}
                           </td>
                           <td>{item.subjectName}</td>
-                          <td>{item.teacherName}</td>
+                          <td>{item.teacherName || "Hoạt động chung"}</td>
                           <td>
                             {item.dayOfWeek
                               ? (
@@ -2741,6 +2796,8 @@ export function AdminAutoTimetableLive({
                           <td>
                             {item.status === "PROPOSED" ? (
                               <Badge tone="green">Có thể xếp</Badge>
+                            ) : item.status === "SCHOOL_WIDE" ? (
+                              <Badge tone="blue">Toàn trường</Badge>
                             ) : (
                               <Badge tone="red">Cần xử lý</Badge>
                             )}

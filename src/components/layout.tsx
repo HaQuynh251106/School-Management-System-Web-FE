@@ -134,7 +134,7 @@ export function SidebarMenu({
   const adminOtherItems = modules.admin.filter((item) => !adminUserItems.some((userItem) => userItem.code === item.code));
   const academicPreparation = modules.academic_staff.filter((item) => item.code === 'E1');
   const academicOperations = modules.academic_staff.filter((item) => ['E2', 'E3'].includes(item.code));
-  const academicClosure = modules.academic_staff.filter((item) => ['E4', 'E6'].includes(item.code));
+  const academicClosure = modules.academic_staff.filter((item) => item.code === 'E4');
   const academicArchives = modules.academic_staff.filter((item) => item.code === 'E5');
   const standardItems = modules[role.id].filter((item) => item.title !== 'Thông báo');
   const teacherItems = modules.teacher;
@@ -160,8 +160,6 @@ export function SidebarMenu({
     A6: '3. Lịch sử hệ thống',
     A8: '4. Báo cáo & thống kê',
     A9: '5. Trung tâm thông báo',
-    A10: '6. Trung tâm vận hành',
-    A11: '7. Hồ sơ & bảo mật',
   };
 
   return (
@@ -196,7 +194,7 @@ export function SidebarMenu({
       {role.id === 'academic_staff' && <>
         <SidebarGroup id="academic-preparation" label="2. Chuẩn bị năm học" description="Cơ cấu, phòng và phân lớp" Icon={School} items={academicPreparation} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="academic-operations" label="3. Vận hành năm học" description="Phân công, lịch và kỳ thi" Icon={CalendarDays} items={academicOperations} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
-        <SidebarGroup id="academic-closure" label="4. Tổng kết & học bạ" description="Xét duyệt, phát hành và chuyển năm" Icon={ClipboardCheck} items={academicClosure} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
+        <SidebarGroup id="academic-closure" label="4. Tổng kết & chuyển năm" description="Xét duyệt kết quả và chuyển sang năm học mới" Icon={ClipboardCheck} items={academicClosure} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
         <SidebarGroup id="academic-archives" label="5. Kho lưu trữ niên khóa" description="Tra cứu hồ sơ các khóa đã kết thúc" Icon={BookOpenCheck} items={academicArchives} activePage={activePage} onSelect={onSelect} badges={badges} collapsed={collapsed} />
       </>}
 

@@ -43,7 +43,7 @@ export function AdminAcademicLive() {
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const toast = useToast();
 
-  const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
+  const [yf, setYf] = useState({ code: '', startDate: '', endDate: '' });
   const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', studyShift: 'MORNING', academicYearId: '', roomId: '', homeroomTeacherId: '', capacity: 45 });
   const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
   const [rm, setRm] = useState({ code: '', name: '', capacity: 45, shiftMode: 'BOTH', roomType: 'GENERAL', equipmentTags: '', status: 'ACTIVE', homeRoomEligible: true });
@@ -103,8 +103,8 @@ export function AdminAcademicLive() {
 
   const addYear = async () => {
     if (!yf.code || !yf.startDate || !yf.endDate) return toast.show('err', 'Nhập mã và đầy đủ thời gian năm học');
-    if (await run(() => api.post('/academicYears', { ...yf, name: yf.name || yf.code }), 'Đã tạo năm học và tự động thiết lập 2 học kỳ', [years.reload, semesters.reload])) {
-      setYf({ code: '', name: '', startDate: '', endDate: '' });
+    if (await run(() => api.post('/academicYears', { ...yf, name: `Năm học ${yf.code}` }), 'Đã tạo năm học và tự động thiết lập 2 học kỳ', [years.reload, semesters.reload])) {
+      setYf({ code: '', startDate: '', endDate: '' });
     }
   };
 
@@ -221,7 +221,6 @@ export function AdminAcademicLive() {
             <div className="academic-year-mode-note"><CalendarDays size={18} /><div><strong>Chỉ năm học đang hoạt động hoặc sắp diễn ra mới được thao tác</strong><span>{archivedYears.length ? `${archivedYears.length} năm học đã đóng được tách sang bộ lọc “Lịch sử đã khóa”.` : 'Chưa có năm học nào được lưu trữ.'}</span></div></div>
             <div className="live-toolbar academic-create-bar">
               <input className="live-input" placeholder="Mã (2026-2027)" value={yf.code} onChange={(e) => setYf({ ...yf, code: e.target.value })} />
-              <input className="live-input grow" placeholder="Tên năm học" value={yf.name} onChange={(e) => setYf({ ...yf, name: e.target.value })} />
               <input className="live-input" type="date" title="Ngày bắt đầu" value={yf.startDate} onChange={(e) => setYf({ ...yf, startDate: e.target.value })} />
               <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
               <button className="live-btn" disabled={busy} onClick={addYear}><Plus size={15} /> Tạo năm học</button>
@@ -247,7 +246,7 @@ export function AdminAcademicLive() {
             )}</Async>
           </Section>
         ) },
-        { id: 'intake-placement', label: 'Phân lớp đầu cấp', description: 'Xếp học sinh mới theo sĩ số', Icon: GraduationCap, content: <IntakeClassPlacementLive /> },
+        { id: 'intake-placement', label: 'Phân lớp đầu cấp', description: 'Xếp học sinh mới theo sĩ số', Icon: GraduationCap, content: <IntakeClassPlacementLive onApplied={classes.reload} /> },
         { id: 'class-transfer', label: 'Chuyển lớp', description: 'Thực hiện tại cuối học kỳ', Icon: ArrowLeftRight, content: <StudentClassTransferLive years={years.data ?? []} classes={classes.data ?? []} onChanged={classes.reload} /> },
         { id: 'rooms', label: 'Phòng', description: 'Chuẩn bị phòng và ca học', Icon: DoorOpen, content: (
           <Section title="Phòng học" subtitle="Cấu hình ca phục vụ và theo dõi phòng đã được giao cho từng lớp" wide>

@@ -18,7 +18,7 @@ import { confirmAction } from '../../components/confirmAction';
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
   username: '', fullName: '', role: 'STUDENT',
-  email: '', phone: '', avatarUrl: '', teacherCode: '',
+  email: '', phone: '', avatarUrl: '', teacherCode: '', mainSubject: '',
   studentCode: '', dateOfBirth: '', gender: '', placeOfBirth: '',
   ethnicity: 'Kinh', nationality: 'Việt Nam', address: '', enrollmentDate: '',
   guardianName: '', guardianPhone: '',
@@ -88,6 +88,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   ].filter(Boolean).join('&');
   const users = useApi<PageResponse<ApiUser>>(`/users/page?${params}`);
   const classes = useApi<SchoolClass[]>('/classes');
+  const subjects = useApi<Subject[]>('/subjects');
   const toast = useToast();
   const [showEditor, setShowEditor] = useState(false);
   const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
@@ -263,6 +264,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       phone: user.phone || '',
       avatarUrl: user.avatarUrl || '',
       teacherCode: user.teacherCode || '',
+      mainSubject: user.mainSubject || '',
       studentCode: user.studentCode || '',
       dateOfBirth: user.dateOfBirth || '',
       gender: user.gender || '',
@@ -279,6 +281,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
 
   const saveUser = async () => {
     if (!form.fullName.trim()) return toast.show('err', 'Vui lòng nhập họ tên');
+    if (form.role === 'TEACHER' && !form.mainSubject.trim()) return toast.show('err', 'Vui lòng chọn bộ môn giảng dạy');
     const body: Record<string, unknown> = {
       fullName: form.fullName.trim(), email: form.email.trim(), phone: form.phone.trim(), avatarUrl: form.avatarUrl.trim(),
     };
@@ -288,6 +291,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
     }
     if (form.role === 'TEACHER') {
       body.teacherCode = form.teacherCode.trim();
+      body.mainSubject = form.mainSubject.trim();
     }
     if (form.role === 'STUDENT') {
       Object.assign(body, {
@@ -409,7 +413,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
           footer={<>
             <button className="live-btn ghost" disabled={importing} onClick={() => { setImportPreview(null); setImportFile(null); }}>Hủy</button>
             <button className="live-btn" disabled={importing || (importStrategy === 'ALL_OR_NOTHING' && importPreview.invalidRows > 0)} onClick={commitImport}>
-              <ShieldCheck size={15} /> {importing ? 'Đang ghi dữ liệu…' : `Xác nhận nhập ${importStrategy === 'SKIP_ERRORS' ? importPreview.validRows : importPreview.totalRows} dòng`}
+              <ShieldCheck size={15} /> {importing ? `Đang tạo ${importStrategy === 'SKIP_ERRORS' ? importPreview.validRows : importPreview.totalRows} tài khoản…` : `Xác nhận nhập ${importStrategy === 'SKIP_ERRORS' ? importPreview.validRows : importPreview.totalRows} dòng`}
             </button>
           </>}>
           <div className="safe-import">
@@ -432,12 +436,13 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
             </div>
             <div className="safe-import-table">
               <table className="live-table">
-                <thead><tr><th>Dòng</th><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái đầu vào</th><th>Liên kết tự động</th><th>Kết quả kiểm tra</th></tr></thead>
+                <thead><tr><th>Dòng</th><th>Tài khoản</th><th>Vai trò</th><th>Bộ môn giảng dạy</th><th>Trạng thái đầu vào</th><th>Liên kết tự động</th><th>Kết quả kiểm tra</th></tr></thead>
                 <tbody>{importPreview.rows.map((row) => (
                   <tr key={row.row} className={row.valid ? '' : 'has-error'}>
                     <td>{row.row}</td>
                     <td><strong>{row.fullName || '—'}</strong><small>@{row.username || 'chưa có'}</small></td>
                     <td>{viLabel(row.role || '')}</td>
+                    <td>{row.role === 'TEACHER' ? <strong>{row.mainSubject || 'Chưa khai báo'}</strong> : '—'}</td>
                     <td>{row.classCode || '—'}</td>
                     <td>{row.linkedUsername ? `@${row.linkedUsername}` : '—'}</td>
                     <td>{row.valid
@@ -482,10 +487,19 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
 
             {form.role === 'TEACHER' && (
               <section className="admin-user-form-section">
-                <header><span><IdCard size={18} /></span><div><h4>Thông tin định danh giáo viên</h4><p>Admin chỉ quản lý tài khoản; chuyên môn và phân công do Giáo vụ thực hiện</p></div></header>
+                <header><span><IdCard size={18} /></span><div><h4>Thông tin nghề nghiệp giáo viên</h4><p>Khai báo bộ môn chính để hệ thống phân quyền điểm danh, nhập điểm và hỗ trợ Giáo vụ phân công</p></div></header>
                 <div className="admin-user-form-grid">
                   <Field label="Mã giáo viên"><input value={form.teacherCode} onChange={(e) => set('teacherCode', e.target.value)} placeholder="GV003" /></Field>
+                  <Field label="Bộ môn giảng dạy *">
+                    <select value={form.mainSubject} onChange={(e) => set('mainSubject', e.target.value)}>
+                      <option value="">— Chọn bộ môn —</option>
+                      {(subjects.data || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'vi')).map((subject) => (
+                        <option key={subject.id} value={subject.name}>{subject.name} · {subject.code}</option>
+                      ))}
+                    </select>
+                  </Field>
                 </div>
+                {!subjects.loading && (subjects.data || []).length === 0 && <div className="admin-user-privacy-note"><AlertTriangle size={16} /><span>Chưa có danh mục môn học. Hãy tạo môn trong Cơ cấu đào tạo trước khi thêm giáo viên.</span></div>}
               </section>
             )}
 
@@ -722,7 +736,7 @@ export function AdminAcademicLegacyLive() {
   const rooms = useApi<Room[]>('/rooms');
   const teachers = useApi<ApiUser[]>('/users?role=TEACHER');
   const toast = useToast();
-  const [yf, setYf] = useState({ code: '', name: '', startDate: '', endDate: '' });
+  const [yf, setYf] = useState({ code: '', startDate: '', endDate: '' });
   const [sf, setSf] = useState({ academicYearId: '', code: '', name: '', sequence: 1, startDate: '', endDate: '' });
   const [cf, setCf] = useState({ code: '', name: '', gradeLevel: 'K10', academicYearId: '', homeroomTeacherId: '', capacity: 45 });
   const [sj, setSj] = useState({ code: '', name: '', coefficient: 1 });
@@ -732,8 +746,8 @@ export function AdminAcademicLegacyLive() {
   const addYear = async () => {
     if (!yf.code || !yf.startDate || !yf.endDate) return toast.show('err', 'Nhập mã và thời gian năm học');
     try {
-      await api.post('/academicYears', { ...yf, name: yf.name || yf.code, status: 'PLANNED' });
-      toast.show('ok', 'Đã tạo năm học'); setYf({ code: '', name: '', startDate: '', endDate: '' }); years.reload();
+      await api.post('/academicYears', { ...yf, name: `Năm học ${yf.code}`, status: 'PLANNED' });
+      toast.show('ok', 'Đã tạo năm học'); setYf({ code: '', startDate: '', endDate: '' }); years.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
 
@@ -791,7 +805,6 @@ export function AdminAcademicLegacyLive() {
             <Section title="Năm học" subtitle="Danh sách năm học" wide>
               <div className="live-toolbar academic-create-bar">
                 <input className="live-input" placeholder="Mã (2026-2027)" value={yf.code} onChange={(e) => setYf({ ...yf, code: e.target.value })} />
-                <input className="live-input grow" placeholder="Tên năm học" value={yf.name} onChange={(e) => setYf({ ...yf, name: e.target.value })} />
                 <input className="live-input" type="date" title="Ngày bắt đầu" value={yf.startDate} onChange={(e) => setYf({ ...yf, startDate: e.target.value })} />
                 <input className="live-input" type="date" title="Ngày kết thúc" value={yf.endDate} onChange={(e) => setYf({ ...yf, endDate: e.target.value })} />
                 <button className="live-btn" onClick={addYear}><Plus size={15} /> Tạo năm học</button>

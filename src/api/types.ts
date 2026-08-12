@@ -397,8 +397,8 @@ export interface TimetableSlot {
   classCode?: string;
   subjectId: string;
   subjectName: string;
-  teacherId: string;
-  teacherName: string;
+  teacherId: string | null;
+  teacherName: string | null;
   roomCode?: string;
   studyShift?: "MORNING" | "AFTERNOON";
   dayOfWeek: string;
@@ -655,7 +655,13 @@ export interface AutoAssignmentItem {
   teacherId?: string | null;
   teacherName?: string | null;
   projectedTeacherPeriods: number;
-  status: "EXISTING" | "PROPOSED" | "UNASSIGNED" | "OVERLOAD";
+  status:
+    | "EXISTING"
+    | "PROPOSED"
+    | "UNASSIGNED"
+    | "OVERLOAD"
+    | "HOMEROOM"
+    | "SCHOOL_WIDE";
   message: string;
 }
 export interface AutoAssignmentPlan {
@@ -702,14 +708,14 @@ export interface AutoTimetableItem {
   studyShift: string;
   subjectId: string;
   subjectName: string;
-  teacherId: string;
-  teacherName: string;
+  teacherId: string | null;
+  teacherName: string | null;
   roomCode?: string | null;
   dayOfWeek?: string | null;
   periodNo: number;
   startTime?: string | null;
   endTime?: string | null;
-  status: "PROPOSED" | "UNSCHEDULED";
+  status: "PROPOSED" | "UNSCHEDULED" | "SCHOOL_WIDE";
   message: string;
 }
 export interface AutoTimetablePlan {
@@ -1617,6 +1623,7 @@ export interface ImportPreviewRow {
   fullName?: string;
   role?: string;
   classCode?: string;
+  mainSubject?: string;
   linkedUsername?: string;
   valid: boolean;
   error?: string | null;

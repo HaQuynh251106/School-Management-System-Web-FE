@@ -35,7 +35,7 @@ export function BarList({ data, max, suffix }: { data: Array<{ label: string; va
           <div className="bar-track">
             <i style={{ width: `${Math.min(100, (item.value / max) * 100)}%` }} />
           </div>
-          <strong>{item.value}{suffix}</strong>
+          <strong>{formatChartValue(item.value, suffix)}</strong>
         </div>
       ))}
     </div>
@@ -49,12 +49,19 @@ export function ColumnChart({ data, max, suffix }: { data: Array<{ label: string
           <div>
             <i style={{ height: `${Math.min(100, (item.value / max) * 100)}%` }} />
           </div>
-          <strong>{item.value}{suffix}</strong>
+          <strong>{formatChartValue(item.value, suffix)}</strong>
           <span>{item.label}</span>
         </div>
       ))}
     </div>
   );
+}
+
+function formatChartValue(value: number, suffix: string) {
+  if (suffix.includes('₫') || suffix.trim().toLowerCase() === 'đ') {
+    return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value)} ₫`;
+  }
+  return `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(value)}${suffix}`;
 }
 export function PieChart({ data, suffix }: { data: Array<{ label: string; value: number }>; suffix: string }) {
   const colors = ['#2563eb', '#ec4899', '#f59e0b', '#14b8a6'];

@@ -1,8 +1,8 @@
 import {
   Archive, BarChart3, Bell, BookOpenCheck, CalendarClock, CalendarDays,
   CircleDollarSign, ClipboardCheck, FileSpreadsheet, GraduationCap, HeartHandshake,
-  History, KeyRound, MessageSquareText, NotebookPen, RefreshCcw, School, Settings, ShieldCheck,
-  Upload, UserRoundCog, Users, WalletCards,
+  History, KeyRound, MessageSquareText, NotebookPen, RefreshCcw, School, Settings,
+  Upload, UserRoundCog, Users, WalletCards, ListTodo,
 } from 'lucide-react';
 import type { ModuleItem, RoleDefinition, RoleId } from '../types';
 
@@ -25,8 +25,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'A6', title: 'Lịch sử hệ thống', phase: 'GĐ2', priority: 2, summary: 'Theo dõi các thay đổi và hoạt động quan trọng.', Icon: History },
     { code: 'A8', title: 'Báo cáo & thống kê', phase: 'GĐ2', priority: 2, summary: 'Giám sát các chỉ số vận hành toàn trường.', Icon: FileSpreadsheet },
     { code: 'A9', title: 'Trung tâm thông báo', phase: 'GĐ2', priority: 1, summary: 'Gửi thông báo hành chính toàn trường.', Icon: Bell },
-    { code: 'A10', title: 'Trung tâm vận hành', phase: 'GĐ2', priority: 1, summary: 'Giám sát dịch vụ, tác vụ, sao lưu và các lần gửi thất bại.', Icon: Settings },
-    { code: 'A11', title: 'Hồ sơ & bảo mật', phase: 'GĐ1', priority: 1, summary: 'Hồ sơ Admin, phiên đăng nhập và xác thực hai lớp.', Icon: ShieldCheck },
+    { code: 'A10', title: 'Trung tâm công việc', phase: 'GĐ1', priority: 1, summary: 'Giao việc, giám sát tiến độ và xử lý công việc quá hạn.', Icon: ListTodo },
   ],
   academic_staff: [
     { code: 'E1', title: 'Chuẩn bị năm học', phase: 'GĐ1', priority: 1, summary: 'Thiết lập năm học, lớp, môn, phòng và phân lớp đầu cấp.', Icon: School },
@@ -34,10 +33,11 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'E3', title: 'Tổ chức kỳ thi', phase: 'GĐ1', priority: 1, summary: 'Tạo kỳ thi, xếp lịch, phòng, giám thị và giáo viên chấm.', Icon: CalendarClock },
     { code: 'E4', title: 'Tổng kết & chuyển năm', phase: 'GĐ1', priority: 1, summary: 'Kiểm tra điều kiện, khóa năm học và tạo cơ cấu năm tiếp theo.', Icon: GraduationCap },
     { code: 'E5', title: 'Kho lưu trữ niên khóa', phase: 'GĐ1', priority: 1, summary: 'Tra cứu niên khóa, lớp và hồ sơ học sinh đã hoàn thành.', Icon: Archive },
-    { code: 'E6', title: 'Học bạ điện tử', phase: 'GĐ1', priority: 1, summary: 'Kiểm tra, duyệt, khóa và phát hành học bạ toàn trường.', Icon: FileSpreadsheet },
+    { code: 'E7', title: 'Công việc học vụ', phase: 'GĐ1', priority: 1, summary: 'Tiếp nhận, thực hiện và xác nhận các nhiệm vụ học vụ.', Icon: ListTodo },
   ],
   accountant: [
     { code: 'F1', title: 'Quản lý tài chính', phase: 'GĐ1', priority: 1, summary: 'Đợt thu, công nợ, thanh toán và đối soát VietQR.', Icon: CircleDollarSign },
+    { code: 'F2', title: 'Công việc tài chính', phase: 'GĐ1', priority: 1, summary: 'Theo dõi nhiệm vụ, hạn xử lý và tiến độ tài chính.', Icon: ListTodo },
   ],
   teacher: [
     { code: 'B1', title: 'Lớp được phân công', phase: 'GĐ1', priority: 1, summary: 'Danh sách lớp, sĩ số, môn và học kỳ phụ trách.', Icon: School },
@@ -56,6 +56,7 @@ export const modules: Record<RoleId, ModuleItem[]> = {
     { code: 'B11', title: 'Hồ sơ & cài đặt', phase: 'GĐ2', priority: 2, summary: 'Thông tin liên hệ và cấu hình thông báo.', Icon: Settings },
     { code: 'B12', title: 'Khảo thí giáo viên', phase: 'GĐ1', priority: 1, summary: 'Nhiệm vụ coi thi, chấm thi và phúc khảo.', Icon: CalendarClock },
     { code: 'B13', title: 'Học bạ lớp chủ nhiệm', phase: 'GĐ1', priority: 1, summary: 'Hạnh kiểm, nhận xét và gửi duyệt học bạ.', Icon: GraduationCap },
+    { code: 'B17', title: 'Việc cần làm', phase: 'GĐ1', priority: 1, summary: 'Công việc được giao, hạn hoàn thành và trao đổi xử lý.', Icon: ListTodo },
   ],
   student: [
     { code: 'C1', title: 'Hồ sơ cá nhân', phase: 'GĐ1', priority: 2, summary: 'Thông tin học sinh và người giám hộ.', Icon: GraduationCap },

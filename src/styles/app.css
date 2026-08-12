@@ -4492,6 +4492,18 @@ td {
 .planning-empty svg { color: #2864dc; }
 .planning-empty strong { color: var(--ink); font-size: 1.05rem; }
 .plan-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.activity-planning-dashboard { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 14px 0 18px; }
+.activity-planning-card { display: grid; grid-template-columns: auto 1fr auto; gap: 13px; align-items: center; min-height: 112px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 22px rgba(25, 55, 100, .05); }
+.activity-planning-card.homeroom { border-color: #b8e9df; background: linear-gradient(135deg, #f1fffb, var(--surface)); }
+.activity-planning-card.school-wide { border-color: #cbdcff; background: linear-gradient(135deg, #f3f7ff, var(--surface)); }
+.activity-planning-icon { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; color: #087f6b; background: #dff8f0; }
+.school-wide .activity-planning-icon { color: #245ed6; background: #e7efff; }
+.activity-planning-card small { display: block; color: var(--muted); font-weight: 700; }
+.activity-planning-card strong { display: block; margin-top: 2px; color: var(--ink); font-size: 1.15rem; }
+.activity-planning-card p { margin: 4px 0 0; color: var(--muted); font-size: .79rem; line-height: 1.42; }
+.curriculum-grade-setup-hint { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; padding: 12px 14px; border: 1px dashed #9fc3ff; border-radius: 12px; color: #28568f; background: #f4f8ff; font-size: .84rem; line-height: 1.5; }
+.curriculum-grade-setup-hint svg { flex: 0 0 auto; margin-top: 1px; color: #2367d8; }
+.curriculum-grade-setup-hint strong { margin-right: 4px; color: var(--ink); }
 .assignment-preview-guide { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
 .assignment-preview-guide > div { display: flex; align-items: center; gap: 10px; min-height: 68px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-subtle, #f8fafc); color: #2864dc; }
 .assignment-preview-guide span { display: grid; gap: 3px; }
@@ -4665,6 +4677,16 @@ td {
 [data-theme='dark'] .plain-language-help, [data-theme='dark'] .planning-stepper-buttons > button.active { background: #14233b; border-color: #31598d; }
 [data-theme='dark'] .workflow-help-drawer,
 [data-theme='dark'] .assignment-plan-details { background: #111d30; border-color: #263a55; }
+[data-theme='dark'] .activity-planning-card { background: #111d30; border-color: #263a55; box-shadow: none; }
+[data-theme='dark'] .activity-planning-card.homeroom { background: linear-gradient(135deg, #102c2b, #111d30); border-color: #24796e; }
+[data-theme='dark'] .activity-planning-card.school-wide { background: linear-gradient(135deg, #14264a, #111d30); border-color: #345eaa; }
+[data-theme='dark'] .curriculum-grade-setup-hint { border-color: #345eaa; background: #132546; color: #bdd3fb; }
+
+@media (max-width: 760px) {
+  .activity-planning-dashboard { grid-template-columns: 1fr; }
+  .activity-planning-card { grid-template-columns: auto 1fr; }
+  .activity-planning-card .badge { grid-column: 2; justify-self: start; }
+}
 [data-theme='dark'] .report-history-readonly { background: #302515; border-color: #6d5129; color: #f8c777; }
 [data-theme='dark'] .report-history-readonly span { color: #e2c184; }
 [data-theme='dark'] .academic-scheduling-principle, [data-theme='dark'] .requirement-grade-tabs button.active { background: #102d29; border-color: #24564d; }

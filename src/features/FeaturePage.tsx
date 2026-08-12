@@ -12,8 +12,6 @@ const AdminOperationsUsersLive = lazy(() => import('./live/AdminLive').then((mod
 const AdminAccountLifecycleLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAccountLifecycleLive })));
 const AdminFinanceLive = lazy(() => import('./live/finance/AccountantFinanceLive').then((module) => ({ default: module.AdminFinanceLive })));
 const AdminNotificationsLive = lazy(() => import('./live/AdminNotificationsLive').then((module) => ({ default: module.AdminNotificationsLive })));
-const AdminOperationsLive = lazy(() => import('./live/AdminOperationsLive').then((module) => ({ default: module.AdminOperationsLive })));
-const AdminSecurityLive = lazy(() => import('./live/AdminSecurityLive').then((module) => ({ default: module.AdminSecurityLive })));
 const AdminAcademicLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AdminAcademicLive })));
 const AcademicYearClosureLive = lazy(() => import('./live/AdminAcademicManager').then((module) => ({ default: module.AcademicYearClosureLive })));
 const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
@@ -36,7 +34,6 @@ const PersonalReportsLive = lazy(() => import('./live/PersonalReportsLive').then
 const ProfileSettingsLive = lazy(() => import('./live/ProfileSettingsLive').then((module) => ({ default: module.ProfileSettingsLive })));
 const AdminExamsLive = lazy(() => import('./live/AdminExamsLive').then((module) => ({ default: module.AdminExamsLive })));
 const MyExamsLive = lazy(() => import('./live/MyExamsLive').then((module) => ({ default: module.MyExamsLive })));
-const AcademicStaffReportCardsLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.AcademicStaffReportCardsLive })));
 const ParentReportCardLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.ParentReportCardLive })));
 const StudentReportCardLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.StudentReportCardLive })));
 const TeacherReportCardsLive = lazy(() => import('./live/ReportCardsLive').then((module) => ({ default: module.TeacherReportCardsLive })));
@@ -44,6 +41,7 @@ const AlumniLive = lazy(() => import('./live/AlumniLive').then((module) => ({ de
 const TeacherScheduleRestrictionLive = lazy(() => import('./live/ScheduleRestrictionLive').then((module) => ({ default: module.TeacherScheduleRestrictionLive })));
 const TeachingOperationsLive = lazy(() => import('./live/TeachingOperationsLive').then((module) => ({ default: module.TeachingOperationsLive })));
 const StudentSupportLive = lazy(() => import('./live/StudentSupportLive').then((module) => ({ default: module.StudentSupportLive })));
+const WorkCenterLive = lazy(() => import('./live/WorkCenterLive').then((module) => ({ default: module.WorkCenterLive })));
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -63,7 +61,6 @@ const WORKSPACE_STEPS: Record<string, string[]> = {
   E3: ['Tạo kỳ thi', 'Xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
   E4: ['Kiểm tra dữ liệu hai học kỳ', 'Duyệt kết quả lên lớp', 'Khóa năm và tạo năm kế tiếp'],
   E5: ['Chọn niên khóa cần tra cứu', 'Tìm và lọc học sinh toàn khóa', 'Mở hồ sơ học tập lớp 10–12'],
-  E6: ['Nhận học bạ GVCN đã gửi', 'Kiểm tra đủ 12 môn và hạnh kiểm', 'Duyệt, khóa rồi phát hành'],
   F1: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
 };
 
@@ -99,17 +96,17 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
     case 'A9': return <AdminNotificationsLive />;
-    case 'A10': return <AdminOperationsLive />;
-    case 'A11': return <AdminSecurityLive />;
+    case 'A10': return <WorkCenterLive />;
     // ---- Giáo vụ ----
     case 'E1': return <AdminAcademicLive />;
     case 'E2': return <AdminTimetableLive />;
     case 'E3': return <AdminExamsLive />;
     case 'E4': return <AcademicYearClosureLive />;
     case 'E5': return <AlumniLive />;
-    case 'E6': return <AcademicStaffReportCardsLive />;
+    case 'E7': return <WorkCenterLive />;
     // ---- Kế toán ----
     case 'F1': return <AdminFinanceLive />;
+    case 'F2': return <WorkCenterLive />;
     // ---- Teacher ----
     case 'B1': return <TeacherClassesLive />;
     case 'B14': return <TeacherScheduleRestrictionLive />;
@@ -127,6 +124,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B11': return <ProfileSettingsLive actor="teacher" />;
     case 'B12': return <MyExamsLive actor="teacher" />;
     case 'B13': return <TeacherReportCardsLive />;
+    case 'B17': return <WorkCenterLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;

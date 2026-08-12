@@ -19,8 +19,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A6: 'lich-su-he-thong',
     A8: 'bao-cao-thong-ke',
     A9: 'trung-tam-thong-bao',
-    A10: 'trung-tam-van-hanh',
-    A11: 'ho-so-bao-mat',
+    A10: 'trung-tam-cong-viec',
   },
   academic_staff: {
     E1: 'co-cau-dao-tao',
@@ -28,10 +27,11 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     E3: 'tao-ky-thi',
     E4: 'tong-ket-chuyen-nam',
     E5: 'kho-luu-tru-nien-khoa',
-    E6: 'hoc-ba-dien-tu',
+    E7: 'cong-viec-hoc-vu',
   },
   accountant: {
     F1: 'tai-chinh-noi-bo',
+    F2: 'cong-viec-tai-chinh',
   },
   teacher: {
     B1: 'lop-duoc-phan-cong',
@@ -50,6 +50,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     B11: 'ho-so-cai-dat',
     B12: 'khao-thi',
     B13: 'hoc-ba-lop-chu-nhiem',
+    B17: 'viec-can-lam',
   },
   student: {
     C1: 'ho-so-ca-nhan',

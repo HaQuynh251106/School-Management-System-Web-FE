@@ -40,6 +40,13 @@ function pageAllowed(page: PageId, roleId: RoleId, teacherContext?: TeacherWorks
 
 export default function App() {
   const { user, loading, logout } = useAuth();
+  const publicAuthRoute = readHashRoute();
+  const publicAuthPage = ['kich-hoat-tai-khoan', 'dat-lai-mat-khau'].includes(publicAuthRoute.path)
+    || /\/(activate-account|reset-password)\/?$/i.test(window.location.pathname)
+    || publicAuthRoute.params.has('activationToken')
+    || publicAuthRoute.params.has('token')
+    || new URLSearchParams(window.location.search).has('activationToken')
+    || new URLSearchParams(window.location.search).has('token');
   const userId = user?.id;
   const userRole = user?.role;
   const { theme, toggleTheme } = useTheme();
@@ -167,6 +174,9 @@ export default function App() {
     });
   }, [userId, reloadNotifications, reloadChatUnread]);
 
+  if (publicAuthPage) {
+    return <Suspense fallback={<PageLoading />}><LoginPage /></Suspense>;
+  }
   if (loading) {
     return <div className="login-screen"><div className="login-loading">Đang tải phiên đăng nhập…</div></div>;
   }
@@ -187,7 +197,7 @@ export default function App() {
   const pageTitle = activePage === 'dashboard' ? 'Tổng quan' : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
   const today = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date());
-  const profilePage: Partial<Record<RoleId, PageId>> = { admin: 'A11', teacher: 'B11', student: 'C9', parent: 'D8' };
+  const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
   const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
     const next = pageAllowed(page, role.id, teacherContext) ? page : 'dashboard';

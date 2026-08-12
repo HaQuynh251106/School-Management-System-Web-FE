@@ -45,7 +45,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 const initials = (name: string) => name.trim().split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase();
 
-/** Hộp thư 1-1 giữa học sinh, giáo viên và phụ huynh trong đúng phạm vi lớp học. */
+/** Hộp thư 1-1 trong đúng phạm vi lớp học và phân công giảng dạy. */
 export function ChatLive() {
   const { user } = useAuth();
   const threads = useApi<ChatThread[]>('/chat/threads');
@@ -87,12 +87,17 @@ export function ChatLive() {
         contact,
       };
     }).sort((left, right) => {
+      if (user?.role === 'STUDENT') {
+        const leftHomeroom = left.contact.id === studentClass.data?.homeroomTeacherId;
+        const rightHomeroom = right.contact.id === studentClass.data?.homeroomTeacherId;
+        if (leftHomeroom !== rightHomeroom) return leftHomeroom ? -1 : 1;
+      }
       if (left.lastTime && right.lastTime) return new Date(right.lastTime).getTime() - new Date(left.lastTime).getTime();
       if (left.lastTime) return -1;
       if (right.lastTime) return 1;
       return left.name.localeCompare(right.name, 'vi');
     });
-  }, [contacts.data, threads.data]);
+  }, [contacts.data, threads.data, studentClass.data?.homeroomTeacherId, user?.role]);
 
   const availableClasses = useMemo(() => {
     const byId = new Map<string, ChatContactScope>();
@@ -267,7 +272,7 @@ export function ChatLive() {
         <div><strong>Danh bạ đã được kiểm soát theo phân công</strong><small>{user?.role === 'TEACHER'
           ? 'Giáo viên chủ nhiệm trao đổi với học sinh, phụ huynh; giáo viên bộ môn trao đổi với giáo viên chủ nhiệm của lớp đang dạy.'
           : user?.role === 'STUDENT'
-            ? 'Bạn có thể trao đổi với giáo viên phụ trách và các bạn học sinh trong cùng lớp.'
+            ? 'Bạn chỉ có thể trao đổi với giáo viên chủ nhiệm và giáo viên bộ môn đang được phân công dạy lớp của bạn.'
             : user?.role === 'PARENT'
               ? 'Phụ huynh trao đổi trực tiếp với giáo viên chủ nhiệm của con.'
               : 'Danh sách liên hệ được kiểm soát theo vai trò và nhiệm vụ.'}</small></div>
@@ -298,7 +303,7 @@ export function ChatLive() {
                 <option value="ALL">Tất cả đối tượng</option>
                 {availableRoles.includes('STUDENT') && <option value="STUDENT">Học sinh</option>}
                 {availableRoles.includes('PARENT') && <option value="PARENT">Phụ huynh</option>}
-                {availableRoles.includes('TEACHER') && <option value="TEACHER">Giáo viên chủ nhiệm</option>}
+                {availableRoles.includes('TEACHER') && <option value="TEACHER">Giáo viên của lớp</option>}
               </select></label>
               <label><span>Lớp học</span><select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
                 <option value="ALL">Tất cả lớp</option>{availableClasses.map((scope) => <option key={scope.classId} value={scope.classId}>Lớp {scope.classCode}</option>)}

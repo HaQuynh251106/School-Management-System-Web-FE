@@ -596,7 +596,7 @@ export function NotificationsLive({ audience = 'student' }: { audience?: 'teache
               <div className="notification-item-content">
                 <header><div><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[notification.type] || notification.type}</Badge>{priority !== 'NORMAL' && <Badge tone={priority === 'URGENT' ? 'red' : 'orange'}>{priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge>}</div><time>{fmtDateTime(notification.createdAt)}</time></header>
                 <strong>{notification.title}</strong><p>{notification.body}</p>
-                <footer><span>{notification.refType === 'ANNOUNCEMENT' ? 'Từ Ban quản trị nhà trường' : 'Cập nhật tự động từ hệ thống'}</span><div className="notification-item-actions">{notification.actionUrl && <button className="notification-open-action" type="button" onClick={() => openNotification(notification)}><CalendarClock size={14} /> Mở thời khóa biểu</button>}<button type="button" onClick={() => notification.read ? markUnread(notification.id) : markRead(notification.id)}>{notification.read ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}</button></div></footer>
+                <footer><span>{notification.refType === 'ANNOUNCEMENT' ? 'Từ Ban quản trị nhà trường' : 'Cập nhật tự động từ hệ thống'}</span><div className="notification-item-actions">{notification.actionUrl && <button className="notification-open-action" type="button" onClick={() => openNotification(notification)}><CalendarClock size={14} /> Mở nội dung</button>}<button type="button" onClick={() => notification.read ? markUnread(notification.id) : markRead(notification.id)}>{notification.read ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}</button></div></footer>
               </div>
             </article>;
           })}</div>}
