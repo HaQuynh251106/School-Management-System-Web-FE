@@ -1,23 +1,13 @@
 import { useState } from 'react';
 import {
-  BookOpenCheck, ClipboardCheck, Eye, EyeOff, GraduationCap, LockKeyhole,
-  LogIn, Moon, RefreshCcw, School, ShieldCheck, Sparkles, Sun, UserRound, UserRoundCog, UsersRound,
+  BookOpenCheck, Eye, EyeOff, LockKeyhole,
+  LogIn, Moon, School, ShieldCheck, Sparkles, Sun, UserRound, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../../api/auth';
 import { api, ApiError } from '../../api/client';
 import { useTheme } from '../../api/theme';
 import { readHashRoute } from '../../api/urlState';
 import { loginHash } from '../../api/routes';
-import type { CSSProperties } from 'react';
-
-const env = (import.meta as any).env || {};
-const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true';
-const demos = showDemoAccounts ? [
-  { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.hoa', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.an', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.pham', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
-].filter((account) => account.username && account.password) : [];
 
 type View = 'login' | 'forgot' | 'reset' | 'activate' | 'activation-success';
 
@@ -153,8 +143,6 @@ export function LoginPage() {
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy || (twoFactorRequired && twoFactorCode.length !== 6)}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : twoFactorRequired ? 'Xác thực và đăng nhập' : 'Đăng nhập'}</button>
               </form>
-              {demos.length > 0 && <><div className="login-divider"><span>Tài khoản dùng thử</span></div>
-              <div className="demo-chips">{demos.map((demo) => <button key={demo.username} type="button" disabled={busy} onClick={() => { setUsername(demo.username); setPassword(demo.password); submitLogin(demo.username, demo.password); }} style={{ '--role-color': demo.color } as CSSProperties}><demo.Icon size={18} /><span>{demo.label}</span><small>{demo.username}</small></button>)}</div></>}
             </>}
 
             {view === 'forgot' && <>
