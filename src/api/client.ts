@@ -26,6 +26,7 @@ export function resolveApiBase(
 }
 
 const BASE = resolveApiBase((import.meta as any).env?.VITE_API_BASE as string | undefined);
+const SESSION_RESTORE_TIMEOUT_MS = 15_000;
 
 let accessToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
@@ -71,6 +72,9 @@ async function performRefresh(): Promise<boolean> {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({}),
+      // Render Free can take tens of seconds to wake up. Never leave the
+      // application splash screen blocked indefinitely when the API is down.
+      signal: AbortSignal.timeout(SESSION_RESTORE_TIMEOUT_MS),
     });
     if (!res.ok) return false;
     const data = await res.json();
