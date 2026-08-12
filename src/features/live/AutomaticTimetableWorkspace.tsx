@@ -390,7 +390,7 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
               <article><small>Tối thiểu theo kế hoạch năm</small><strong>{analysis.minimumSubjectTeachersForYear}</strong><span>giáo viên bộ môn</span></article>
               <article><small>Tối thiểu trong học kỳ</small><strong>{analysis.minimumSubjectTeachersForSemester}</strong><span>{analysis.totalSelectedWeeklyPeriods} tiết/tuần</span></article>
               <article><small>Hiện có</small><strong>{analysis.currentActiveTeacherCount}</strong><span>giáo viên đang hoạt động</span></article>
-              <article><small>Trần theo loại trường</small><strong>{analysis.maximumWholeTeachers}</strong><span>{analysis.maximumTeacherFte.toLocaleString('vi-VN')} FTE · {analysis.schoolClassCount} lớp</span></article>
+              <article><small>Biên chế phù hợp</small><strong>{analysis.minimumWholeTeachers}–{analysis.maximumWholeTeachers}</strong><span>{analysis.schoolClassCount} lớp · 2,25–2,40 GV/lớp</span></article>
             </div>
             {(analysis.errors.length > 0 || analysis.warnings.length > 0) && <div className={`staffing-status ${analysis.errors.length ? 'invalid' : 'warning'}`}>
               <AlertTriangle size={17} />
@@ -404,7 +404,7 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
                 {analysis.subjects.map((item) => <tr key={item.subjectId} className={item.shortage > 0 ? 'staffing-shortage-row' : ''}><td><strong>{item.subjectName}</strong><small>{item.subjectCode} · {item.countedAsSubjectTeacher ? 'Giáo viên bộ môn' : 'Hoạt động giáo dục'}</small></td><td>{item.applicableClassCount}</td><td>{item.annualPeriods.toLocaleString('vi-VN')}</td><td>{item.selectedSemesterPeriods.toLocaleString('vi-VN')}<small>{item.selectedWeeklyPeriods} tiết/tuần</small></td><td><strong>{item.minimumTeachersForYear}</strong><small>Kỳ này: {item.minimumTeachersForSemester}</small></td><td>{item.qualifiedTeacherCount}</td><td>{item.assignedTeacherCount}</td><td><span className={`staffing-result ${item.shortage > 0 ? 'shortage' : 'enough'}`}>{item.countedAsSubjectTeacher ? item.shortage > 0 ? `Thiếu ${item.shortage}` : 'Đủ' : 'GVCN phụ trách'}</span></td></tr>)}
               </tbody></table></div>
             </details>
-            <p className="staffing-legal-note">Trần giáo viên/lớp không bao gồm Ban giám hiệu và nhân viên hỗ trợ. Số thập phân được hiển thị theo FTE; trần nguyên người được làm tròn xuống để không vượt tỷ lệ tối đa.</p>
+            <p className="staffing-legal-note">Nhu cầu theo tải môn dùng để kiểm tra khả năng xếp lịch; khoảng {analysis.minimumWholeTeachers}–{analysis.maximumWholeTeachers} GV dùng để kiểm tra quy mô nhân sự của trường công lập.</p>
           </>}
         </Async>
       </div>

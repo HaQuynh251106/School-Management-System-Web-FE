@@ -532,8 +532,8 @@ export function ExamScheduleWorkspace() {
   };
 
   const canEdit = selectedVersion?.status === 'DRAFT';
-  const canRecall = selectedPeriod?.status === 'PUBLISHED'
-    && Boolean(selectedPeriod.publishedVersionId);
+  const canRecall = ['PUBLISHED', 'CLOSED'].includes(selectedPeriod?.status || '')
+    && Boolean(selectedPeriod?.publishedVersionId);
   const awayIssues = validateAwayForm(awayForm, selectedPeriod);
 
   return <div className="exam-workspace">
@@ -591,7 +591,7 @@ export function ExamScheduleWorkspace() {
       action={selectedPeriod.publishedVersionId
         ? <div className="exam-period-actions">
           {!versions.data?.some((item) => item.status === 'DRAFT') && <button className="live-btn exam-secondary" onClick={() => setVersionModal(true)}><History size={15} /> Tạo bản điều chỉnh</button>}
-          {canRecall && <button className="live-btn exam-ghost-danger" onClick={() => setRecallModal(true)}><RotateCcw size={15} /> Thu hồi về nháp</button>}
+          {canRecall && <button className="live-btn exam-warning" title="Thu hồi bản đang phát hành và tạo bản nháp có thể chỉnh sửa" onClick={() => setRecallModal(true)}><RotateCcw size={15} /> {selectedPeriod.status === 'CLOSED' ? 'Mở lại để chỉnh sửa' : 'Thu hồi về nháp'}</button>}
         </div> : undefined}>
       <div className="exam-version-toolbar">
         <select value={versionId} onChange={(event) => setVersionId(event.target.value)}>

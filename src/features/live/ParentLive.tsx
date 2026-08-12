@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw, CalendarDays, ExternalLink, ShieldCheck, Landmark, WalletCards, QrCode, Upload, Copy, FileCheck2, AlertTriangle, Download, History, Search } from 'lucide-react';
+import { CreditCard, BookOpen, ClipboardCheck, Users, RefreshCw, CalendarDays, ExternalLink, ShieldCheck, Landmark, WalletCards, QrCode, Upload, Copy, FileCheck2, AlertTriangle, Download, History, MessageSquareText, Search } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useShortcutFilter } from '../../api/shortcutFilter';
@@ -15,6 +15,7 @@ import { YearResultPanel } from './YearResultPanel';
 import { PublishedExamSchedule } from './ExamScheduleWorkspace';
 import { PublishedEducationPlan } from './StudentLive';
 import { AttendanceExcusePanel } from './AttendanceExcusePanel';
+import { HomeroomRemarksPanel } from './HomeroomRemarksPanel';
 
 const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CASH: 'Tiền mặt',
@@ -136,6 +137,9 @@ export function ParentMonitorLive() {
       ) },
       { id: 'year-result', label: 'Kết quả năm', Icon: FileCheck2, content: (
         <YearResultPanel studentId={childId} />
+      ) },
+      { id: 'homeroom-remarks', label: 'Nhận xét GVCN', Icon: MessageSquareText, content: (
+        <HomeroomRemarksPanel studentId={childId} />
       ) },
       { id: 'assignments', label: 'Bài tập', Icon: BookOpen, content: (
         <AssignmentsLive actor="parent" childId={childId} />

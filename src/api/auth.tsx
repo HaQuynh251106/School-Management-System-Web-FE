@@ -77,18 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [authenticatedUserId, clearSession]);
 
   const login = async (username: string, password: string) => {
-    const deviceKey = 'sse-device-token';
-    let deviceToken = sessionStorage.getItem(deviceKey);
-    if (!deviceToken) {
-      deviceToken = globalThis.crypto?.randomUUID?.() || `web-${Date.now()}`;
-      sessionStorage.setItem(deviceKey, deviceToken);
-    }
     const r = await api.post<{ user: ApiUser; accessToken: string; refreshToken: string }>(
       '/auth/login',
       {
         username,
         password,
-        deviceToken,
+        deviceToken: sessionStorage.getItem('sse-fcm-token') || undefined,
         platform: 'WEB',
         deviceName: navigator.userAgent.includes('Edg/')
           ? 'Microsoft Edge'

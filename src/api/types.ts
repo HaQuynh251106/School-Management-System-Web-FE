@@ -419,6 +419,7 @@ export interface TeacherStaffingAnalysis {
   academicYearId: string; semesterId: string; scopeGradeLevel?: string | null;
   schoolClassCount: number; scopeClassCount: number; currentActiveTeacherCount: number;
   minimumSubjectTeachersForSemester: number; minimumSubjectTeachersForYear: number;
+  minimumStaffingFte: number; minimumWholeTeachers: number;
   maximumTeacherFte: number; maximumWholeTeachers: number;
   withinLegalCeiling: boolean; sufficientForTimetable: boolean;
   totalAnnualPeriods: number; totalSelectedSemesterPeriods: number;
@@ -668,6 +669,12 @@ export interface NotificationOperationsSummary {
   deliveryAttempts: number; successfulAttempts: number; failedAttempts: number;
   failureRatePercent: number; notificationsByChannel: Record<string, number>; generatedAt: string;
 }
+export interface NotificationProviderStatus {
+  mode: 'MOCK' | 'REAL';
+  sendGridConfigured: boolean; sendGridFromEmail?: string | null;
+  fcmConfigured: boolean; fcmCredentialSource: 'SERVICE_ACCOUNT' | 'STATIC_TOKEN' | 'NOT_CONFIGURED';
+  fcmProjectId?: string | null;
+}
 export interface Announcement {
   id: string; title: string; body: string; audience: string; createdAt: string; createdBy?: string;
   category?: string; priority?: string; status?: string; recipientCount?: number;
@@ -686,6 +693,23 @@ export interface Assignment {
   submissionCount?: number; studentCount?: number;
 }
 export interface NotificationPreference { id: string; userId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; enabled: boolean; updatedAt: string; }
+
+export interface HomeroomRemark {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classId: string;
+  classCode: string;
+  academicYearId: string;
+  semesterId: string;
+  semesterName: string;
+  teacherId: string;
+  teacherName: string;
+  body: string;
+  status: 'DRAFT' | 'PUBLISHED';
+  publishedAt?: string | null;
+  updatedAt: string;
+}
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;

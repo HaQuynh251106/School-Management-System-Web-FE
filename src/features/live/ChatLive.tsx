@@ -25,6 +25,17 @@ interface ChatMsg {
   createdAt: string;
 }
 
+interface ChatRealtimeEvent {
+  type: 'CONNECTED' | 'MESSAGE' | 'READ' | 'PRESENCE';
+  senderId?: string;
+  recipientId?: string;
+  readerId?: string;
+  otherId?: string;
+  userId?: string;
+  online?: boolean;
+  onlineUserIds?: string[];
+}
+
 interface ContactThread extends Thread {
   contact: ApiUser;
 }
@@ -41,6 +52,7 @@ const initials = (name: string) => name.trim().split(/\s+/).slice(-2).map((part)
 /** Hộp thư 1-1 giữa học sinh, giáo viên và phụ huynh trong đúng phạm vi lớp học. */
 export function ChatLive() {
   const { user } = useAuth();
+  const userId = user?.id;
   const threads = useApi<Thread[]>('/chat/threads');
   const contacts = useApi<ApiUser[]>('/chat/contacts');
   const teachingScopes = useApi<TeachingAssignment[]>(user?.role === 'TEACHER' ? '/me/teacher-class-subjects' : null);
@@ -59,9 +71,12 @@ export function ChatLive() {
   const [search, setSearch] = useState('');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [broadcastClassId, setBroadcastClassId] = useState('');
   const [broadcastText, setBroadcastText] = useState('');
   const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const selectedConversationRef = useRef<string | null>(null);
   const toast = useToast();
 
   const available = useMemo<ContactThread[]>(() => {
@@ -103,12 +118,41 @@ export function ChatLive() {
   }, [available, withId]);
 
   useEffect(() => {
-    if (!withId) return undefined;
+    selectedConversationRef.current = withId;
+  }, [withId]);
+
+  useEffect(() => {
+    if (!userId) return undefined;
+    const subscription = api.streamSse<ChatRealtimeEvent>('/chat/events', (event) => {
+      if (event.type === 'CONNECTED') {
+        setOnlineUserIds(new Set(event.onlineUserIds || []));
+        return;
+      }
+      if (event.type === 'PRESENCE' && event.userId) {
+        setOnlineUserIds((current) => {
+          const next = new Set(current);
+          if (event.online) next.add(event.userId!); else next.delete(event.userId!);
+          return next;
+        });
+        return;
+      }
+      reloadThreads();
+      const selectedId = selectedConversationRef.current;
+      if (selectedId && [event.senderId, event.recipientId, event.readerId, event.otherId].includes(selectedId)) {
+        reloadMessages();
+      }
+    }, setRealtimeConnected);
+    return subscription.close;
+  }, [userId, reloadMessages, reloadThreads]);
+
+  useEffect(() => {
+    if (!withId || realtimeConnected) return undefined;
     const timer = window.setInterval(() => {
       reloadMessages();
-    }, 5000);
+      reloadThreads();
+    }, 30000);
     return () => window.clearInterval(timer);
-  }, [withId, reloadMessages]);
+  }, [withId, realtimeConnected, reloadMessages, reloadThreads]);
 
   useEffect(() => {
     if (!withId || messagesLoading || messagesData == null) return;
@@ -185,7 +229,7 @@ export function ChatLive() {
               <div className="chat-contact-list">
                 {items.map((item) => (
                   <button type="button" key={item.userId} className={withId === item.userId ? 'active' : ''} onClick={() => setWithId(item.userId)}>
-                    <span className="chat-avatar">{initials(item.name) || <UserRound size={17} />}</span>
+                    <span className="chat-avatar">{initials(item.name) || <UserRound size={17} />}{onlineUserIds.has(item.userId) && <i className="chat-online-dot" />}</span>
                     <span className="chat-contact-copy">
                       <span><strong>{item.name}</strong><time>{item.lastTime ? fmtDateTime(item.lastTime) : ''}</time></span>
                       <small>{ROLE_LABEL[item.contact.role] || item.contact.role}{item.contact.className ? ` · ${item.contact.className}` : item.contact.mainSubject ? ` · ${item.contact.mainSubject}` : ''}</small>
@@ -206,8 +250,9 @@ export function ChatLive() {
             <>
               <header className="chat-conversation-head">
                 <span className="chat-avatar">{initials(selected.name)}</span>
-                <div><strong>{selected.name}</strong><small>{ROLE_LABEL[selected.contact.role] || selected.contact.role}{selected.contact.className ? ` · Lớp ${selected.contact.className}` : selected.contact.mainSubject ? ` · ${selected.contact.mainSubject}` : ''}</small></div>
+                <div><strong>{selected.name}</strong><small>{onlineUserIds.has(selected.userId) ? 'Đang trực tuyến' : 'Đang ngoại tuyến'} · {ROLE_LABEL[selected.contact.role] || selected.contact.role}{selected.contact.className ? ` · Lớp ${selected.contact.className}` : selected.contact.mainSubject ? ` · ${selected.contact.mainSubject}` : ''}</small></div>
                 <span className="chat-secure-label"><CheckCheck size={15} /> Hội thoại nội bộ</span>
+                <span className={`chat-live-state ${realtimeConnected ? 'connected' : ''}`}>{realtimeConnected ? 'Trực tiếp' : 'Đang kết nối lại'}</span>
               </header>
               <div className="chat-message-list" aria-live="polite">
                 <Async state={msgs} empty="Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện.">

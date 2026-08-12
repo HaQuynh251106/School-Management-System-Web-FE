@@ -58,7 +58,7 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
         <div className="staffing-standard" title="Căn cứ TT 20/2023/TT-BGDĐT và TT 05/2025/TT-BGDĐT">
           <span><BookOpenCheck size={15} /> THPT công lập</span>
           <strong>17 tiết/tuần · 35 tuần/năm</strong>
-          <small>Định mức cơ sở: 2,25 GV/lớp</small>
+          <small>Khoảng phù hợp: 2,25–2,40 GV/lớp</small>
         </div>
       </header>
 
@@ -83,9 +83,9 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
         </article>
         <article>
           <span className="staffing-metric-icon amber"><Scale size={17} /></span>
-          <small>Định mức cơ sở theo số lớp</small>
-          <strong>{analysis.maximumTeacherFte.toLocaleString('vi-VN')} <em>FTE</em></strong>
-          <span>{analysis.schoolClassCount} lớp × 2,25 GV/lớp · ngưỡng hệ thống {analysis.maximumWholeTeachers} GV</span>
+          <small>Biên chế phù hợp theo số lớp</small>
+          <strong>{analysis.minimumWholeTeachers}–{analysis.maximumWholeTeachers} <em>GV</em></strong>
+          <span>{analysis.schoolClassCount} lớp × 2,25–2,40 GV/lớp</span>
         </article>
       </div>
 
@@ -100,8 +100,8 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
         <div className="staffing-status warning">
           <Info size={18} />
           <div>
-            <strong>Nhân sự giáo viên đang cao hơn định mức cơ sở theo số lớp</strong>
-            <small>{analysis.schoolClassCount} lớp tương ứng {analysis.maximumTeacherFte.toLocaleString('vi-VN')} FTE; hệ thống dùng ngưỡng nguyên người bảo thủ là {analysis.maximumWholeTeachers} GV. Hiện có {analysis.currentActiveTeacherCount} GV thuộc diện tính định biên.</small>
+            <strong>Nhân sự giáo viên đang cao hơn mức khuyến nghị</strong>
+            <small>{analysis.schoolClassCount} lớp cần từ {analysis.minimumWholeTeachers} đến {analysis.maximumWholeTeachers} GV. Hiện có {analysis.currentActiveTeacherCount} GV đang hoạt động.</small>
             <small>Cảnh báo này không chặn xếp lịch vì nhà trường vẫn đủ giáo viên đúng chuyên môn.</small>
           </div>
         </div>

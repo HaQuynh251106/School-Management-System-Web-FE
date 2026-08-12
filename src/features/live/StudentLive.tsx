@@ -6,11 +6,12 @@ import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, MessageSquareText, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
 import { YearResultPanel } from './YearResultPanel';
 import { PublishedExamSchedule } from './ExamScheduleWorkspace';
+import { HomeroomRemarksPanel } from './HomeroomRemarksPanel';
 
 const PLAN_SUBJECT_TYPE_LABELS: Record<string, string> = {
   MANDATORY: 'Bắt buộc',
@@ -139,6 +140,7 @@ function genderLabel(value?: string | null) {
 
 /* ===== C2 — Theo dõi học thuật ===== */
 export function StudentAcademicLive() {
+  const { user } = useAuth();
   const semesters = useApi<Semester[]>('/semesters');
   const categories = useApi<ExamCategory[]>('/exam-categories');
   const [sem, setSem] = useState('');
@@ -231,6 +233,9 @@ export function StudentAcademicLive() {
       ) },
       { id: 'year-result', label: 'Kết quả năm', Icon: GraduationCap, content: (
         <YearResultPanel />
+      ) },
+      { id: 'homeroom-remarks', label: 'Nhận xét GVCN', Icon: MessageSquareText, content: (
+        user ? <HomeroomRemarksPanel studentId={user.id} /> : <div className="live-loading">Đang tải tài khoản…</div>
       ) },
     ]} />
   );

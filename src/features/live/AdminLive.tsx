@@ -6,7 +6,7 @@ import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
   ExamCategory, FeePeriod, FeePeriodItem, Invoice, InvoicePreview, FinanceTargetType, Payment, PaymentInitResponse, PaymentProof, PaymentProofDecision, PaymentHistory, PaymentRefund, PaymentReconciliation, PaymentReceipt, PaymentReceiptDownload, NotificationTemplate, Club, ClubRegistration,
-  StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice, Notification, NotificationDeliveryLog, NotificationOperationsSummary,
+  StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice, Notification, NotificationDeliveryLog, NotificationOperationsSummary, NotificationProviderStatus,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
 import { Async, useToast, money, fmtDate, fmtDateTime } from './common';
@@ -2448,6 +2448,7 @@ export function AdminNotificationsLive() {
   const announcements = useApi<Announcement[]>('/admin/announcements');
   const audienceCounts = useApi<Record<string, number>>('/admin/announcements/audience-counts');
   const operationSummary = useApi<NotificationOperationsSummary>('/admin/notification-operations/summary');
+  const providerStatus = useApi<NotificationProviderStatus>('/admin/notification-providers/status');
   const failedNotifications = useApi<Notification[]>('/admin/notifications/failed');
   const deliveryLogs = useApi<NotificationDeliveryLog[]>('/admin/notification-deliveries');
   const toast = useToast();
@@ -2565,7 +2566,17 @@ export function AdminNotificationsLive() {
       </Section>
 
       <Section title="Vận hành Email và Push" subtitle="Theo dõi SendGrid, FCM, số lần thử và gửi lại thông báo lỗi" wide
-        action={<button className="live-btn ghost" onClick={() => { operationSummary.reload(); failedNotifications.reload(); deliveryLogs.reload(); }}><RefreshCw size={14} /> Làm mới</button>}>
+        action={<button className="live-btn ghost" onClick={() => { providerStatus.reload(); operationSummary.reload(); failedNotifications.reload(); deliveryLogs.reload(); }}><RefreshCw size={14} /> Làm mới</button>}>
+        {providerStatus.data && <div className={`notification-provider-status mode-${providerStatus.data.mode.toLowerCase()}`}>
+          <ShieldCheck size={20} />
+          <div>
+            <strong>{providerStatus.data.mode === 'REAL' ? 'Đang gửi qua nhà cung cấp thật' : 'Đang chạy chế độ mô phỏng'}</strong>
+            <small>{providerStatus.data.mode === 'REAL' ? 'Email và push sẽ rời khỏi hệ thống khi kênh đã cấu hình.' : 'Delivery được ghi nhận để test nhưng không gửi email hoặc push ra ngoài.'}</small>
+          </div>
+          <span><Badge tone={providerStatus.data.mode === 'REAL' ? 'green' : 'orange'}>{providerStatus.data.mode}</Badge></span>
+          <span><Badge tone={providerStatus.data.sendGridConfigured ? 'green' : 'red'}>SendGrid {providerStatus.data.sendGridConfigured ? 'sẵn sàng' : 'chưa cấu hình'}</Badge><small>{providerStatus.data.sendGridFromEmail || 'Chưa có email gửi'}</small></span>
+          <span><Badge tone={providerStatus.data.fcmConfigured ? 'green' : 'red'}>FCM {providerStatus.data.fcmConfigured ? 'sẵn sàng' : 'chưa cấu hình'}</Badge><small>{providerStatus.data.fcmProjectId || providerStatus.data.fcmCredentialSource}</small></span>
+        </div>}
         {operationSummary.data && <div className="notification-operation-summary">
           <span><small>Đã gửi</small><strong>{operationSummary.data.sent}</strong></span>
           <span><small>Đang chờ</small><strong>{operationSummary.data.queued + operationSummary.data.retrying}</strong></span>

@@ -1,20 +1,33 @@
+import { lazy, Suspense } from 'react';
 import type { ModuleItem, RoleDefinition } from '../types';
 import { GeneralDashboard } from './dashboard/GeneralDashboard';
-import { AdminReportsLive } from './live/AdminReportsLive';
-import { AdminAuditLive } from './live/AdminAuditLive';
-import { AdminTimetableLive } from './live/AdminTimetableLive';
-import { ChatLive } from './live/ChatLive';
-// Live (nối backend thật)
-import {
-  AdminUsersLive, AdminAcademicLive, AdminExamCategoriesLive,
-  AdminFinanceLive, AdminNotificationsLive, AdminClubsLive,
-} from './live/AdminLive';
-import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive, TeacherNotificationsLive } from './live/TeacherLive';
-import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
-import { ParentSwitchLive, ParentMonitorLive, ParentInvoiceLive, ParentExtracurricularLive } from './live/ParentLive';
-import { MyTimetableLive, ExtracurricularLive, NotificationsLive } from './live/SharedLive';
-import { AssignmentsLive } from './live/AssignmentWorkspace';
-import { PublishedExamSchedule } from './live/ExamScheduleWorkspace';
+
+const AdminReportsLive = lazy(() => import('./live/AdminReportsLive').then((module) => ({ default: module.AdminReportsLive })));
+const AdminAuditLive = lazy(() => import('./live/AdminAuditLive').then((module) => ({ default: module.AdminAuditLive })));
+const AdminTimetableLive = lazy(() => import('./live/AdminTimetableLive').then((module) => ({ default: module.AdminTimetableLive })));
+const ChatLive = lazy(() => import('./live/ChatLive').then((module) => ({ default: module.ChatLive })));
+const AdminUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminUsersLive })));
+const AdminAcademicLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAcademicLive })));
+const AdminExamCategoriesLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminExamCategoriesLive })));
+const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
+const AdminNotificationsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminNotificationsLive })));
+const AdminClubsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminClubsLive })));
+const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
+const TeacherAttendanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherAttendanceLive })));
+const TeacherGradesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherGradesLive })));
+const TeacherNotificationsLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherNotificationsLive })));
+const StudentProfileLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentProfileLive })));
+const StudentAcademicLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAcademicLive })));
+const StudentAttendanceLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAttendanceLive })));
+const ParentSwitchLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentSwitchLive })));
+const ParentMonitorLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentMonitorLive })));
+const ParentInvoiceLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentInvoiceLive })));
+const ParentExtracurricularLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentExtracurricularLive })));
+const MyTimetableLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.MyTimetableLive })));
+const ExtracurricularLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.ExtracurricularLive })));
+const NotificationsLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.NotificationsLive })));
+const AssignmentsLive = lazy(() => import('./live/AssignmentWorkspace').then((module) => ({ default: module.AssignmentsLive })));
+const PublishedExamSchedule = lazy(() => import('./live/ExamScheduleWorkspace').then((module) => ({ default: module.PublishedExamSchedule })));
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
@@ -25,6 +38,10 @@ export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleD
 }
 
 export function FeatureBody({ code }: { code: string }) {
+  return <Suspense fallback={<div className="feature-page-loading" role="status"><span /><span /><span /><strong>Đang mở chức năng…</strong></div>}><FeatureBodyContent code={code} /></Suspense>;
+}
+
+function FeatureBodyContent({ code }: { code: string }) {
   switch (code) {
     // ---- Admin ----
     case 'A1': return <AdminUsersLive />;

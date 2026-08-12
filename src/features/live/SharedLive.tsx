@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { BookOpen, CalendarClock, CheckCircle2, Clock3, Download, Eye, FileText, MapPin, Paperclip, Plus, School, Send, Upload, Users } from 'lucide-react';
+import { BellRing, BookOpen, CalendarClock, CheckCircle2, Clock3, Download, Eye, FileText, MapPin, Paperclip, Plus, School, Send, Smartphone, Upload, Users } from 'lucide-react';
 import { api } from '../../api/client';
+import { listenForForegroundPush, pushRegistrationState, registerBrowserPush, type PushRegistrationState } from '../../api/push';
 import { useApi } from '../../api/useApi';
 import type { TimetableSlot, TeachingAssignment, Assignment, Submission, StoredFile, Club, ClubRegistration, Notification, NotificationPreference } from '../../api/types';
 import { Section, Badge, StatusPill } from '../../components/ui';
@@ -13,11 +14,13 @@ import { TeacherLessonProgress } from './AutomaticTimetableWorkspace';
 const SUBJECT_COLORS = ['#2563eb', '#7c3aed', '#0f766e', '#d97706', '#db2777', '#0891b2'];
 
 const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
+  SYSTEM: 'Hệ thống', LOGIN: 'Đăng nhập', PASSWORD_RESET: 'Mật khẩu',
   GENERAL: 'Thông báo chung', HOLIDAY: 'Nghỉ lễ', GRADE: 'Điểm số', GRADE_PUBLISHED: 'Điểm số',
   EVENT: 'Sự kiện', STUDENT_STATUS: 'Tình hình học sinh', ATTENDANCE: 'Điểm danh',
   ATTENDANCE_ALERT: 'Chuyên cần', PARENT_MEETING: 'Họp phụ huynh', ASSIGNMENT: 'Bài tập',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', PAYMENT: 'Thanh toán', ANNOUNCEMENT: 'Thông báo chung', EXTRACURRICULAR: 'Ngoại khóa',
-  EXAM: 'Lịch thi',
+  EXAM: 'Lịch thi', EXAM_SCHEDULE: 'Lịch thi', TIMETABLE: 'Thời khóa biểu',
+  YEAR_RESULT: 'Kết quả năm học', SUBMISSION: 'Bài nộp', PAYMENT_PROOF: 'Biên lai thanh toán',
 };
 
 function classLabel(value: string) {
@@ -378,7 +381,16 @@ export function NotificationsLive() {
   const preferences = useApi<NotificationPreference[]>('/me/notification-preferences');
   const toast = useToast();
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [pushState, setPushState] = useState<PushRegistrationState>('INACTIVE');
+  const [registeringPush, setRegisteringPush] = useState(false);
+  const reloadInbox = inbox.reload;
   const notifyChanged = () => window.dispatchEvent(new Event('sse:notifications-changed'));
+  useEffect(() => {
+    let dispose: () => void = () => {};
+    void pushRegistrationState().then(setPushState);
+    void listenForForegroundPush(() => { reloadInbox(); window.dispatchEvent(new Event('sse:notifications-changed')); }).then((listener) => { dispose = listener; });
+    return () => dispose();
+  }, [reloadInbox]);
   const markRead = async (id: string) => { try { await api.post(`/notifications/${id}/read`); inbox.reload(); notifyChanged(); } catch (e: any) { toast.show('err', e.message); } };
   const markAll = async () => { try { await api.post('/notifications/read-all'); toast.show('ok', 'Đã đánh dấu tất cả đã đọc'); inbox.reload(); notifyChanged(); } catch (e: any) { toast.show('err', e.message); } };
   const openDetail = async (notification: Notification) => {
@@ -391,21 +403,38 @@ export function NotificationsLive() {
     });
   const togglePreference = async (preference: NotificationPreference) => {
     try {
+      if (preference.channel === 'PUSH' && !preference.enabled) {
+        setRegisteringPush(true);
+        await registerBrowserPush();
+        setPushState('READY');
+      }
       await api.put('/me/notification-preferences', { notificationType: 'ALL', channel: preference.channel, enabled: !preference.enabled });
       toast.show('ok', 'Đã cập nhật tùy chọn thông báo'); preferences.reload();
     } catch (e: any) { toast.show('err', e.message); }
+    finally { setRegisteringPush(false); }
   };
 
   return (
     <div className="notification-page-grid">
       {toast.node}
       <Section title="Kênh nhận thông báo" subtitle="Chủ động bật hoặc tắt từng kênh liên lạc" wide>
+        <div className={`push-readiness push-${pushState.toLowerCase()}`}>
+          <span>{pushState === 'READY' ? <BellRing size={18} /> : <Smartphone size={18} />}</span>
+          <div><strong>{pushState === 'READY' ? 'Thiết bị đã sẵn sàng nhận push' : 'Thông báo đẩy trên thiết bị này'}</strong>
+            <small>{{
+              READY: 'Firebase đã cấp token và liên kết với tài khoản hiện tại.',
+              INACTIVE: 'Bật kênh Thông báo đẩy để trình duyệt xin quyền và đăng ký thiết bị.',
+              DENIED: 'Trình duyệt đang chặn thông báo. Hãy cấp lại quyền trong cài đặt trang web.',
+              NOT_CONFIGURED: 'Môi trường chưa có Firebase Web/VAPID key.',
+              UNSUPPORTED: 'Trình duyệt này không hỗ trợ Web Push.',
+            }[pushState]}</small></div>
+        </div>
         {preferences.loading ? <div className="live-loading">Đang tải tùy chọn…</div> : preferences.error ? <div className="live-error">{preferences.error}</div> :
           <div className="notification-preferences">{channels.map((preference) => (
             <label key={preference.id}>
               <span><strong>{{ IN_APP: 'Trong ứng dụng', PUSH: 'Thông báo đẩy', EMAIL: 'Email' }[preference.channel]}</strong>
                 <small>{preference.channel === 'IN_APP' ? 'Hiển thị trong hộp thư của hệ thống' : preference.channel === 'PUSH' ? 'Gửi tới thiết bị đã đăng ký' : 'Gửi tới email trong hồ sơ'}</small></span>
-              <input type="checkbox" checked={preference.enabled} onChange={() => togglePreference(preference)} />
+              <input type="checkbox" checked={preference.enabled} disabled={registeringPush || (preference.channel === 'PUSH' && ['DENIED', 'NOT_CONFIGURED', 'UNSUPPORTED'].includes(pushState))} onChange={() => togglePreference(preference)} />
             </label>
           ))}</div>}
       </Section>
@@ -413,19 +442,21 @@ export function NotificationsLive() {
         action={<button className="live-btn ghost" onClick={markAll}><CheckCircle2 size={14} /> Đọc hết</button>}>
         <Async paginate state={inbox} empty="Không có thông báo" itemLabel="thông báo">
           {(l) => (
-            <div className="admin-table-scroll"><table className="live-table notification-table">
-              <thead><tr><th>Thời gian</th><th>Loại</th><th>Nội dung</th><th>Mức độ</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-              <tbody>{l.map((n) => (
-                <tr key={n.id} className={n.read ? '' : 'notification-row-unread'}>
-                  <td>{fmtDateTime(n.createdAt)}</td>
-                  <td><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[n.type] || n.type}</Badge></td>
-                  <td><strong>{n.title}</strong><small>{n.body}</small></td>
-                  <td>{n.priority && n.priority !== 'NORMAL' ? <Badge tone={n.priority === 'URGENT' ? 'red' : 'orange'}>{n.priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge> : <Badge tone="green">Thông thường</Badge>}</td>
-                  <td><StatusPill value={n.read ? 'READ' : 'UNREAD'} /></td>
-                  <td><div className="notification-row-actions"><button className="live-btn subtle" onClick={() => void openDetail(n)}><Eye size={14} /> Xem chi tiết</button>{!n.read && <button className="live-btn ghost" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button>}</div></td>
-                </tr>
-              ))}</tbody>
-            </table></div>
+            <div className="notification-list">
+              <div className="notification-list-head" aria-hidden="true">
+                <span>Thời gian</span><span>Loại</span><span>Nội dung</span><span>Mức độ</span><span>Trạng thái</span><span>Thao tác</span>
+              </div>
+              {l.map((n) => (
+                <article key={n.id} className={`notification-list-row${n.read ? '' : ' is-unread'}`}>
+                  <time dateTime={n.createdAt}>{fmtDateTime(n.createdAt)}</time>
+                  <div><Badge tone="blue">{NOTIFICATION_TYPE_LABEL[n.type] || n.type}</Badge></div>
+                  <div className="notification-list-content"><strong>{n.title}</strong><small>{n.body}</small></div>
+                  <div>{n.priority && n.priority !== 'NORMAL' ? <Badge tone={n.priority === 'URGENT' ? 'red' : 'orange'}>{n.priority === 'URGENT' ? 'Khẩn cấp' : 'Quan trọng'}</Badge> : <Badge tone="green">Thông thường</Badge>}</div>
+                  <div><StatusPill value={n.read ? 'READ' : 'UNREAD'} /></div>
+                  <div className="notification-row-actions"><button className="live-btn subtle" onClick={() => void openDetail(n)}><Eye size={14} /> Xem chi tiết</button>{!n.read && <button className="live-btn ghost" onClick={() => markRead(n.id)}>Đánh dấu đã đọc</button>}</div>
+                </article>
+              ))}
+            </div>
           )}
         </Async>
       </Section>

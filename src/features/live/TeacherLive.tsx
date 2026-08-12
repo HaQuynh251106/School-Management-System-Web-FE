@@ -12,6 +12,7 @@ import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from 
 import { YearSummaryPreviewWorkspace } from './YearSummaryPreviewWorkspace';
 import { YearReviewWorkspace } from './YearReviewWorkspace';
 import { useConfirm } from '../../app/ConfirmDialog';
+import { HomeroomRemarksPanel } from './HomeroomRemarksPanel';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -162,7 +163,7 @@ export function TeacherClassesLive() {
           footer={<button className="live-btn subtle" onClick={() => setProfileTarget(null)}>Đóng</button>}
         >
           <Async state={studentProfile} empty="Không tìm thấy hồ sơ học sinh">
-            {(student) => <HomeroomStudentProfile student={student} schoolClass={profileClass} />}
+            {(student) => <><HomeroomStudentProfile student={student} schoolClass={profileClass} /><HomeroomRemarksPanel studentId={student.id} canEdit /></>}
           </Async>
         </Modal>
       )}

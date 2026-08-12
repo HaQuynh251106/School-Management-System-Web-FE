@@ -138,6 +138,71 @@ async function download(path: string, retry = true): Promise<{ blob: Blob; filen
   return { blob: await response.blob(), filename: encoded ? decodeURIComponent(encoded) : plain };
 }
 
+export interface SseSubscription {
+  close: () => void;
+}
+
+function streamSse<T>(
+  path: string,
+  onEvent: (event: T) => void,
+  onConnectionChange?: (connected: boolean) => void,
+): SseSubscription {
+  const controller = new AbortController();
+  let closed = false;
+
+  const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  const connect = async () => {
+    while (!closed) {
+      try {
+        const headers: Record<string, string> = { Accept: 'text/event-stream' };
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        let response = await fetch(`${BASE}${path}`, { headers, signal: controller.signal });
+        if (response.status === 401 && await tryRefresh()) {
+          headers.Authorization = `Bearer ${accessToken}`;
+          response = await fetch(`${BASE}${path}`, { headers, signal: controller.signal });
+        }
+        if (!response.ok || !response.body) throw new ApiError(response.status, response.statusText);
+        onConnectionChange?.(true);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!closed) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary >= 0) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const data = frame.split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
+            if (data) {
+              try { onEvent(JSON.parse(data) as T); } catch { /* Ignore malformed provider frames. */ }
+            }
+            boundary = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (error) {
+        if (closed || (error instanceof DOMException && error.name === 'AbortError')) break;
+      }
+      onConnectionChange?.(false);
+      if (!closed) await wait(3000);
+    }
+  };
+
+  void connect();
+  return {
+    close: () => {
+      closed = true;
+      controller.abort();
+      onConnectionChange?.(false);
+    },
+  };
+}
+
 export const api = {
   base: BASE,
   get: <T = any>(path: string, options?: ApiRequestOptions) => request<T>(path, options),
@@ -155,5 +220,6 @@ export const api = {
     data.append('file', file);
     return request<T>(path, { method: 'POST', body: data });
   },
+  streamSse,
   download,
 };
