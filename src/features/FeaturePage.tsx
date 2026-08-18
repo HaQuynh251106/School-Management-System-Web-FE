@@ -1,80 +1,58 @@
+import { lazy, Suspense } from 'react';
 import type { ModuleItem, RoleDefinition } from '../types';
-import { ArrowRight, CircleHelp, ShieldCheck } from 'lucide-react';
 import { GeneralDashboard } from './dashboard/GeneralDashboard';
-import { AdminReportsLive } from './live/AdminReportsLive';
-import { AdminAuditLive } from './live/AdminAuditLive';
-import { AdminTimetableLive } from './live/AdminTimetableLive';
-import { ChatLive } from './live/ChatLive';
-// Live (nối backend thật)
-import { AdminUsersLive, AdminFinanceLive, AdminNotificationsLive } from './live/AdminLive';
-import { AdminAcademicLive } from './live/AdminAcademicManager';
-import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive, TeacherNotificationsLive, TeacherFinanceLive } from './live/TeacherLive';
-import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
-import { ParentSwitchLive, ParentMonitorLive, ParentInvoiceLive } from './live/ParentLive';
-import { MyTimetableLive, AssignmentsLive, NotificationsLive } from './live/SharedLive';
-import { LeaveRequestsLive } from './live/LeaveRequestsLive';
-import { PersonalReportsLive } from './live/PersonalReportsLive';
-import { ProfileSettingsLive } from './live/ProfileSettingsLive';
-import { AdminExamsLive } from './live/AdminExamsLive';
-import { MyExamsLive } from './live/MyExamsLive';
-import { ParentYearEndLive, StudentYearEndLive, TeacherConductLive } from './live/YearEndLive';
-import { AlumniLive } from './live/AlumniLive';
-import { AdminTeachingProgressLive, TeacherTeachingProgressLive } from './live/TeachingProgressLive';
-import { ClubLive } from './live/ClubLive';
+
+const AdminReportsLive = lazy(() => import('./live/AdminReportsLive').then((module) => ({ default: module.AdminReportsLive })));
+const AdminAuditLive = lazy(() => import('./live/AdminAuditLive').then((module) => ({ default: module.AdminAuditLive })));
+const AdminTimetableLive = lazy(() => import('./live/AdminTimetableLive').then((module) => ({ default: module.AdminTimetableLive })));
+const ChatLive = lazy(() => import('./live/ChatLive').then((module) => ({ default: module.ChatLive })));
+const AdminUsersLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminUsersLive })));
+const AdminAcademicLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminAcademicLive })));
+const AdminExamCategoriesLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminExamCategoriesLive })));
+const AdminFinanceLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminFinanceLive })));
+const AdminNotificationsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminNotificationsLive })));
+const AdminClubsLive = lazy(() => import('./live/AdminLive').then((module) => ({ default: module.AdminClubsLive })));
+const TeacherClassesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherClassesLive })));
+const TeacherAttendanceLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherAttendanceLive })));
+const TeacherGradesLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherGradesLive })));
+const TeacherNotificationsLive = lazy(() => import('./live/TeacherLive').then((module) => ({ default: module.TeacherNotificationsLive })));
+const StudentProfileLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentProfileLive })));
+const StudentAcademicLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAcademicLive })));
+const StudentAttendanceLive = lazy(() => import('./live/StudentLive').then((module) => ({ default: module.StudentAttendanceLive })));
+const ParentSwitchLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentSwitchLive })));
+const ParentMonitorLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentMonitorLive })));
+const ParentInvoiceLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentInvoiceLive })));
+const ParentExtracurricularLive = lazy(() => import('./live/ParentLive').then((module) => ({ default: module.ParentExtracurricularLive })));
+const MyTimetableLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.MyTimetableLive })));
+const ExtracurricularLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.ExtracurricularLive })));
+const NotificationsLive = lazy(() => import('./live/SharedLive').then((module) => ({ default: module.NotificationsLive })));
+const AssignmentsLive = lazy(() => import('./live/AssignmentWorkspace').then((module) => ({ default: module.AssignmentsLive })));
+const PublishedExamSchedule = lazy(() => import('./live/ExamScheduleWorkspace').then((module) => ({ default: module.PublishedExamSchedule })));
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
     return <GeneralDashboard roleId={role.id} />;
   }
 
-  const showWorkspaceGuide = role.id === 'admin' && ['A2', 'A3', 'A4', 'A7'].includes(module.code);
-  return <div className={`feature-page feature-page--${role.id}`}>
-    {showWorkspaceGuide && <RoleWorkspaceIntro module={module} role={role} />}
-    <FeatureBody code={module.code} />
-  </div>;
-}
-
-const WORKSPACE_STEPS: Record<string, string[]> = {
-  A2: ['Tạo năm học và học kỳ', 'Chuẩn hóa lớp, môn, phòng', 'Phân lớp và kiểm tra dữ liệu'],
-  A3: ['Tiếp nhận đăng ký tiết dạy', 'Phân công đúng chuyên môn', 'Tạo và phát hành thời khóa biểu'],
-  A4: ['Tạo kỳ thi', 'Tự xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
-  A7: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
-};
-
-function RoleWorkspaceIntro({ module, role }: { module: ModuleItem; role: RoleDefinition }) {
-  const steps = WORKSPACE_STEPS[module.code] ?? [];
-  return <section className="role-workspace-intro" aria-label={`Hướng dẫn ${module.title}`}>
-    <div className="role-workspace-main">
-      <span className="role-workspace-icon"><module.Icon size={24} /></span>
-      <div>
-        <small><ShieldCheck size={14} /> Không gian chuyên trách · {role.label}</small>
-        <h2>{module.title}</h2>
-        <p>{module.summary}</p>
-      </div>
-      <span className="role-workspace-help" title="Thực hiện lần lượt các bước bên dưới"><CircleHelp size={18} /> Quy trình đề xuất</span>
-    </div>
-    <ol className="role-workspace-steps">
-      {steps.map((step, index) => <li key={step}><b>{index + 1}</b><span>{step}</span>{index < steps.length - 1 && <ArrowRight size={15} />}</li>)}
-    </ol>
-  </section>;
+  return <div className="feature-page"><FeatureBody code={module.code} /></div>;
 }
 
 export function FeatureBody({ code }: { code: string }) {
+  return <Suspense fallback={<div className="feature-page-loading" role="status"><span /><span /><span /><strong>Đang mở chức năng…</strong></div>}><FeatureBodyContent code={code} /></Suspense>;
+}
+
+function FeatureBodyContent({ code }: { code: string }) {
   switch (code) {
     // ---- Admin ----
-    case 'A1S': return <AdminUsersLive fixedRole="STUDENT" />;
-    case 'A1T': return <AdminUsersLive fixedRole="TEACHER" />;
-    case 'A1P': return <AdminUsersLive fixedRole="PARENT" />;
-    case 'A1A': return <AlumniLive />;
+    case 'A1': return <AdminUsersLive />;
     case 'A2': return <AdminAcademicLive />;
     case 'A3': return <AdminTimetableLive />;
-    case 'A4': return <AdminExamsLive />;
-    case 'A5': return <AdminTeachingProgressLive />;
+    case 'A4': return <AdminExamCategoriesLive />;
+    case 'A5': return <AdminClubsLive />;
     case 'A6': return <AdminAuditLive />;
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
     case 'A9': return <AdminNotificationsLive />;
-    case 'A10': return <ClubLive actor="admin" />;
     // ---- Teacher ----
     case 'B1': return <TeacherClassesLive />;
     case 'B2': return <MyTimetableLive />;
@@ -83,38 +61,24 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B5': return <AssignmentsLive actor="teacher" />;
     case 'B6': return <ChatLive />;
     case 'B7': return <TeacherNotificationsLive />;
-    case 'B8': return <TeacherFinanceLive />;
-    case 'B9': return <LeaveRequestsLive actor="teacher" />;
-    case 'B10': return <PersonalReportsLive actor="teacher" />;
-    case 'B11': return <ProfileSettingsLive actor="teacher" />;
-    case 'B12': return <MyExamsLive actor="teacher" />;
-    case 'B13': return <TeacherConductLive />;
-    case 'B14': return <TeacherTeachingProgressLive />;
+    case 'B8': return <AdminAcademicLive />;
+    case 'B9': return <PublishedExamSchedule path="/exam-periods/me/schedule" teacher />;
+    case 'B10': return <NotificationsLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
     case 'C3': return <StudentAttendanceLive />;
     case 'C4': return <AssignmentsLive actor="student" />;
-    case 'C5': return <NotificationsLive audience="student" />;
+    case 'C5': return <NotificationsLive />;
+    case 'C6': return <ExtracurricularLive actor="student" />;
     case 'C7': return <ChatLive />;
-    case 'C6': return <LeaveRequestsLive actor="student" />;
-    case 'C8': return <PersonalReportsLive actor="student" />;
-    case 'C9': return <ProfileSettingsLive actor="student" />;
-    case 'C10': return <MyExamsLive actor="student" />;
-    case 'C11': return <StudentYearEndLive />;
-    case 'C12': return <ClubLive actor="student" />;
     // ---- Parent ----
     case 'D1': return <ParentSwitchLive />;
     case 'D2': return <ParentMonitorLive />;
     case 'D3': return <ChatLive />;
     case 'D4': return <ParentInvoiceLive />;
-    case 'D5': return <NotificationsLive audience="parent" />;
-    case 'D6': return <LeaveRequestsLive actor="parent" />;
-    case 'D7': return <PersonalReportsLive actor="parent" />;
-    case 'D8': return <ProfileSettingsLive actor="parent" />;
-    case 'D9': return <MyExamsLive actor="parent" />;
-    case 'D10': return <ParentYearEndLive />;
-    case 'D11': return <ClubLive actor="parent" />;
+    case 'D5': return <ParentExtracurricularLive />;
+    case 'D6': return <NotificationsLive />;
     default: return <GeneralDashboard roleId="admin" />;
   }
 }

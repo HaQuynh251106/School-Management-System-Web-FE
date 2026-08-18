@@ -35,7 +35,6 @@ export type ModuleItem = {
 export type TabItem = {
   id: string;
   label: string;
-  description?: string;
   Icon: LucideIcon;
   content: ReactNode;
 };

@@ -1,6 +1,12 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { api, setTokens, hasToken, refreshSession, AUTH_SESSION_EXPIRED } from './client';
+import {
+  api,
+  setTokens,
+  hasToken,
+  getRefreshToken,
+  setAuthInvalidatedHandler,
+} from './client';
 import type { ApiUser } from './types';
 
 interface AuthContextValue {
@@ -15,46 +21,83 @@ const AuthContext = createContext<AuthContextValue>(null as unknown as AuthConte
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const authenticatedUserId = user?.id;
+  const clearSession = useCallback(() => {
+    setTokens(null, null);
+    setUser(null);
+  }, []);
 
   useEffect(() => {
-    let active = true;
     (async () => {
-      try {
-        const ready = hasToken() || await refreshSession();
-        if (ready && active) {
+      if (hasToken()) {
+        try {
           setUser(await api.get<ApiUser>('/me'));
+        } catch {
+          setTokens(null, null);
         }
-      } catch {
-        setTokens(null);
-        if (active) setUser(null);
-      } finally {
-        if (active) setLoading(false);
       }
+      setLoading(false);
     })();
-    const expire = () => {
-      setTokens(null);
-      setUser(null);
-    };
-    window.addEventListener(AUTH_SESSION_EXPIRED, expire);
-    return () => {
-      active = false;
-      window.removeEventListener(AUTH_SESSION_EXPIRED, expire);
-    };
   }, []);
+
+  useEffect(() => {
+    setAuthInvalidatedHandler(clearSession);
+    return () => setAuthInvalidatedHandler(null);
+  }, [clearSession]);
+
+  useEffect(() => {
+    if (!authenticatedUserId) return;
+    let disposed = false;
+    let validating = false;
+
+    const validateSession = async () => {
+      if (validating || disposed) return;
+      validating = true;
+      try {
+        const current = await api.get<ApiUser>('/me');
+        if (!disposed) setUser(current);
+      } catch {
+        if (!disposed) clearSession();
+      } finally {
+        validating = false;
+      }
+    };
+    const validateWhenVisible = () => {
+      if (document.visibilityState === 'visible') void validateSession();
+    };
+    const timer = window.setInterval(validateSession, 5_000);
+    window.addEventListener('focus', validateSession);
+    document.addEventListener('visibilitychange', validateWhenVisible);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', validateSession);
+      document.removeEventListener('visibilitychange', validateWhenVisible);
+    };
+  }, [authenticatedUserId, clearSession]);
 
   const login = async (username: string, password: string) => {
     const r = await api.post<{ user: ApiUser; accessToken: string; refreshToken: string }>(
       '/auth/login',
-      { username, password },
+      {
+        username,
+        password,
+        deviceToken: sessionStorage.getItem('sse-fcm-token') || undefined,
+        platform: 'WEB',
+        deviceName: navigator.userAgent.includes('Edg/')
+          ? 'Microsoft Edge'
+          : navigator.userAgent.includes('Chrome/')
+            ? 'Google Chrome'
+            : 'Trinh duyet web',
+      },
     );
-    setTokens(r.accessToken);
+    setTokens(r.accessToken, r.refreshToken);
     setUser(r.user);
   };
 
   const logout = () => {
-    api.post('/auth/logout').catch(() => {});
-    setTokens(null);
-    setUser(null);
+    api.post('/auth/logout', { refreshToken: getRefreshToken() }).catch(() => {});
+    clearSession();
   };
 
   return (

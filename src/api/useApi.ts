@@ -1,53 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from './client';
-import { BUSINESS_DATA_CHANGED, businessEventAffectsPath, type BusinessDataChangedDetail } from './liveEvents';
+
+type UseApiOptions = {
+  suppressErrorStatuses?: number[];
+};
 
 /** GET có loading/error + reload. Truyền path=null để bỏ qua (chưa đủ điều kiện). */
-export function useApi<T = any>(path: string | null) {
+export function useApi<T = any>(path: string | null, options: UseApiOptions = {}) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(!!path);
   const [error, setError] = useState<string | null>(null);
-  const [errorInfo, setErrorInfo] = useState<ApiError | null>(null);
-  const requestSequence = useRef(0);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const suppressedStatusesKey = (options.suppressErrorStatuses || []).join(',');
 
-  const reload = useCallback(async () => {
-    const requestId = ++requestSequence.current;
+  const reload = useCallback(() => setReloadVersion((current) => current + 1), []);
+
+  useEffect(() => {
     if (!path) {
       setData(null);
       setLoading(false);
       setError(null);
-      setErrorInfo(null);
-      return;
+      setErrorStatus(null);
+      return undefined;
     }
+    const controller = new AbortController();
     setLoading(true);
-    try {
-      const response = await api.get<T>(path);
-      if (requestId !== requestSequence.current) return;
-      setData(response);
-      setError(null);
-      setErrorInfo(null);
-    } catch (e) {
-      if (requestId !== requestSequence.current) return;
-      setError(e instanceof ApiError ? e.message : String(e));
-      setErrorInfo(e instanceof ApiError ? e : null);
-    } finally {
-      if (requestId === requestSequence.current) setLoading(false);
-    }
-  }, [path]);
+    setError(null);
+    setErrorStatus(null);
+    api
+      .get<T>(path, {
+        signal: controller.signal,
+        suppressErrorStatuses: suppressedStatusesKey
+          ? suppressedStatusesKey.split(',').map(Number)
+          : [],
+      })
+      .then((d) => {
+        if (controller.signal.aborted) return;
+        setData(d);
+        setError(null);
+        setErrorStatus(null);
+      })
+      .catch((e) => {
+        if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
+        setError(e instanceof ApiError ? e.message : String(e));
+        setErrorStatus(e instanceof ApiError ? e.status : null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [path, reloadVersion, suppressedStatusesKey]);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  useEffect(() => {
-    if (!path) return;
-    const refreshDomainData = (raw: Event) => {
-      const detail = (raw as CustomEvent<BusinessDataChangedDetail>).detail;
-      if (detail?.type && businessEventAffectsPath(detail.type, path)) void reload();
-    };
-    window.addEventListener(BUSINESS_DATA_CHANGED, refreshDomainData);
-    return () => window.removeEventListener(BUSINESS_DATA_CHANGED, refreshDomainData);
-  }, [path, reload]);
-
-  return { data, loading, error, errorInfo, reload, setData };
+  return { data, loading, error, errorStatus, reload, setData };
 }

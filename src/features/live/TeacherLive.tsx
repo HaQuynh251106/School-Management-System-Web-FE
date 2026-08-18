@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, History, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
-import { api, ApiError } from '../../api/client';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, LockKeyhole, Mail, MapPin, Megaphone, Phone, RefreshCw, RotateCcw, Search, Send, ShieldCheck, Trophy, UserCheck, UserRound, Users, UsersRound, UserX } from 'lucide-react';
+import { api } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, GradeChangeLog, GradeSubjectSummary, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest } from '../../api/types';
+import type { AcademicTrainingPlan, AcademicYear, Announcement, AnnualSubjectSummary, ApiUser, AttendanceRecord, SchoolClass, Semester, ExamCategory, GradeConfiguration, TimetableSlot, Grade, TeacherAnnouncementScope, TeachingAssignment } from '../../api/types';
+import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Badge, Section, StatusPill } from '../../components/ui';
-import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData } from './common';
+import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, PaginatedData } from './common';
 import { Modal } from './Modal';
-import { formatScore, gradeColumns, gradeKey, scoreTone } from './gradebook';
-import { NotificationsLive } from './SharedLive';
-import { useHashString } from '../../api/urlState';
-import { TeacherLoadRegistrationLive } from './WorkloadPlanningLive';
+import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
+import { YearSummaryPreviewWorkspace } from './YearSummaryPreviewWorkspace';
+import { YearReviewWorkspace } from './YearReviewWorkspace';
+import { useConfirm } from '../../app/ConfirmDialog';
+import { HomeroomRemarksPanel } from './HomeroomRemarksPanel';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
@@ -18,9 +20,10 @@ const ATT_STATES = ['PRESENT', 'LATE', 'ABSENT_UNEXCUSED', 'ABSENT_EXCUSED'];
 /* ===== B1 — Lớp được phân công ===== */
 export function TeacherClassesLive() {
   const { user } = useAuth();
-  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teaching-assignments');
+  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teacher-class-subjects');
   const classesApi = useApi<SchoolClass[]>('/classes');
-  const [classId, setClassId] = useHashString('class', '');
+  const trainingPlans = useApi<AcademicTrainingPlan[]>('/academic/training-plans');
+  const [classId, setClassId] = useState('');
   const [profileTarget, setProfileTarget] = useState<{ classId: string; studentId: string } | null>(null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const studentProfile = useApi<ApiUser>(profileTarget
@@ -37,8 +40,8 @@ export function TeacherClassesLive() {
     const g: Record<string, { classId: string; subjects: Set<string>; count: number }> = {};
     (teachingAssignments.data || []).forEach((assignment) => {
       g[assignment.classId] = g[assignment.classId] || { classId: assignment.classId, subjects: new Set(), count: 0 };
-      g[assignment.classId].subjects.add(assignment.subjectName);
-      g[assignment.classId].count += assignment.weeklyPeriods;
+      g[assignment.classId].subjects.add(assignment.subjectName || assignment.subjectId);
+      g[assignment.classId].count += assignment.weeklyPeriods ?? 1;
     });
     (classesApi.data || [])
       .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
@@ -53,12 +56,24 @@ export function TeacherClassesLive() {
     [classesApi.data, user?.id],
   );
   const selectedClass = classId ? classMap[classId] : undefined;
+  const selectedTrainingPlan = useMemo(() => (trainingPlans.data || [])
+    .filter((plan) => plan.academicYearId === selectedClass?.academicYearId
+      && plan.gradeLevel === selectedClass?.gradeLevel
+      && ['PUBLISHED', 'LOCKED'].includes(plan.status))
+    .sort((left, right) => right.versionNumber - left.versionNumber)[0],
+  [selectedClass?.academicYearId, selectedClass?.gradeLevel, trainingPlans.data]);
+  const trainingPlanSummary = useApi<AnnualSubjectSummary[]>(selectedTrainingPlan
+    ? `/academic/training-plans/${selectedTrainingPlan.id}/annual-summary` : null);
+  const assignedSubjectIds = useMemo(() => new Set((teachingAssignments.data || [])
+    .filter((assignment) => assignment.classId === classId)
+    .map((assignment) => assignment.subjectId)), [classId, teachingAssignments.data]);
   const selectedIsHomeroom = selectedClass?.homeroomTeacherId === user?.id;
   const profileClass = profileTarget ? classMap[profileTarget.classId] : undefined;
 
   return (
-    <>
-    <TeacherLoadRegistrationLive />
+    <div style={{ display: 'grid', gap: 16 }}>
+    <YearSummaryPreviewWorkspace teacherId={user?.id} />
+    <YearReviewWorkspace />
     <Section title="Lớp giảng dạy và chủ nhiệm" subtitle="Theo dõi lớp phụ trách, danh sách học sinh và hồ sơ lớp chủ nhiệm" wide>
       {homeroomClasses.length > 0 && (
         <div className="homeroom-overview">
@@ -129,6 +144,18 @@ export function TeacherClassesLive() {
           </Async>
         </div>
       )}
+      {classId && <div className="teacher-published-plan">
+        <div className="teacher-published-plan-head">
+          <div><span>Kế hoạch giáo dục đã công bố</span><strong>{selectedTrainingPlan?.name || `Lớp ${selectedClass?.code || classId}`}</strong></div>
+          {selectedTrainingPlan && <StatusPill value={selectedTrainingPlan.status} />}
+        </div>
+        {!selectedTrainingPlan
+          ? <div className="empty-state"><strong>Khối này chưa có kế hoạch được công bố</strong></div>
+          : <Async state={trainingPlanSummary} allowEmpty empty="Kế hoạch chưa có môn học">{(rows) => {
+            const visibleRows = rows.filter((row) => assignedSubjectIds.has(row.subjectId));
+            return visibleRows.length ? <div className="teacher-plan-subject-grid">{visibleRows.map((row) => <article key={row.subjectId}><div><strong>{row.subjectName}</strong><small>Phiên bản {selectedTrainingPlan.versionNumber}</small></div><span>HK1 <b>{row.semester1Periods}</b></span><span>HK2 <b>{row.semester2Periods}</b></span><span>Cả năm <b>{row.annualPeriods} tiết</b></span></article>)}</div> : <div className="empty-state"><strong>Kế hoạch chưa có môn thầy cô được phân công ở lớp này</strong></div>;
+          }}</Async>}
+      </div>}
       {profileTarget && (
         <Modal
           title="Hồ sơ học sinh"
@@ -136,12 +163,12 @@ export function TeacherClassesLive() {
           footer={<button className="live-btn subtle" onClick={() => setProfileTarget(null)}>Đóng</button>}
         >
           <Async state={studentProfile} empty="Không tìm thấy hồ sơ học sinh">
-            {(student) => <HomeroomStudentProfile student={student} schoolClass={profileClass} />}
+            {(student) => <><HomeroomStudentProfile student={student} schoolClass={profileClass} /><HomeroomRemarksPanel studentId={student.id} canEdit /></>}
           </Async>
         </Modal>
       )}
     </Section>
-    </>
+    </div>
   );
 }
 
@@ -228,9 +255,9 @@ function homeroomGenderLabel(value?: string | null) {
 
 /* ===== B3 — Sổ điểm danh ===== */
 export function TeacherAttendanceLive() {
+  const confirmAction = useConfirm();
   const { user } = useAuth();
   const slots = useApi<TimetableSlot[]>('/me/timetable');
-  const classes = useApi<SchoolClass[]>('/classes');
   const [slotId, setSlotId] = useState('');
   const [date, setDate] = useState(TODAY);
   const toast = useToast();
@@ -242,41 +269,18 @@ export function TeacherAttendanceLive() {
       || item.subjectName.trim().toLocaleLowerCase('vi') === mainSubject
     ));
   }, [slots.data, user?.mainSubject]);
-  const classMap = useMemo(
-    () => new Map((classes.data || []).map((schoolClass) => [schoolClass.id, schoolClass.code || schoolClass.name])),
-    [classes.data],
-  );
-  const classLabel = (classId: string) => classMap.get(classId) || 'Lớp chưa xác định';
   const slot = attendanceSlots.find((item) => item.id === slotId);
-  const dayStatus = useApi<AttendanceDayStatus>(slot
-    ? `/attendance/day-status?date=${encodeURIComponent(date)}`
-    : null);
-  const sessionStatus = useApi<AttendanceSessionStatus>(slot
-    ? `/attendance/session-status?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
-    : null);
   const students = useApi<ApiUser[]>(slot ? `/classes/${slot.classId}/students` : null);
   const attendance = useApi<AttendanceRecord[]>(slot
     ? `/attendance?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
     : null);
-  const approvedLeaves = useApi<LeaveRequest[]>(slot
-    ? `/attendance/approved-leaves?slotId=${encodeURIComponent(slot.id)}&date=${encodeURIComponent(date)}`
-    : null);
-  const approvedLeaveStudentIds = useMemo(
-    () => new Set((approvedLeaves.data || []).map((request) => request.studentId)),
-    [approvedLeaves.data],
-  );
-  const attendanceVersions = useMemo(() => new Map((attendance.data || []).map((record) => [
-    record.studentId, record.version,
-  ])), [attendance.data]);
   const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
   const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
-  const [search, setSearch] = useHashString('q', '');
-  const [statusFilter, setStatusFilter] = useHashString('status', 'ALL');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [saving, setSaving] = useState(false);
   const [hasSavedRegister, setHasSavedRegister] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState('');
-  const [unlockReason, setUnlockReason] = useState('');
-  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     if (!slot || !students.data || attendance.loading) return;
@@ -285,17 +289,13 @@ export function TeacherAttendanceLive() {
       .map((record) => [record.studentId, record]));
     const next = Object.fromEntries(students.data.map((student) => {
       const record = existing.get(student.id);
-      const approved = approvedLeaveStudentIds.has(student.id);
-      return [student.id, {
-        status: record?.status || (approved ? 'ABSENT_EXCUSED' : 'PRESENT'),
-        note: record?.note || (approved ? 'Đơn xin nghỉ đã được GVCN duyệt' : ''),
-      }];
+      return [student.id, { status: record?.status || 'PRESENT', note: record?.note || '' }];
     }));
     setMarks(next);
     setBaseline(next);
     setHasSavedRegister(existing.size > 0);
     setLastSavedAt(existing.size ? 'Đã tải dữ liệu đã lưu' : 'Chưa có dữ liệu cho tiết này');
-  }, [approvedLeaveStudentIds, attendance.data, attendance.loading, date, slot, students.data]);
+  }, [attendance.data, attendance.loading, date, slot, students.data]);
 
   const dirty = useMemo(() => JSON.stringify(marks) !== JSON.stringify(baseline), [baseline, marks]);
   const saveRequired = !hasSavedRegister || dirty;
@@ -309,36 +309,24 @@ export function TeacherAttendanceLive() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeave);
   }, [dirty]);
 
-  const confirmDiscard = () => !dirty || window.confirm('Các thay đổi điểm danh chưa được lưu. Bạn có muốn bỏ thay đổi?');
+  const confirmDiscard = async () => !dirty || confirmAction({ title: 'Bỏ thay đổi điểm danh?', message: 'Các thay đổi điểm danh chưa được lưu sẽ bị mất.', confirmLabel: 'Bỏ thay đổi', tone: 'warning' });
 
-  const changeSlot = (nextSlotId: string) => {
-    if (!confirmDiscard()) return;
+  const changeSlot = async (nextSlotId: string) => {
+    if (!(await confirmDiscard())) return;
     setSlotId(nextSlotId);
     setSearch('');
     setStatusFilter('ALL');
-    setUnlockReason('');
   };
 
-  const changeDate = (nextDate: string) => {
-    if (!confirmDiscard()) return;
+  const changeDate = async (nextDate: string) => {
+    if (!(await confirmDiscard())) return;
     setDate(nextDate);
-    setUnlockReason('');
   };
 
   const updateStatus = (studentId: string, status: string) => {
-    const resolvedStatus = approvedLeaveStudentIds.has(studentId) && status.startsWith('ABSENT')
-      ? 'ABSENT_EXCUSED'
-      : status;
     setMarks((current) => ({
       ...current,
-      [studentId]: {
-        status: resolvedStatus,
-        note: resolvedStatus === 'PRESENT'
-          ? ''
-          : approvedLeaveStudentIds.has(studentId) && resolvedStatus === 'ABSENT_EXCUSED'
-            ? 'Đơn xin nghỉ đã được GVCN duyệt'
-            : current[studentId]?.note || '',
-      },
+      [studentId]: { status, note: status === 'PRESENT' ? '' : current[studentId]?.note || '' },
     }));
   };
 
@@ -349,9 +337,7 @@ export function TeacherAttendanceLive() {
   const markAll = (status: string) => {
     setMarks((current) => Object.fromEntries((students.data || []).map((student) => [
       student.id,
-      approvedLeaveStudentIds.has(student.id) && status === 'PRESENT'
-        ? { status: 'ABSENT_EXCUSED', note: 'Đơn xin nghỉ đã được GVCN duyệt' }
-        : { status, note: status === 'PRESENT' ? '' : current[student.id]?.note || '' },
+      { status, note: status === 'PRESENT' ? '' : current[student.id]?.note || '' },
     ])));
   };
 
@@ -359,8 +345,6 @@ export function TeacherAttendanceLive() {
 
   const submit = async () => {
     if (!slot) return toast.show('err', 'Vui lòng chọn tiết học');
-    if (dayStatus.data?.attendanceRequired === false) return toast.show('err', `Không cần điểm danh ngày nghỉ: ${dayStatus.data.title || 'Theo thông báo của nhà trường'}`);
-    if (!sessionStatus.data?.canMark) return toast.show('err', sessionStatus.data?.message || 'Sổ điểm danh hiện chưa được mở');
     const missingNotes = (students.data || []).filter((student) => {
       const mark = marks[student.id];
       return mark && mark.status !== 'PRESENT' && !mark.note.trim();
@@ -377,7 +361,6 @@ export function TeacherAttendanceLive() {
           studentId: student.id,
           status: marks[student.id]?.status || 'PRESENT',
           note: marks[student.id]?.note.trim() || null,
-          expectedVersion: attendanceVersions.get(student.id),
         })),
       };
       const saved = await api.post<AttendanceRecord[]>('/attendance/bulk', body);
@@ -388,39 +371,13 @@ export function TeacherAttendanceLive() {
       }));
       setMarks(next);
       setBaseline(next);
-      attendance.setData(saved);
       setHasSavedRegister(true);
       setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
-      sessionStatus.reload();
-      toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Hệ thống chỉ gửi cảnh báo cho trường hợp cần phụ huynh chú ý; học sinh có đơn nghỉ đã duyệt không nhận thông báo trùng.`);
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 409) {
-        await attendance.reload();
-        toast.show('err', 'Sổ điểm danh vừa được cập nhật ở phiên khác. Dữ liệu mới nhất đã được tải lại; vui lòng kiểm tra trước khi lưu lại.');
-      } else {
-        toast.show('err', e instanceof Error ? e.message : 'Không thể lưu điểm danh');
-      }
+      toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Mọi trạng thái thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
+    } catch (e: any) {
+      toast.show('err', e.message);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const unlockLateAttendance = async () => {
-    if (!slot) return;
-    if (unlockReason.trim().length < 10) return toast.show('err', 'Vui lòng ghi lý do cụ thể, tối thiểu 10 ký tự');
-    setUnlocking(true);
-    try {
-      const result = await api.post<AttendanceSessionStatus>('/attendance/unlock', {
-        slotId: slot.id,
-        date,
-        reason: unlockReason.trim(),
-      });
-      toast.show('ok', result.message || 'Đã mở khóa điểm danh muộn');
-      sessionStatus.reload();
-    } catch (error: any) {
-      toast.show('err', error.message);
-    } finally {
-      setUnlocking(false);
     }
   };
 
@@ -447,8 +404,9 @@ export function TeacherAttendanceLive() {
   }, [marks, search, statusFilter, students.data]);
 
   return (
+    <>
     <Section title="Sổ điểm danh điện tử" subtitle="Chỉ điểm danh các tiết đúng môn chuyên ngành được phân công" wide
-      action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired || dayStatus.loading || sessionStatus.loading || !sessionStatus.data?.canMark}><Send size={15} /> {dayStatus.data?.attendanceRequired === false ? 'Ngày nghỉ · Không cần lưu' : sessionStatus.data?.requiresUnlockReason ? 'Đã khóa · Cần lý do' : saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
+      action={<button className="live-btn" onClick={submit} disabled={!slot || saving || !saveRequired}><Send size={15} /> {saving ? 'Đang lưu…' : 'Lưu điểm danh'}</button>}>
       {toast.node}
       <div className="attendance-register-shell">
         <div className="attendance-session-panel">
@@ -461,14 +419,14 @@ export function TeacherAttendanceLive() {
             <label><span>Tiết học phụ trách</span><select className="live-select" value={slotId} onChange={(event) => changeSlot(event.target.value)}>
               <option value="">{attendanceSlots.length ? '— Chọn tiết học —' : '— Chưa có tiết đúng môn chuyên ngành —'}</option>
               {attendanceSlots.map((item) => (
-                <option key={item.id} value={item.id}>{DAY_LABEL[item.dayOfWeek]} · Tiết {item.periodNo} · {item.subjectName} · {classLabel(item.classId)}</option>
+                <option key={item.id} value={item.id}>{DAY_LABEL[item.dayOfWeek]} · Tiết {item.periodNo} · {item.subjectName} · {item.classId}</option>
               ))}
             </select></label>
             <label><span>Ngày điểm danh</span><input className="live-input" type="date" value={date} onChange={(event) => changeDate(event.target.value)} /></label>
           </div>
           {slot && <div className="attendance-session-context">
             <div><span><CalendarCheck2 size={19} /></span><p><small>Môn học</small><strong>{slot.subjectName}</strong></p></div>
-            <div><span><Users size={19} /></span><p><small>Lớp</small><strong>{classLabel(slot.classId)}</strong></p></div>
+            <div><span><Users size={19} /></span><p><small>Lớp</small><strong>{slot.classId}</strong></p></div>
             <div><span><Clock3 size={19} /></span><p><small>Thời gian</small><strong>Tiết {slot.periodNo} · {slot.startTime || '—'}–{slot.endTime || '—'}</strong></p></div>
             <div><span><MapPin size={19} /></span><p><small>Phòng học</small><strong>{slot.roomCode || 'Chưa xếp phòng'}</strong></p></div>
           </div>}
@@ -476,37 +434,10 @@ export function TeacherAttendanceLive() {
             {dirty || !hasSavedRegister ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />}
             <span>{dirty ? 'Có thay đổi chưa lưu' : lastSavedAt}</span>
           </div>}
-          {slot && sessionStatus.data && <div className={`attendance-session-policy state-${sessionStatus.data.state.toLowerCase()}`}>
-            {sessionStatus.data.canMark ? <CheckCircle2 size={16} /> : <LockKeyhole size={16} />}
-            <div><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><small>{sessionStatus.data.message}</small></div>
-            <span>{sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</span>
-          </div>}
-          {slot && (approvedLeaves.data?.length || 0) > 0 && <div className="attendance-save-state saved">
-            <ShieldCheck size={15} />
-            <span>{approvedLeaves.data!.length} học sinh có đơn nghỉ đã duyệt; hệ thống đã tự điền “Vắng có phép”.</span>
-          </div>}
         </div>
 
-        {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : dayStatus.data?.attendanceRequired === false ? (
-          <div className="attendance-holiday-state">
-            <span><CalendarDays size={38} /></span>
-            <div><small>Thông báo nghỉ từ nhà trường</small><strong>{dayStatus.data.title || 'Ngày nghỉ toàn trường'}</strong><p>{dayStatus.data.reason || 'Giáo viên không cần thực hiện điểm danh trong ngày này.'}</p><b>Thời gian nghỉ: {fmtDate(dayStatus.data.holidayStartDate || date)} → {fmtDate(dayStatus.data.holidayEndDate || date)}</b></div>
-            <Badge tone="green">Đã miễn điểm danh</Badge>
-          </div>
-        ) : sessionStatus.data?.requiresUnlockReason ? (
-          <div className="attendance-late-unlock">
-            <div className="attendance-late-unlock-icon"><LockKeyhole size={34} /></div>
-            <div className="attendance-late-unlock-copy"><small>Tiết học đã kết thúc</small><strong>Điểm danh muộn cần được ghi nhận lý do</strong><p>Để bảo đảm tính minh bạch của sổ chuyên cần, thầy/cô vui lòng mô tả cụ thể nguyên nhân chưa điểm danh trong thời gian tiết học.</p></div>
-            <label><span>Lý do quên điểm danh <b>*</b></span><textarea rows={4} maxLength={1000} value={unlockReason} onChange={(event) => setUnlockReason(event.target.value)} placeholder="Ví dụ: Thiết bị lớp học mất kết nối mạng trong suốt tiết học…" /><small>{unlockReason.trim().length}/1000 ký tự · Tối thiểu 10 ký tự</small></label>
-            <div className="attendance-late-unlock-note"><ShieldCheck size={17} /><span>Lý do và thời điểm mở khóa sẽ được lưu vào lịch sử hệ thống, đồng thời thông báo tới quản trị viên.</span></div>
-            <button type="button" className="live-btn attendance-unlock-button" disabled={unlocking || unlockReason.trim().length < 10} onClick={unlockLateAttendance}><LockKeyhole size={16} /> {unlocking ? 'Đang mở khóa…' : 'Gửi lý do và mở khóa điểm danh'}</button>
-          </div>
-        ) : sessionStatus.data && !sessionStatus.data.canMark ? (
-          <div className="attendance-locked-state">
-            <span><Clock3 size={34} /></span><strong>{attendanceSessionLabel(sessionStatus.data.state)}</strong><p>{sessionStatus.data.message}</p><small>Thời gian tiết học: {sessionStatus.data.startTime || '—'}–{sessionStatus.data.endTime || '—'}</small>
-          </div>
-        ) : (
-          <Async state={{ data: students.data, loading: students.loading || attendance.loading || approvedLeaves.loading || dayStatus.loading || sessionStatus.loading, error: students.error || attendance.error || approvedLeaves.error || dayStatus.error || sessionStatus.error }} empty="Lớp chưa có học sinh">
+        {!slot ? <div className="attendance-empty"><CalendarCheck2 size={34} /><strong>{attendanceSlots.length ? 'Chọn tiết học để bắt đầu' : 'Chưa có tiết học phù hợp'}</strong><span>{attendanceSlots.length ? 'Sổ điểm danh sẽ tự tải dữ liệu đã lưu theo ngày và tiết học.' : `Chỉ các tiết môn ${user?.mainSubject || 'chuyên ngành'} do thầy cô phụ trách mới được hiển thị tại đây.`}</span></div> : (
+          <Async state={{ data: students.data, loading: students.loading || attendance.loading, error: students.error || attendance.error }} empty="Lớp chưa có học sinh">
             {() => <>
               <div className="attendance-summary-grid">
                 <article className="total"><span><Users size={19} /></span><div><small>Sĩ số lớp</small><strong>{summary.total}</strong></div></article>
@@ -534,10 +465,9 @@ export function TeacherAttendanceLive() {
                   <thead><tr><th>STT</th><th>Học sinh</th><th>Trạng thái chuyên cần</th><th>Ghi chú</th></tr></thead>
                   <tbody>{pagedStudents.map((student) => {
                     const mark = marks[student.id] || { status: 'PRESENT', note: '' };
-                    const hasApprovedLeave = approvedLeaveStudentIds.has(student.id);
                     return <tr key={student.id} data-status={mark.status}>
                       <td>{(students.data || []).findIndex((item) => item.id === student.id) + 1}</td>
-                      <td><div className="attendance-student"><span>{student.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><p><strong>{student.fullName}</strong><small>{student.studentCode || 'Chưa có mã học sinh'}</small>{hasApprovedLeave && <b className="attendance-approved-leave"><ShieldCheck size={12} /> Đơn nghỉ đã duyệt</b>}</p></div></td>
+                      <td><div className="attendance-student"><span>{student.fullName.split(/\s+/).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><p><strong>{student.fullName}</strong><small>{student.studentCode || 'Chưa có mã học sinh'}</small></p></div></td>
                       <td><div className="attendance-status-options">{ATT_STATES.map((status) => <button
                         type="button"
                         key={status}
@@ -562,13 +492,15 @@ export function TeacherAttendanceLive() {
               </PaginatedData>
               <footer className="attendance-register-footer">
                 <span>Hiển thị {filteredStudents.length}/{summary.total} học sinh</span>
-                <p><ShieldCheck size={15} /> {sessionStatus.data?.state === 'LATE_UNLOCKED' || sessionStatus.data?.state === 'COMPLETED_LATE' ? `Điểm danh muộn · Lý do: ${sessionStatus.data.unlockReason}` : 'Cảnh báo chỉ gửi khi cần chú ý; vắng có phép từ đơn đã duyệt không tạo thông báo điểm danh trùng.'}</p>
+                <p><ShieldCheck size={15} /> Trạng thái thay đổi được tự động gửi tới học sinh và phụ huynh; dữ liệu không đổi sẽ không tạo thông báo trùng.</p>
               </footer>
             </>}
           </Async>
         )}
       </div>
     </Section>
+    <AttendanceExcusePanel mode="review" />
+    </>
   );
 }
 
@@ -586,85 +518,95 @@ function attendanceStatusTone(status: string) {
   return 'unexcused';
 }
 
-function attendanceSessionLabel(state: AttendanceSessionStatus['state']) {
-  return ({
-    HOLIDAY: 'Ngày nghỉ',
-    INVALID: 'Không đúng lịch học',
-    UPCOMING: 'Tiết học chưa bắt đầu',
-    OPEN: 'Đang trong thời gian điểm danh',
-    LOCKED_REASON_REQUIRED: 'Đã khóa điểm danh',
-    LATE_UNLOCKED: 'Đã mở khóa điểm danh muộn',
-    COMPLETED: 'Đã hoàn tất điểm danh',
-    COMPLETED_LATE: 'Đã hoàn tất điểm danh muộn',
-  } as Record<AttendanceSessionStatus['state'], string>)[state];
-}
-
 /* ===== B4 — Bảng điểm ===== */
 export function TeacherGradesLive() {
   const { user } = useAuth();
-  const slots = useApi<TimetableSlot[]>('/me/timetable');
+  const teachingAssignments = useApi<TeachingAssignment[]>('/me/teacher-class-subjects');
   const classes = useApi<SchoolClass[]>('/classes');
+  const years = useApi<AcademicYear[]>('/academic-years');
   const semesters = useApi<Semester[]>('/semesters');
   const cats = useApi<ExamCategory[]>('/exam-categories');
   const toast = useToast();
+  const [classId, setClassId] = useState('');
+  const [semesterId, setSemesterId] = useState('');
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [reason, setReason] = useState('');
+
+  const activeYearId = years.data?.find((year) => year.status === 'ACTIVE')?.id || '';
+  const semesterOptions = useMemo(() => (semesters.data || [])
+    .filter((semester) => !activeYearId || semester.academicYearId === activeYearId)
+    .filter((semester) => (teachingAssignments.data || []).some((assignment) => assignment.semesterId === semester.id)
+      || (classes.data || []).some((schoolClass) => schoolClass.academicYearId === semester.academicYearId && schoolClass.homeroomTeacherId === user?.id))
+    .sort((left, right) => left.sequence - right.sequence),
+  [activeYearId, classes.data, semesters.data, teachingAssignments.data, user?.id]);
 
   const classOpts = useMemo(() => {
     const m: Record<string, true> = {};
-    const mainSubject = user?.mainSubject?.trim().toLocaleLowerCase('vi');
-    (slots.data || [])
-      .filter((slot) => Boolean(mainSubject) && (
-        slot.subjectId.trim().toLocaleLowerCase('vi') === mainSubject
-        || slot.subjectName.trim().toLocaleLowerCase('vi') === mainSubject)
-      )
-      .forEach((slot) => (m[slot.classId] = true));
+    const selectedSemester = semesterOptions.find((semester) => semester.id === semesterId);
+    (teachingAssignments.data || [])
+      .filter((assignment) => !semesterId || assignment.semesterId === semesterId)
+      .forEach((assignment) => (m[assignment.classId] = true));
     (classes.data || [])
-      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id)
+      .filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id
+        && (!selectedSemester || schoolClass.academicYearId === selectedSemester.academicYearId))
       .forEach((schoolClass) => (m[schoolClass.id] = true));
-    return Object.keys(m);
-  }, [classes.data, slots.data, user?.id, user?.mainSubject]);
-
-  const [classId, setClassId] = useHashString('class', '');
-  const [semesterId, setSemesterId] = useHashString('semester', '');
-  const [selectedSubjectId, setSelectedSubjectId] = useHashString('subject', '');
-  const [reason, setReason] = useState('');
-  const [historyGradeId, setHistoryGradeId] = useState('');
+    const classMap = new Map((classes.data || []).map((item) => [item.id, item.code]));
+    return Object.keys(m).sort((left, right) => (classMap.get(left) || left).localeCompare(classMap.get(right) || right, 'vi'));
+  }, [classes.data, semesterId, semesterOptions, teachingAssignments.data, user?.id]);
 
   useEffect(() => {
-    if (!classId && classOpts.length) setClassId(classOpts[0]);
-  }, [classId, classOpts, setClassId]);
+    if (!classOpts.includes(classId)) setClassId(classOpts[0] || '');
+  }, [classId, classOpts]);
 
   useEffect(() => {
-    if (!semesterId && semesters.data?.length) {
-      setSemesterId(semesters.data.find((semester) => semester.status === 'ACTIVE')?.id || semesters.data[0].id);
+    if (!semesterOptions.some((semester) => semester.id === semesterId)) {
+      setSemesterId(semesterOptions.find((semester) => semester.status === 'ACTIVE')?.id || semesterOptions[0]?.id || '');
     }
-  }, [semesterId, semesters.data, setSemesterId]);
+  }, [semesterId, semesterOptions]);
 
-  const gradebookContext = useApi<TeacherGradebookContext>(classId && semesterId
-    ? `/me/gradebook-context?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}`
-    : null);
-  const contextMatches = gradebookContext.data?.classId === classId && gradebookContext.data?.semesterId === semesterId;
-  const contextSubjects = contextMatches ? gradebookContext.data?.subjects || [] : [];
+  const contextSubjects = useMemo(() => {
+    const unique = new Map<string, { subjectId: string; subjectName: string; teacherName: string; editable: boolean }>();
+    (teachingAssignments.data || [])
+      .filter((assignment) => assignment.classId === classId && assignment.semesterId === semesterId)
+      .forEach((assignment) => unique.set(assignment.subjectId, {
+        subjectId: assignment.subjectId,
+        subjectName: assignment.subjectName,
+        teacherName: assignment.teacherName,
+        editable: true,
+      }));
+    return [...unique.values()];
+  }, [classId, semesterId, teachingAssignments.data]);
+  const selectedIsHomeroom = classes.data?.find((schoolClass) => schoolClass.id === classId)?.homeroomTeacherId === user?.id;
 
   useEffect(() => {
-    if (!contextMatches || !gradebookContext.data) return;
-    const currentIsAvailable = gradebookContext.data.subjects.some((subject) => subject.subjectId === selectedSubjectId);
-    if (!currentIsAvailable) setSelectedSubjectId(gradebookContext.data.subjectId);
-  }, [contextMatches, gradebookContext.data, selectedSubjectId, setSelectedSubjectId]);
+    const currentIsAvailable = contextSubjects.some((subject) => subject.subjectId === selectedSubjectId);
+    if (!currentIsAvailable) setSelectedSubjectId(contextSubjects[0]?.subjectId || '');
+  }, [contextSubjects, selectedSubjectId]);
 
   const selectedSubject = contextSubjects.find((subject) => subject.subjectId === selectedSubjectId);
   const subjectId = selectedSubject?.subjectId || '';
   const canEdit = Boolean(selectedSubject?.editable);
+  const gradeConfigs = useApi<GradeConfiguration[]>(subjectId && semesterId
+    ? `/grade-configurations?subjectId=${encodeURIComponent(subjectId)}&semesterId=${encodeURIComponent(semesterId)}`
+    : null);
   const students = useApi<ApiUser[]>(classId ? `/classes/${classId}/students` : null);
   const existing = useApi<Grade[]>(
     classId && subjectId && semesterId
       ? `/grades?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}&subjectId=${encodeURIComponent(subjectId)}`
       : null,
   );
-  const summaries = useApi<GradeSubjectSummary[]>(classId && subjectId && semesterId
-    ? `/grades/summary?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}&subjectId=${encodeURIComponent(subjectId)}`
-    : null);
-  const gradeHistory = useApi<GradeChangeLog[]>(historyGradeId ? `/grades/${encodeURIComponent(historyGradeId)}/change-logs` : null);
   const [scores, setScores] = useState<Record<string, string>>({});
+  const effectiveCategories = useMemo<ExamCategory[]>(() => {
+    if (!(gradeConfigs.data || []).length) return cats.data || [];
+    const defaults = new Map((cats.data || []).map((category) => [category.code, category]));
+    return (gradeConfigs.data || []).filter((config) => config.active).map((config) => ({
+      id: defaults.get(config.categoryCode)?.id || config.id,
+      code: config.categoryCode,
+      name: config.categoryName || defaults.get(config.categoryCode)?.name || config.categoryCode,
+      weight: config.weight,
+      requiredCount: config.requiredCount,
+    }));
+  }, [cats.data, gradeConfigs.data]);
 
   useEffect(() => {
     const m: Record<string, string> = {};
@@ -672,18 +614,14 @@ export function TeacherGradesLive() {
     setScores(m);
   }, [existing.data]);
 
-  const ready = Boolean(classId && semesterId && subjectId && cats.data?.length);
+  const ready = Boolean(classId && semesterId && subjectId && effectiveCategories.length);
   const classMap = useMemo(() => new Map((classes.data || []).map((item) => [item.id, item.code])), [classes.data]);
   const subjectName = selectedSubject?.subjectName || '';
-  const columns = useMemo(() => gradeColumns(cats.data || []), [cats.data]);
+  const columns = useMemo(() => gradeColumns(effectiveCategories), [effectiveCategories]);
   const gradeVersions = useMemo(() => new Map((existing.data || []).map((grade) => [
     gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1),
     grade.version,
   ])), [existing.data]);
-  const gradeByKey = useMemo(() => new Map((existing.data || []).map((grade) => [
-    gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1), grade,
-  ])), [existing.data]);
-  const summaryByStudent = useMemo(() => new Map((summaries.data || []).map((item) => [item.studentId, item])), [summaries.data]);
 
   const gradeRows = useMemo(() => (students.data || []).map((student) => {
     const values = columns.flatMap((column) => {
@@ -694,8 +632,8 @@ export function TeacherGradesLive() {
         score: Number(value),
       }];
     });
-    return { student, values, average: summaryByStudent.get(student.id)?.average ?? null };
-  }), [students.data, columns, scores, summaryByStudent]);
+    return { student, values, average: weightedAverage(values, effectiveCategories) };
+  }), [students.data, effectiveCategories, columns, scores]);
 
   const averages = gradeRows.map((row) => row.average).filter((score): score is number => score != null);
   const classAverage = averages.length
@@ -715,21 +653,14 @@ export function TeacherGradesLive() {
     const batches = columns.map((column) => ({
       column,
       entries: (students.data || [])
-        .filter((student) => {
-          const key = gradeKey(student.id, column.category.code, column.assessmentIndex);
-          const value = scores[key];
-          const current = gradeByKey.get(key);
-          return value !== undefined && value !== '' && (!current || Number(value) !== current.score);
-        })
+        .filter((student) => scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== undefined && scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== '')
         .map((student) => {
           const key = gradeKey(student.id, column.category.code, column.assessmentIndex);
           return { studentId: student.id, score: Number(scores[key]), expectedVersion: gradeVersions.get(key) };
         }),
     })).filter((batch) => batch.entries.length);
     const entryCount = batches.reduce((total, batch) => total + batch.entries.length, 0);
-    if (!entryCount) return toast.show('err', 'Không có điểm mới hoặc thay đổi cần lưu');
-    const updatesExistingGrade = batches.some((batch) => batch.entries.some((entry) => entry.expectedVersion !== undefined));
-    if (updatesExistingGrade && !reason.trim()) return toast.show('err', 'Vui lòng nhập lý do khi sửa điểm đã có');
+    if (!entryCount) return toast.show('err', 'Chưa nhập đầu điểm nào');
 
     try {
       await Promise.all(batches.map((batch) => api.post('/grades/bulk', {
@@ -738,18 +669,12 @@ export function TeacherGradesLive() {
         semesterId,
         category: batch.column.category.code,
         assessmentIndex: batch.column.assessmentIndex,
-        reason: updatesExistingGrade ? reason.trim() : null,
+        reason,
         entries: batch.entries,
       })));
       toast.show('ok', `Đã lưu ${entryCount} đầu điểm. Điểm mới hoặc điểm thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
-      setReason('');
-      await Promise.all([existing.reload(), summaries.reload()]);
-    } catch (e: unknown) {
-      if (e instanceof ApiError && e.status === 409) {
-        await Promise.all([existing.reload(), summaries.reload()]);
-        toast.show('err', 'Điểm vừa được cập nhật ở phiên khác. Dữ liệu mới nhất đã được tải lại; vui lòng kiểm tra trước khi lưu.');
-      } else toast.show('err', e instanceof Error ? e.message : 'Không thể lưu bảng điểm');
-    }
+      existing.reload();
+    } catch (e: any) { toast.show('err', e.message); }
   };
 
   return (
@@ -757,27 +682,27 @@ export function TeacherGradesLive() {
       action={<button className="live-btn gradebook-save" onClick={submit} disabled={!ready || !canEdit}>{canEdit ? <Send size={15} /> : <LockKeyhole size={15} />} {canEdit ? 'Lưu sổ điểm' : 'Chỉ xem'}</button>}>
       {toast.node}
       <div className="gradebook-filterbar">
+        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
+          <option value="">— Chọn học kỳ —</option>{semesterOptions.map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
+        </select></label>
         <label><span>Lớp giảng dạy</span><select className="live-select" value={classId} onChange={(e) => setClassId(e.target.value)}>
           <option value="">— Chọn lớp —</option>{classOpts.map((id) => <option key={id} value={id}>{classMap.get(id) || id}</option>)}
         </select></label>
-        <label><span>Học kỳ</span><select className="live-select" value={semesterId} onChange={(e) => setSemesterId(e.target.value)}>
-          <option value="">— Chọn học kỳ —</option>{(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
-        </select></label>
-        {contextMatches && gradebookContext.data?.homeroomTeacher ? (
+        {selectedIsHomeroom && contextSubjects.length > 1 ? (
           <label><span>Môn học của lớp chủ nhiệm</span><select className="live-select" value={subjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
             {contextSubjects.map((subject) => <option key={subject.subjectId} value={subject.subjectId}>{subject.subjectName}{subject.editable ? ' · Có thể chỉnh sửa' : ' · Chỉ xem'}</option>)}
           </select></label>
         ) : (
-          <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
+          <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
         )}
         {canEdit ? (
-          <label className="gradebook-reason"><span>Lý do sửa điểm đã có *</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+          <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
         ) : (
           <div className="gradebook-readonly-card"><Eye size={18} /><div><strong>Chế độ chỉ xem</strong><small>Điểm do giáo viên bộ môn {selectedSubject?.teacherName || 'phụ trách'} quản lý</small></div></div>
         )}
       </div>
 
-      {ready && gradebookContext.data?.homeroomTeacher && (
+      {ready && selectedIsHomeroom && (
         <div className={`gradebook-access-notice ${canEdit ? 'editable' : 'readonly'}`}>
           {canEdit ? <ShieldCheck size={18} /> : <LockKeyhole size={18} />}
           <span>{canEdit
@@ -786,8 +711,8 @@ export function TeacherGradesLive() {
         </div>
       )}
 
-      {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
-        <Async paginate state={{ data: gradeRows, loading: students.loading || summaries.loading, error: students.error || summaries.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
+      {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{contextSubjects.length ? 'Môn học sẽ được hệ thống tự động xác định theo phân công.' : 'Bạn chưa được phân công môn cho lớp trong học kỳ này.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
+        <Async paginate state={{ data: gradeRows, loading: students.loading, error: students.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
           {(pagedGradeRows) => (
             <div className="gradebook-shell">
               <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
@@ -812,8 +737,7 @@ export function TeacherGradesLive() {
                       <td className="gradebook-sticky-col"><strong>{row.student.fullName}</strong><small>{row.student.studentCode || row.student.username}</small></td>
                       {columns.map((column) => {
                         const key = gradeKey(row.student.id, column.category.code, column.assessmentIndex);
-                        const grade = gradeByKey.get(key);
-                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><div className="gradebook-score-cell"><input className={`gradebook-score-input ${!canEdit ? 'locked' : ''} ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} aria-readonly={!canEdit} readOnly={!canEdit} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => canEdit && setScores({ ...scores, [key]: event.target.value })} />{grade && <button type="button" className="grade-history-button" title={`Xem lịch sử ${column.label} của ${row.student.fullName}`} onClick={() => setHistoryGradeId(grade.id)}><History size={13} /></button>}</div></td>;
+                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><input className={`gradebook-score-input ${!canEdit ? 'locked' : ''} ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} aria-readonly={!canEdit} readOnly={!canEdit} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => canEdit && setScores({ ...scores, [key]: event.target.value })} /></td>;
                       })}
                       <td className="gradebook-total-cell"><strong className={`grade-total ${scoreTone(row.average)}`}>{row.average == null ? '' : formatScore(row.average)}</strong><small>{row.average == null ? 'Chưa đủ điểm' : 'Thang 10'}</small></td>
                       <td><span className={`gradebook-completion ${missing ? 'incomplete' : 'complete'}`}>{missing ? `Thiếu ${missing}` : 'Đủ điểm'}</span></td>
@@ -826,11 +750,6 @@ export function TeacherGradesLive() {
           )}
         </Async>
       )}
-      {historyGradeId && <Modal title="Lịch sử thay đổi điểm" onClose={() => setHistoryGradeId('')}>
-        <Async state={gradeHistory} allowEmpty empty="Chưa có thay đổi nào được ghi nhận">
-          {(items) => <div className="grade-change-history">{items.slice().sort((a, b) => b.changedAt.localeCompare(a.changedAt)).map((item) => <article key={item.id}><span><History size={15} /></span><div><strong>{item.action === 'CREATE' ? 'Thêm điểm' : `${formatScore(item.oldScore ?? null)} → ${formatScore(item.newScore ?? null)}`}</strong><p>{item.reason || 'Tạo đầu điểm mới'}</p><small>{fmtDateTime(item.changedAt)} · Người thực hiện: {item.changedBy}</small></div></article>)}</div>}
-        </Async>
-      </Modal>}
     </Section>
   );
 }
@@ -858,7 +777,6 @@ export function TeacherNotificationsLive() {
   const announcements = useApi<Announcement[]>('/teacher/announcements');
   const toast = useToast();
   const [sending, setSending] = useState(false);
-  const [workspaceTab, setWorkspaceTab] = useState<'inbox' | 'compose'>('inbox');
   const [form, setForm] = useState({ classId: '', target: 'CLASS_ALL', category: 'STUDENT_STATUS', priority: 'NORMAL', title: '', body: '' });
 
   useEffect(() => {
@@ -919,12 +837,6 @@ export function TeacherNotificationsLive() {
   return (
     <div className="admin-notification-center teacher-notification-center">
       {toast.node}
-      <div className="notification-workspace-tabs" role="tablist" aria-label="Không gian thông báo giáo viên">
-        <button type="button" role="tab" aria-selected={workspaceTab === 'inbox'} className={workspaceTab === 'inbox' ? 'active' : ''} onClick={() => setWorkspaceTab('inbox')}><Inbox size={17} /><span>Hộp thư của tôi</span></button>
-        <button type="button" role="tab" aria-selected={workspaceTab === 'compose'} className={workspaceTab === 'compose' ? 'active' : ''} onClick={() => setWorkspaceTab('compose')}><Megaphone size={17} /><span>Gửi thông báo lớp</span></button>
-      </div>
-
-      {workspaceTab === 'inbox' ? <NotificationsLive audience="teacher" /> : <>
       <Section title="Thông báo tự động" subtitle="Điểm số và trạng thái điểm danh được gửi ngay khi giáo viên lưu thay đổi" wide
         action={<button className="live-btn ghost" onClick={() => { scopes.reload(); announcements.reload(); }}><RefreshCw size={14} /> Cập nhật dữ liệu</button>}>
         <div className="teacher-notification-automation">
@@ -990,160 +902,6 @@ export function TeacherNotificationsLive() {
           </tbody></table></div>}
         </Async>
       </Section>
-      </>}
-    </div>
-  );
-}
-
-/* ===== B8 — Công nợ lớp chủ nhiệm ===== */
-function teacherInvoiceStatus(invoice: Invoice) {
-  if (invoice.status !== 'PAID' && invoice.dueDate && new Date(`${invoice.dueDate}T23:59:59`) < new Date()) return 'OVERDUE';
-  return invoice.status;
-}
-
-export function TeacherFinanceLive() {
-  const periods = useApi<FeePeriod[]>('/fee-periods');
-  const [periodId, setPeriodId] = useHashString('period', '');
-  const summaries = useApi<FinanceClassSummary[]>(periodId
-    ? `/finance/classes?periodId=${encodeURIComponent(periodId)}`
-    : '/finance/classes');
-  const [classId, setClassId] = useHashString('class', '');
-  const [query, setQuery] = useHashString('q', '');
-  const [status, setStatus] = useHashString('status', 'ALL');
-  const [sending, setSending] = useState(false);
-  const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
-  const toast = useToast();
-  const invoiceUrl = classId
-    ? `/invoices?classId=${encodeURIComponent(classId)}${periodId ? `&periodId=${encodeURIComponent(periodId)}` : ''}`
-    : null;
-  const invoices = useApi<Invoice[]>(invoiceUrl);
-
-  useEffect(() => {
-    if (!periodId && periods.data?.length) {
-      const active = periods.data.find((item) => item.status === 'OPEN') || periods.data[0];
-      setPeriodId(active.id);
-    }
-  }, [periodId, periods.data, setPeriodId]);
-
-  useEffect(() => {
-    const rows = summaries.data || [];
-    if (!rows.length) {
-      setClassId('');
-      return;
-    }
-    if (!rows.some((item) => item.classId === classId)) setClassId(rows[0].classId);
-  }, [classId, summaries.data, setClassId]);
-
-  const selected = (summaries.data || []).find((item) => item.classId === classId);
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase('vi');
-    return (invoices.data || []).filter((invoice) => {
-      const matchesQuery = !normalized || invoice.code.toLocaleLowerCase('vi').includes(normalized)
-        || invoice.studentName.toLocaleLowerCase('vi').includes(normalized);
-      return matchesQuery && (status === 'ALL' || teacherInvoiceStatus(invoice) === status);
-    });
-  }, [invoices.data, query, status]);
-  const total = (summaries.data || []).reduce((sum, item) => sum + item.totalAmount, 0);
-  const paid = (summaries.data || []).reduce((sum, item) => sum + item.paidAmount, 0);
-  const outstanding = total - paid;
-  const overdue = (summaries.data || []).reduce((sum, item) => sum + item.overdueCount, 0);
-  const selectedPeriod = (periods.data || []).find((item) => item.id === periodId);
-  const activeFilterCount = (periodId ? 1 : 0) + (classId ? 1 : 0) + (query.trim() ? 1 : 0) + (status !== 'ALL' ? 1 : 0);
-
-  const remindClass = async () => {
-    if (!selected) return;
-    if (!confirm(`Gửi nhắc hạn tới phụ huynh của các học sinh còn công nợ lớp ${selected.classCode}?`)) return;
-    setSending(true);
-    try {
-      const suffix = periodId ? `?periodId=${encodeURIComponent(periodId)}` : '';
-      const result = await api.post<ClassReminderResult>(`/finance/homeroom/classes/${selected.classId}/remind${suffix}`);
-      toast.show('ok', `Đã gửi ${result.invoiceCount} nhắc hạn tới ${result.recipientCount} phụ huynh`);
-    } catch (error: any) { toast.show('err', error.message); }
-    finally { setSending(false); }
-  };
-
-  const remindInvoice = async (invoice: Invoice) => {
-    if (!confirm(`Gửi nhắc thanh toán tới phụ huynh của học sinh ${invoice.studentName}?`)) return;
-    setSendingInvoiceId(invoice.id);
-    try {
-      const result = await api.post<ClassReminderResult>(`/finance/homeroom/invoices/${invoice.id}/remind`);
-      toast.show('ok', `Đã gửi nhắc tới ${result.recipientCount} phụ huynh`);
-    } catch (error: any) { toast.show('err', error.message); }
-    finally { setSendingInvoiceId(null); }
-  };
-
-  const refresh = () => {
-    periods.reload();
-    summaries.reload();
-    invoices.reload();
-  };
-
-  const resetFilters = () => {
-    const activePeriod = (periods.data || []).find((item) => item.status === 'OPEN') || periods.data?.[0];
-    setPeriodId(activePeriod?.id || '');
-    setClassId('');
-    setQuery('');
-    setStatus('ALL');
-  };
-
-  return (
-    <div className="finance-page teacher-finance-page">
-      {toast.node}
-      <header className="finance-hero teacher-finance-hero">
-        <div><span className="finance-eyebrow"><ShieldCheck size={15} /> Không gian tài chính lớp chủ nhiệm</span><h2>Đồng hành cùng phụ huynh, giảm tải cho nhà trường</h2><p>Theo dõi tiến độ khoản thu của đúng lớp chủ nhiệm và gửi nhắc hạn tập trung tới phụ huynh còn công nợ.</p></div>
-      </header>
-
-      <section className="teacher-finance-controls" aria-label="Bộ lọc công nợ">
-        <header>
-          <div className="teacher-filter-heading"><span><SlidersHorizontal size={20} /></span><div><h3>Bộ lọc và phạm vi theo dõi</h3><p>Chọn đợt thu, lớp và trạng thái để tìm đúng học sinh cần xử lý.</p></div></div>
-          <strong className="teacher-filter-count">{activeFilterCount} điều kiện đang áp dụng</strong>
-        </header>
-        <div className="teacher-finance-filter-grid">
-          <label><span>Đợt thu</span><select className="live-input" value={periodId} onChange={(event) => { setPeriodId(event.target.value); setClassId(''); }}>
-            <option value="">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code} · {period.status === 'OPEN' ? 'Đang thu' : period.status === 'CLOSED' ? 'Đã đóng' : 'Bản nháp'}</option>)}
-          </select></label>
-          <label><span>Lớp chủ nhiệm</span><select className="live-input" value={classId} onChange={(event) => setClassId(event.target.value)}>
-            {(summaries.data || []).length === 0 && <option value="">Chưa có lớp phù hợp</option>}
-            {(summaries.data || []).map((summary) => <option key={summary.classId} value={summary.classId}>Lớp {summary.classCode} · {summary.invoiceCount} hóa đơn</option>)}
-          </select></label>
-          <label className="teacher-filter-search"><span>Tìm trong danh sách</span><div><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tên học sinh hoặc mã hóa đơn" /></div></label>
-          <label><span>Trạng thái công nợ</span><select className="live-input" value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="ALL">Tất cả trạng thái</option><option value="PENDING">Chưa thanh toán</option><option value="PARTIAL">Đã thu một phần</option><option value="PAID">Đã thanh toán</option><option value="OVERDUE">Quá hạn</option>
-          </select></label>
-        </div>
-        <footer>
-          <div className="teacher-filter-context"><UsersRound size={16} /><span><b>{selectedPeriod?.name || 'Tất cả đợt thu'}</b>{selected ? ` · Lớp ${selected.classCode}` : ''} · Hiển thị <b>{filtered.length} hóa đơn</b></span></div>
-          <div><button className="live-btn ghost" type="button" onClick={resetFilters}><RotateCcw size={15} /> Đặt lại</button><button className="live-btn" type="button" onClick={refresh}><RefreshCw size={15} /> Đồng bộ dữ liệu</button></div>
-        </footer>
-      </section>
-
-      {selected && <div className="teacher-debt-primary"><Section title={`Công nợ lớp ${selected.classCode}`} subtitle={`${selected.paidCount}/${selected.invoiceCount} học sinh đã hoàn thành · Còn ${money(selected.outstanding)}`} wide
-        action={!selected.completed ? <button className="live-btn" type="button" disabled={sending} onClick={remindClass}><BellRing size={15} /> {sending ? 'Đang gửi…' : 'Nhắc phụ huynh còn nợ'}</button> : <Badge tone="green">Lớp đã hoàn thành</Badge>}>
-        <div className="teacher-active-list-filter"><SlidersHorizontal size={16} /><span>Danh sách đang áp dụng bộ lọc phía trên</span><strong>{filtered.length} hóa đơn</strong></div>
-        <Async state={{ ...invoices, data: filtered }} empty="Không có hóa đơn phù hợp">
-          {(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn" resetKey={`${classId}-${periodId}-${query}-${status}`}>{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table teacher-finance-table"><thead><tr><th>Học sinh</th><th>Hóa đơn</th><th>Phải thu</th><th>Đã thu</th><th>Còn lại</th><th>Hạn thanh toán</th><th>Trạng thái</th><th>Nhắc phụ huynh</th></tr></thead><tbody>{pageRows.map((invoice) => { const invoiceStatus = teacherInvoiceStatus(invoice); return <tr key={invoice.id}><td><strong>{invoice.studentName}</strong></td><td><strong>{invoice.code}</strong><small>{fmtDateTime(invoice.issuedAt)}</small></td><td>{money(invoice.totalAmount)}</td><td className="finance-paid-value">{money(invoice.paidAmount)}</td><td><strong>{money(invoice.totalAmount - invoice.paidAmount)}</strong></td><td>{fmtDate(invoice.dueDate)}</td><td><StatusPill value={invoiceStatus} /></td><td>{invoiceStatus === 'PAID' ? <span className="finance-complete-label"><CheckCircle2 size={14} /> Đã xong</span> : <button className="live-btn subtle" type="button" disabled={sendingInvoiceId === invoice.id} onClick={() => remindInvoice(invoice)}><BellRing size={14} /> {sendingInvoiceId === invoice.id ? 'Đang gửi…' : 'Nhắc riêng'}</button>}</td></tr>; })}</tbody></table></div>}</PaginatedData>}
-        </Async>
-        <div className="finance-guidance"><ReceiptText size={18} /><p>Giáo viên chủ nhiệm chỉ theo dõi và gửi nhắc hạn. Mọi thao tác tạo khoản thu, phát hành hóa đơn và ghi nhận thanh toán vẫn do Admin thực hiện để bảo đảm đối soát.</p></div>
-      </Section></div>}
-
-      <section className="finance-kpi-grid" aria-label="Tổng quan công nợ lớp chủ nhiệm">
-        <article className="finance-kpi-card primary"><span><TrendingUp size={20} /></span><div><small>Đã thu</small><strong>{money(paid)}</strong><p>{total ? (paid * 100 / total).toFixed(1) : 0}% tổng phải thu</p></div></article>
-        <article className="finance-kpi-card"><span><WalletCards size={20} /></span><div><small>Còn phải thu</small><strong>{money(outstanding)}</strong><p>{(summaries.data || []).length} lớp chủ nhiệm có dữ liệu</p></div></article>
-        <article className="finance-kpi-card success"><span><CheckCircle2 size={20} /></span><div><small>Lớp hoàn thành</small><strong>{(summaries.data || []).filter((item) => item.completed).length}</strong><p>Đã đạt 100% yêu cầu tài chính</p></div></article>
-        <article className={`finance-kpi-card ${overdue ? 'danger' : ''}`}><span><AlertTriangle size={20} /></span><div><small>Hóa đơn quá hạn</small><strong>{overdue}</strong><p>Cần chủ động trao đổi với phụ huynh</p></div></article>
-      </section>
-
-      <div className="teacher-finance-list-section"><Section title={`Danh sách lớp chủ nhiệm (${(summaries.data || []).length})`} subtitle="Chọn một lớp để mở danh sách công nợ và thực hiện nhắc hạn" wide
-        action={<span className="teacher-list-hint"><GraduationCap size={15} /> Chọn lớp cần theo dõi</span>}>
-        <Async state={summaries} empty="Chưa có khoản thu nào được phát hành cho lớp chủ nhiệm">
-          {(rows) => <div className="finance-class-grid teacher-class-finance-grid">{rows.map((summary) => <button type="button" key={summary.classId} className={`teacher-finance-class ${classId === summary.classId ? 'selected' : ''} ${summary.completed ? 'complete' : ''}`} onClick={() => setClassId(summary.classId)}>
-            <header><span><GraduationCap size={17} /></span><div><strong>Lớp {summary.classCode}</strong><small>{summary.gradeLevel || 'Chưa xác định khối'} · {summary.invoiceCount} học sinh</small></div><StatusPill value={summary.completed ? 'Đã hoàn thành' : summary.overdueCount ? 'Có quá hạn' : 'Đang thu'} /></header>
-            <div className="finance-mini-progress"><span style={{ width: `${Math.min(100, summary.collectionRate)}%` }} /></div>
-            <footer><span>{summary.collectionRate.toFixed(1)}% đã thu</span><strong>Còn {money(summary.outstanding)}</strong></footer>
-          </button>)}</div>}
-        </Async>
-      </Section></div>
-
     </div>
   );
 }

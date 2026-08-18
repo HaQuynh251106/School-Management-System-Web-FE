@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCheck, Download, MessageCircleMore, Paperclip, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, UserRound, UsersRound, X } from 'lucide-react';
+import { CheckCheck, MessageCircleMore, RefreshCw, Search, Send, UserRound, UsersRound } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
-import { CHAT_REALTIME_RECEIVED, emitChatUnreadChanged } from '../../api/liveEvents';
 import { Section } from '../../components/ui';
 import { Async, fmtDateTime, useToast } from './common';
-import type { ApiUser, ChatThread, PageResponse, SchoolClass, StoredFile } from '../../api/types';
-import { useHashString } from '../../api/urlState';
+import type { ApiUser, TeachingAssignment } from '../../api/types';
+
+interface Thread {
+  userId: string;
+  name: string;
+  lastMessage: string;
+  lastTime: string;
+  unread: number;
+}
 
 interface ChatMsg {
   id: string;
@@ -16,24 +22,22 @@ interface ChatMsg {
   recipientId: string;
   body: string;
   readFlag: boolean;
-  readAt?: string | null;
-  attachmentFileId?: string | null;
-  attachmentName?: string | null;
   createdAt: string;
 }
 
-interface ContactThread extends ChatThread {
+interface ChatRealtimeEvent {
+  type: 'CONNECTED' | 'MESSAGE' | 'READ' | 'PRESENCE';
+  senderId?: string;
+  recipientId?: string;
+  readerId?: string;
+  otherId?: string;
+  userId?: string;
+  online?: boolean;
+  onlineUserIds?: string[];
+}
+
+interface ContactThread extends Thread {
   contact: ApiUser;
-}
-
-interface ChatContactScope {
-  classId: string;
-  classCode: string;
-  relation: string;
-}
-
-export function mergeChronologicalMessages(latestDescending: ChatMsg[], olderChronological: ChatMsg[]) {
-  return [...olderChronological, ...[...latestDescending].reverse()];
 }
 
 const ROLE_LABEL: Record<string, string> = {
@@ -48,30 +52,31 @@ const initials = (name: string) => name.trim().split(/\s+/).slice(-2).map((part)
 /** Hộp thư 1-1 giữa học sinh, giáo viên và phụ huynh trong đúng phạm vi lớp học. */
 export function ChatLive() {
   const { user } = useAuth();
-  const threads = useApi<ChatThread[]>('/chat/threads');
+  const userId = user?.id;
+  const threads = useApi<Thread[]>('/chat/threads');
   const contacts = useApi<ApiUser[]>('/chat/contacts');
-  const contactScopes = useApi<Record<string, ChatContactScope[]>>('/chat/contact-scopes');
-  const teachingClasses = useApi<SchoolClass[]>(user?.role === 'TEACHER' ? '/me/teaching-classes' : null);
-  const studentClass = useApi<SchoolClass>(user?.role === 'STUDENT' && user.classId ? `/classes/${user.classId}` : null);
+  const teachingScopes = useApi<TeachingAssignment[]>(user?.role === 'TEACHER' ? '/me/teacher-class-subjects' : null);
+  const teachingClasses = useMemo(() => {
+    const classes = new Map<string, string>();
+    (teachingScopes.data || []).forEach((scope) => classes.set(scope.classId, scope.classCode || scope.classId));
+    return [...classes].map(([id, code]) => ({ id, code }))
+      .sort((left, right) => left.code.localeCompare(right.code, 'vi', { numeric: true }));
+  }, [teachingScopes.data]);
   const [withId, setWithId] = useState<string | null>(null);
-  const msgs = useApi<PageResponse<ChatMsg>>(withId ? `/chat/messages/page?withUserId=${encodeURIComponent(withId)}&page=0&size=50` : null);
-  const [olderMessages, setOlderMessages] = useState<ChatMsg[]>([]);
-  const [loadedPage, setLoadedPage] = useState(0);
-  const [loadingOlder, setLoadingOlder] = useState(false);
+  const msgs = useApi<ChatMsg[]>(withId ? `/chat/messages?withUserId=${encodeURIComponent(withId)}` : null);
   const reloadThreads = threads.reload;
   const reloadMessages = msgs.reload;
   const messagesLoading = msgs.loading;
-  const messagesData = msgs.data?.items;
-  const [search, setSearch] = useHashString('q', '');
-  const [roleFilter, setRoleFilter] = useHashString('contactRole', 'ALL');
-  const [classFilter, setClassFilter] = useHashString('contactClass', 'ALL');
+  const messagesData = msgs.data;
+  const [search, setSearch] = useState('');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [attachment, setAttachment] = useState<File | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
   const [broadcastClassId, setBroadcastClassId] = useState('');
   const [broadcastText, setBroadcastText] = useState('');
   const messageEndRef = useRef<HTMLDivElement | null>(null);
-  const previousUnreadTotal = useRef<number | null>(null);
+  const selectedConversationRef = useRef<string | null>(null);
   const toast = useToast();
 
   const available = useMemo<ContactThread[]>(() => {
@@ -93,84 +98,61 @@ export function ChatLive() {
     });
   }, [contacts.data, threads.data]);
 
-  const availableClasses = useMemo(() => {
-    const byId = new Map<string, ChatContactScope>();
-    Object.values(contactScopes.data || {}).flat().forEach((scope) => byId.set(scope.classId, scope));
-    return [...byId.values()].sort((left, right) => left.classCode.localeCompare(right.classCode, 'vi'));
-  }, [contactScopes.data]);
-
-  const availableRoles = useMemo(() => [...new Set(available.map((item) => item.contact.role))], [available]);
-
   const filteredContacts = useMemo(() => {
     const keyword = search.trim().toLocaleLowerCase('vi');
-    return available.filter(({ contact, lastMessage }) => {
-      const scopes = contactScopes.data?.[contact.id] || [];
-      const matchesRole = roleFilter === 'ALL' || contact.role === roleFilter;
-      const matchesClass = classFilter === 'ALL' || scopes.some((scope) => scope.classId === classFilter);
-      const matchesKeyword = !keyword || [
-        contact.fullName,
-        ROLE_LABEL[contact.role] || contact.role,
-        contact.className,
-        contact.mainSubject,
-        lastMessage,
-        ...scopes.flatMap((scope) => [scope.classCode, scope.relation]),
-      ].some((value) => value?.toLocaleLowerCase('vi').includes(keyword));
-      return matchesRole && matchesClass && matchesKeyword;
-    });
-  }, [available, classFilter, contactScopes.data, roleFilter, search]);
+    if (!keyword) return available;
+    return available.filter(({ contact, lastMessage }) => [
+      contact.fullName,
+      ROLE_LABEL[contact.role] || contact.role,
+      contact.className,
+      contact.mainSubject,
+      lastMessage,
+    ].some((value) => value?.toLocaleLowerCase('vi').includes(keyword)));
+  }, [available, search]);
 
   const selected = available.find((item) => item.userId === withId) || null;
   const unreadTotal = available.reduce((total, item) => total + item.unread, 0);
-  const homeroomClasses = (teachingClasses.data ?? []).filter((schoolClass) => schoolClass.homeroomTeacherId === user?.id);
-  const activeFilters = (roleFilter !== 'ALL' ? 1 : 0) + (classFilter !== 'ALL' ? 1 : 0) + (search.trim() ? 1 : 0);
-  const currentMessages = useMemo(() => {
-    return mergeChronologicalMessages(msgs.data?.items || [], olderMessages);
-  }, [msgs.data?.items, olderMessages]);
-  const hasOlderMessages = loadedPage + 1 < (msgs.data?.totalPages || 0);
-
-  const contactRelation = (contact: ApiUser) => {
-    if (user?.role === 'PARENT') return 'Giáo viên chủ nhiệm';
-    if (user?.role === 'STUDENT') {
-      if (contact.role === 'STUDENT') return 'Bạn cùng lớp';
-      return contact.id === studentClass.data?.homeroomTeacherId
-        ? 'Giáo viên chủ nhiệm'
-        : `Giáo viên bộ môn${contact.mainSubject ? ` · ${contact.mainSubject}` : ''}`;
-    }
-    if (user?.role === 'TEACHER') {
-      if (contact.role === 'TEACHER') return 'Giáo viên chủ nhiệm lớp đang dạy';
-      return contact.role === 'PARENT' ? 'Phụ huynh lớp chủ nhiệm' : 'Học sinh lớp chủ nhiệm';
-    }
-    return ROLE_LABEL[contact.role] || contact.role;
-  };
-
-  const contactScopeText = (contact: ApiUser) => {
-    const scopes = contactScopes.data?.[contact.id] || [];
-    return scopes.length ? scopes.map((scope) => `${scope.relation} ${scope.classCode}`).join(' · ') : contactRelation(contact);
-  };
 
   useEffect(() => {
-    if (filteredContacts.length === 0) {
-      if (withId) setWithId(null);
-      return;
-    }
-    if (!filteredContacts.some((item) => item.userId === withId)) setWithId(filteredContacts[0].userId);
-  }, [filteredContacts, withId]);
+    if (!withId && available.length > 0) setWithId(available[0].userId);
+  }, [available, withId]);
 
   useEffect(() => {
-    setOlderMessages([]);
-    setLoadedPage(0);
+    selectedConversationRef.current = withId;
   }, [withId]);
 
   useEffect(() => {
-    const refresh = (rawEvent: Event) => {
-      const event = rawEvent as CustomEvent<Record<string, unknown>>;
-      const relatedId = String(event.detail?.fromUserId || event.detail?.toUserId || event.detail?.readByUserId || '');
+    if (!userId) return undefined;
+    const subscription = api.streamSse<ChatRealtimeEvent>('/chat/events', (event) => {
+      if (event.type === 'CONNECTED') {
+        setOnlineUserIds(new Set(event.onlineUserIds || []));
+        return;
+      }
+      if (event.type === 'PRESENCE' && event.userId) {
+        setOnlineUserIds((current) => {
+          const next = new Set(current);
+          if (event.online) next.add(event.userId!); else next.delete(event.userId!);
+          return next;
+        });
+        return;
+      }
       reloadThreads();
-      if (!relatedId || relatedId === withId) reloadMessages();
-    };
-    window.addEventListener(CHAT_REALTIME_RECEIVED, refresh);
-    return () => window.removeEventListener(CHAT_REALTIME_RECEIVED, refresh);
-  }, [reloadMessages, reloadThreads, withId]);
+      const selectedId = selectedConversationRef.current;
+      if (selectedId && [event.senderId, event.recipientId, event.readerId, event.otherId].includes(selectedId)) {
+        reloadMessages();
+      }
+    }, setRealtimeConnected);
+    return subscription.close;
+  }, [userId, reloadMessages, reloadThreads]);
+
+  useEffect(() => {
+    if (!withId || realtimeConnected) return undefined;
+    const timer = window.setInterval(() => {
+      reloadMessages();
+      reloadThreads();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [withId, realtimeConnected, reloadMessages, reloadThreads]);
 
   useEffect(() => {
     if (!withId || messagesLoading || messagesData == null) return;
@@ -178,44 +160,16 @@ export function ChatLive() {
   }, [withId, messagesLoading, messagesData, reloadThreads]); // Cập nhật số chưa đọc sau khi mở hội thoại.
 
   useEffect(() => {
-    if (previousUnreadTotal.current !== null && previousUnreadTotal.current !== unreadTotal) {
-      emitChatUnreadChanged();
-    }
-    previousUnreadTotal.current = unreadTotal;
-  }, [unreadTotal]);
-
-  useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [withId, currentMessages.length]);
-
-  const loadOlder = async () => {
-    if (!withId || loadingOlder || !hasOlderMessages) return;
-    const nextPage = loadedPage + 1;
-    setLoadingOlder(true);
-    try {
-      const page = await api.get<PageResponse<ChatMsg>>(`/chat/messages/page?withUserId=${encodeURIComponent(withId)}&page=${nextPage}&size=50`);
-      setOlderMessages((current) => [...page.items].reverse().concat(current));
-      setLoadedPage(nextPage);
-    } catch (error: any) {
-      toast.show('err', error.message);
-    } finally {
-      setLoadingOlder(false);
-    }
-  };
+  }, [withId, msgs.data?.length]);
 
   const send = async () => {
     const body = text.trim();
-    if (!withId || (!body && !attachment) || sending) return;
+    if (!withId || !body || sending) return;
     setSending(true);
     try {
-      let stored: StoredFile | null = null;
-      if (attachment) {
-        if (attachment.size > 10 * 1024 * 1024) throw new Error('Tệp không được vượt quá 10 MB');
-        stored = await api.upload<StoredFile>('/files', attachment);
-      }
-      await api.post('/chat/messages', { toUserId: withId, body, attachmentFileId: stored?.id || null });
+      await api.post('/chat/messages', { toUserId: withId, body });
       setText('');
-      setAttachment(null);
       reloadMessages();
       reloadThreads();
     } catch (error: any) {
@@ -223,19 +177,6 @@ export function ChatLive() {
     } finally {
       setSending(false);
     }
-  };
-
-  const downloadAttachment = async (message: ChatMsg) => {
-    if (!message.attachmentFileId) return;
-    try {
-      const result = await api.download(`/files/${message.attachmentFileId}/content`);
-      const href = URL.createObjectURL(result.blob);
-      const anchor = document.createElement('a');
-      anchor.href = href;
-      anchor.download = result.filename || message.attachmentName || 'tep-dinh-kem';
-      anchor.click();
-      URL.revokeObjectURL(href);
-    } catch (error: any) { toast.show('err', error.message); }
   };
 
   const sendBroadcast = async () => {
@@ -257,27 +198,13 @@ export function ChatLive() {
   return (
     <Section title={title} subtitle={subtitle} wide>
       {toast.node}
-      <div className="chat-workspace-intro">
-        <div className="chat-intro-main"><span><MessageCircleMore size={24} /></span><div><strong>Trung tâm trao đổi</strong><small>Hội thoại, tệp đính kèm và trạng thái đã đọc trong một không gian tập trung.</small></div></div>
-        <div className="chat-intro-stats"><article><strong>{available.length}</strong><small>Liên hệ</small></article><article className={unreadTotal ? 'attention' : ''}><strong>{unreadTotal}</strong><small>Chưa đọc</small></article><article><strong>{availableClasses.length}</strong><small>Lớp liên quan</small></article></div>
-      </div>
-      <div className="chat-policy-box">
-        <ShieldCheck size={19} />
-        <div><strong>Danh bạ đã được kiểm soát theo phân công</strong><small>{user?.role === 'TEACHER'
-          ? 'Giáo viên chủ nhiệm trao đổi với học sinh, phụ huynh; giáo viên bộ môn trao đổi với giáo viên chủ nhiệm của lớp đang dạy.'
-          : user?.role === 'STUDENT'
-            ? 'Bạn có thể trao đổi với giáo viên phụ trách và các bạn học sinh trong cùng lớp.'
-            : user?.role === 'PARENT'
-              ? 'Phụ huynh trao đổi trực tiếp với giáo viên chủ nhiệm của con.'
-              : 'Danh sách liên hệ được kiểm soát theo vai trò và nhiệm vụ.'}</small></div>
-      </div>
-      {user?.role === 'TEACHER' && homeroomClasses.length > 0 && (
+      {user?.role === 'TEACHER' && (
         <div className="class-broadcast-box">
           <span className="chat-broadcast-icon"><UsersRound size={18} /></span>
           <div><strong>Thông báo tới lớp</strong><small>Gửi một thông báo chung tới học sinh trong lớp phụ trách</small></div>
           <select className="live-select" value={broadcastClassId} onChange={(event) => setBroadcastClassId(event.target.value)} aria-label="Chọn lớp nhận thông báo">
             <option value="">— Chọn lớp —</option>
-            {homeroomClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
+            {teachingClasses.map((schoolClass) => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.code}</option>)}
           </select>
           <input className="live-input grow" maxLength={2000} placeholder="Nội dung thông báo…" value={broadcastText} onChange={(event) => setBroadcastText(event.target.value)} />
           <button className="live-btn" onClick={sendBroadcast}><Send size={14} /> Gửi lớp</button>
@@ -290,37 +217,22 @@ export function ChatLive() {
             <div><strong>Hội thoại</strong><small>{available.length} người liên hệ{unreadTotal ? ` · ${unreadTotal} tin chưa đọc` : ''}</small></div>
             <button type="button" aria-label="Làm mới hội thoại" onClick={() => { contacts.reload(); reloadThreads(); }}><RefreshCw size={16} /></button>
           </header>
-          <div className="chat-filter-panel">
-            <div className="chat-filter-title"><span><SlidersHorizontal size={16} /> Lọc danh bạ</span>{activeFilters > 0 && <button type="button" onClick={() => { setRoleFilter('ALL'); setClassFilter('ALL'); setSearch(''); }}><RotateCcw size={13} /> Đặt lại</button>}</div>
-            <div className="chat-filter-selects">
-              <label><span>Nhóm liên hệ</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-                <option value="ALL">Tất cả đối tượng</option>
-                {availableRoles.includes('STUDENT') && <option value="STUDENT">Học sinh</option>}
-                {availableRoles.includes('PARENT') && <option value="PARENT">Phụ huynh</option>}
-                {availableRoles.includes('TEACHER') && <option value="TEACHER">Giáo viên chủ nhiệm</option>}
-              </select></label>
-              <label><span>Lớp học</span><select value={classFilter} onChange={(event) => setClassFilter(event.target.value)}>
-                <option value="ALL">Tất cả lớp</option>{availableClasses.map((scope) => <option key={scope.classId} value={scope.classId}>Lớp {scope.classCode}</option>)}
-              </select></label>
-            </div>
-            <label className="chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, lớp, môn hoặc nội dung…" /></label>
-            <div className="chat-filter-result"><span>{filteredContacts.length} liên hệ phù hợp</span>{activeFilters > 0 && <b>{activeFilters} bộ lọc</b>}</div>
-          </div>
+          <label className="chat-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, lớp hoặc môn…" /></label>
           <Async
             paginate
             pageSize={10}
             itemLabel="liên hệ"
-            state={{ data: filteredContacts, loading: contacts.loading || threads.loading || contactScopes.loading, error: contacts.error || threads.error || contactScopes.error }}
+            state={{ data: filteredContacts, loading: contacts.loading || threads.loading, error: contacts.error || threads.error }}
             empty={search ? 'Không tìm thấy người liên hệ' : 'Không có người liên hệ phù hợp'}
           >
             {(items) => (
               <div className="chat-contact-list">
                 {items.map((item) => (
                   <button type="button" key={item.userId} className={withId === item.userId ? 'active' : ''} onClick={() => setWithId(item.userId)}>
-                    <span className="chat-avatar">{initials(item.name) || <UserRound size={17} />}</span>
+                    <span className="chat-avatar">{initials(item.name) || <UserRound size={17} />}{onlineUserIds.has(item.userId) && <i className="chat-online-dot" />}</span>
                     <span className="chat-contact-copy">
                       <span><strong>{item.name}</strong><time>{item.lastTime ? fmtDateTime(item.lastTime) : ''}</time></span>
-                      <small>{contactScopeText(item.contact)}</small>
+                      <small>{ROLE_LABEL[item.contact.role] || item.contact.role}{item.contact.className ? ` · ${item.contact.className}` : item.contact.mainSubject ? ` · ${item.contact.mainSubject}` : ''}</small>
                       <p>{item.lastMessage}</p>
                     </span>
                     {item.unread > 0 && <b className="chat-unread">{item.unread > 99 ? '99+' : item.unread}</b>}
@@ -338,14 +250,12 @@ export function ChatLive() {
             <>
               <header className="chat-conversation-head">
                 <span className="chat-avatar">{initials(selected.name)}</span>
-                <div><strong>{selected.name}</strong><small>{contactScopeText(selected.contact)}</small></div>
+                <div><strong>{selected.name}</strong><small>{onlineUserIds.has(selected.userId) ? 'Đang trực tuyến' : 'Đang ngoại tuyến'} · {ROLE_LABEL[selected.contact.role] || selected.contact.role}{selected.contact.className ? ` · Lớp ${selected.contact.className}` : selected.contact.mainSubject ? ` · ${selected.contact.mainSubject}` : ''}</small></div>
                 <span className="chat-secure-label"><CheckCheck size={15} /> Hội thoại nội bộ</span>
+                <span className={`chat-live-state ${realtimeConnected ? 'connected' : ''}`}>{realtimeConnected ? 'Trực tiếp' : 'Đang kết nối lại'}</span>
               </header>
               <div className="chat-message-list" aria-live="polite">
-                {hasOlderMessages && <button className="chat-load-older" type="button" disabled={loadingOlder} onClick={loadOlder}>
-                  {loadingOlder ? 'Đang tải…' : 'Tải tin nhắn cũ hơn'}
-                </button>}
-                <Async state={{ data: currentMessages, loading: msgs.loading, error: msgs.error }} empty="Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện.">
+                <Async state={msgs} empty="Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện.">
                   {(list) => (
                     <div className="chat-message-stack">
                       {list.map((message) => {
@@ -353,8 +263,7 @@ export function ChatLive() {
                         return (
                           <article key={message.id} className={`chat-message ${mine ? 'mine' : 'theirs'}`}>
                             {!mine && <span className="chat-message-sender">{message.senderName}</span>}
-                            {message.body && <p>{message.body}</p>}
-                            {message.attachmentFileId && <button className="chat-file-message" onClick={() => downloadAttachment(message)}><Paperclip size={15} /><span>{message.attachmentName || 'Tệp đính kèm'}</span><Download size={14} /></button>}
+                            <p>{message.body}</p>
                             <small>{fmtDateTime(message.createdAt)}{mine ? ` · ${message.readFlag ? 'Đã xem' : 'Đã gửi'}` : ''}</small>
                           </article>
                         );
@@ -365,7 +274,6 @@ export function ChatLive() {
                 </Async>
               </div>
               <div className="chat-composer">
-                {attachment && <div className="chat-attachment-preview"><Paperclip size={14} /><span>{attachment.name}</span><small>{Math.ceil(attachment.size / 1024)} KB</small><button type="button" onClick={() => setAttachment(null)} aria-label="Bỏ tệp"><X size={14} /></button></div>}
                 <textarea
                   maxLength={2000}
                   rows={2}
@@ -379,9 +287,8 @@ export function ChatLive() {
                     }
                   }}
                 />
-                <label className="chat-file-picker" title="Đính kèm tệp"><Paperclip size={17} /><input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.jpg,.jpeg,.png,.webp" onChange={(event) => setAttachment(event.target.files?.[0] || null)} /></label>
-                <span>{text.length}/2000 · Enter để gửi · Tệp tối đa 10 MB</span>
-                <button className="live-btn" type="button" disabled={(!text.trim() && !attachment) || sending} onClick={send}><Send size={16} /> {sending ? 'Đang gửi…' : 'Gửi'}</button>
+                <span>{text.length}/2000 · Enter để gửi, Shift + Enter để xuống dòng</span>
+                <button className="live-btn" type="button" disabled={!text.trim() || sending} onClick={send}><Send size={16} /> {sending ? 'Đang gửi…' : 'Gửi'}</button>
               </div>
             </>
           )}

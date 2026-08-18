@@ -1,20 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BookOpenCheck, ClipboardCheck, Eye, EyeOff, GraduationCap, LockKeyhole,
   LogIn, Moon, RefreshCcw, School, ShieldCheck, Sparkles, Sun, UserRound, UserRoundCog, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../../api/auth';
 import { api } from '../../api/client';
+import { showAppError } from '../../api/errorEvents';
 import { useTheme } from '../../api/theme';
 import type { CSSProperties } from 'react';
 
 const env = (import.meta as any).env || {};
-const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true';
+const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
+  || (env.DEV && env.VITE_SHOW_DEMO_ACCOUNTS !== 'false');
 const demos = showDemoAccounts ? [
-  { label: 'Quản trị', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.hoa', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.an', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.pham', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
+  { label: 'Admin tạo', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
+  { label: 'Admin duyệt', username: env.VITE_DEMO_FINANCE_ADMIN_USERNAME || 'admin.finance', password: env.VITE_DEMO_FINANCE_ADMIN_PASSWORD || 'admin2@123', Icon: ShieldCheck, color: '#047857' },
+  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.toan', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
+  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.minh', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
+  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.nguyen', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ].filter((account) => account.username && account.password) : [];
 
 type View = 'login' | 'forgot' | 'reset';
@@ -34,6 +37,10 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    if (error) showAppError(error);
+  }, [error]);
+
   const run = async (action: () => Promise<unknown>) => {
     setBusy(true); setError(null); setMessage(null);
     try { await action(); }
@@ -48,6 +55,9 @@ export function LoginPage() {
     setMessage('Nếu tài khoản tồn tại, hướng dẫn đặt lại mật khẩu đã được gửi.');
   });
   const submitReset = () => run(async () => {
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,}$/.test(newPassword)) {
+      throw new Error('Mật khẩu phải có ít nhất 10 ký tự, chữ hoa, chữ thường, số và ký tự đặc biệt');
+    }
     if (!resetToken) throw new Error('Liên kết đặt lại mật khẩu không hợp lệ');
     if (newPassword.length < 10) throw new Error('Mật khẩu phải có ít nhất 10 ký tự');
     if (newPassword !== confirmPassword) throw new Error('Mật khẩu xác nhận không khớp');
@@ -99,10 +109,10 @@ export function LoginPage() {
                   <span>Tên đăng nhập</span>
                   <div className="login-input-wrap"><UserRound size={18} /><input value={username} onChange={(event) => setUsername(event.target.value)} autoFocus autoComplete="username" placeholder="Nhập tên đăng nhập" /></div>
                 </label>
-                <div className="login-field">
-                  <label id="login-password-label" htmlFor="login-password">Mật khẩu</label>
-                  <div className="login-input-wrap"><LockKeyhole size={18} /><input id="login-password" aria-labelledby="login-password-label" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Nhập mật khẩu" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
-                </div>
+                <label className="login-field">
+                  <span>Mật khẩu</span>
+                  <div className="login-input-wrap"><LockKeyhole size={18} /><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Nhập mật khẩu" /><button type="button" className="password-toggle" aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
+                </label>
                 <div className="login-form-actions"><span>Thông tin đăng nhập được bảo mật</span><button className="link-button" type="button" onClick={() => { setView('forgot'); setError(null); setMessage(null); }}>Quên mật khẩu?</button></div>
                 <Feedback error={error} message={message} />
                 <button className="login-submit" type="submit" disabled={busy}><LogIn size={18} />{busy ? 'Đang đăng nhập...' : 'Đăng nhập'}</button>

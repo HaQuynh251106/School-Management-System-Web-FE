@@ -5,9 +5,11 @@ import '@fontsource/be-vietnam-pro/500.css';
 import '@fontsource/be-vietnam-pro/600.css';
 import '@fontsource/be-vietnam-pro/700.css';
 import App from './app/App';
+import GlobalErrorDialog from './app/GlobalErrorDialog';
+import GlobalSuccessToast from './app/GlobalSuccessToast';
+import { ConfirmProvider } from './app/ConfirmDialog';
 import { AuthProvider } from './api/auth';
 import { ThemeProvider } from './api/theme';
-import { AppErrorBoundary } from './components/SystemFeedback';
 import './styles/app.css';
 import './styles/live.css';
 import './styles/modal.css';
@@ -15,12 +17,14 @@ import './styles/theme.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
 <React.StrictMode>
-    <AppErrorBoundary>
-      <ThemeProvider>
-        <AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ConfirmProvider>
+          <GlobalErrorDialog />
+          <GlobalSuccessToast />
           <App />
-        </AuthProvider>
-      </ThemeProvider>
-    </AppErrorBoundary>
+        </ConfirmProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

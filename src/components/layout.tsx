@@ -1,6 +1,6 @@
 import type React from 'react';
 import { BarChart3, ChevronRight } from 'lucide-react';
-import { modules, roles } from '../data/appMetadata';
+import { modules, roles } from '../data/mockData';
 import type { PageId, RoleDefinition, RoleId } from '../types';
 
 export function SessionCard({ role, name }: { role: RoleDefinition; name?: string }) {
@@ -26,7 +26,7 @@ export function SidebarMenu({
   role: RoleDefinition;
   activePage: PageId;
   onSelect: (page: PageId) => void;
-  badges?: Partial<Record<PageId, number>>;
+  badges?: Record<string, number>;
 }) {
   return (
     <nav className="menu-nav" aria-label="Menu chức năng">
@@ -35,11 +35,12 @@ export function SidebarMenu({
         <span>
           <strong>Tổng quan</strong>
         </span>
+        <i className="menu-notification-spacer" />
         <ChevronRight size={16} />
       </button>
 
       <div className="sidebar-section-title">Chức năng</div>
-      {modules[role.id].filter((item) => role.id === 'admin' || item.title !== 'Thông báo').map((item) => (
+      {modules[role.id].map((item) => (
         <button
           key={item.code}
           className={`menu-button ${activePage === item.code ? 'active' : ''}`}
@@ -49,7 +50,9 @@ export function SidebarMenu({
           <span>
             <strong>{item.title}</strong>
           </span>
-          {(badges[item.code] ?? 0) > 0 && <b className="menu-unread-badge">{badges[item.code]! > 99 ? '99+' : badges[item.code]}</b>}
+          {badges[item.code]
+            ? <b className="menu-notification-badge" aria-label={`${badges[item.code]} thông báo mới`}>{badges[item.code] > 99 ? '99+' : badges[item.code]}</b>
+            : <i className="menu-notification-spacer" />}
           <ChevronRight size={16} />
         </button>
       ))}

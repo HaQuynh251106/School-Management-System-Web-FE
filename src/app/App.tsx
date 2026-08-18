@@ -1,194 +1,185 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
-import { roles, modules } from '../data/appMetadata';
+import { useEffect, useState } from 'react';
+import { Bell, CalendarDays, LogOut, Menu, Moon, School, Sun, X } from 'lucide-react';
+import { roles, modules } from '../data/mockData';
 import type { PageId, RoleId } from '../types';
 import { SessionCard, SidebarMenu } from '../components/layout';
+import { GeneralDashboard } from '../features/dashboard/GeneralDashboard';
+import { FeaturePage } from '../features/FeaturePage';
 import { useAuth } from '../api/auth';
+import { LoginPage } from '../features/auth/LoginPage';
+import { PasswordChangePage } from '../features/auth/PasswordChangePage';
+import { AccountSecurityModal } from '../features/auth/AccountSecurityModal';
 import { ActiveChildProvider } from '../api/activeChild';
 import { useTheme } from '../api/theme';
+import { PaymentReturnPage } from '../features/payment/PaymentReturnPage';
 import { useApi } from '../api/useApi';
-import type { UnreadCount } from '../api/types';
-import { BUSINESS_DATA_CHANGED, CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
-import { GlobalSearch } from '../components/GlobalSearch';
-import { ConnectivityBanner } from '../components/SystemFeedback';
-import { readHashRoute } from '../api/urlState';
-import { subscribeRealtime } from '../api/client';
-import { loginHash, pageHash, resolvePageRoute } from '../api/routes';
-
-const GeneralDashboard = lazy(() => import('../features/dashboard/GeneralDashboard').then((module) => ({ default: module.GeneralDashboard })));
-const FeaturePage = lazy(() => import('../features/FeaturePage').then((module) => ({ default: module.FeaturePage })));
-const LoginPage = lazy(() => import('../features/auth/LoginPage').then((module) => ({ default: module.LoginPage })));
-const PasswordChangePage = lazy(() => import('../features/auth/PasswordChangePage').then((module) => ({ default: module.PasswordChangePage })));
-
-function PageLoading() {
-  return <div className="login-screen"><div className="login-loading">Đang tải nội dung…</div></div>;
-}
-
-function pageFromLocation(): PageId {
-  return resolvePageRoute(readHashRoute().path)?.pageId ?? 'dashboard';
-}
-
-function pageAllowed(page: PageId, roleId: RoleId) {
-  return page === 'dashboard' || modules[roleId].some((item) => item.code === page);
-}
+import { api } from '../api/client';
+import type { Notification } from '../api/types';
+import { ShortcutFilterProvider } from '../api/shortcutFilter';
+import { NotificationDetailDialog } from '../components/NotificationDetailDialog';
 
 export default function App() {
   const { user, loading, logout } = useAuth();
-  const userId = user?.id;
-  const userRole = user?.role;
   const { theme, toggleTheme } = useTheme();
-  const [activePage, setActivePage] = useState<PageId>(pageFromLocation);
+  const [activePage, setActivePage] = useState<PageId>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement>(null);
-  const notificationBadgeEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
-  const { data: notificationUnread, reload: reloadNotifications } = useApi<UnreadCount>(notificationBadgeEnabled ? '/notifications/unread-count' : null);
-  const chatEnabled = Boolean(user && ['TEACHER', 'STUDENT', 'PARENT'].includes(user.role));
-  const { data: chatUnread, reload: reloadChatUnread } = useApi<UnreadCount>(chatEnabled ? '/chat/unread-count' : null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [locallyReadNotificationIds, setLocallyReadNotificationIds] = useState<Set<string>>(() => new Set());
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const [shortcutFilter, setShortcutFilter] = useState({ pageId: '', filter: '' });
+  const paymentReturn = new URLSearchParams(window.location.search).get('paymentReturn');
+  const { data: notificationData, loading: notificationsLoading, reload: reloadNotificationInbox } = useApi<Notification[]>(user ? '/notifications' : null);
+  const { data: financeUnreadData, reload: reloadFinanceUnread } = useApi<{ count: number }>(user?.role === 'PARENT' ? '/notifications/finance/unread-count' : null);
 
-  // Khôi phục deep-link nếu trang thuộc vai trò hiện tại; nếu không thì về Tổng quan.
+  // Reset về Dashboard mỗi khi đổi người đăng nhập (tránh giữ trang của vai trò cũ).
   useEffect(() => {
-    if (!userRole) return;
-    const roleId = userRole.toLowerCase() as RoleId;
-    const route = readHashRoute();
-    const requested = pageFromLocation();
-    const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
-    setActivePage(next);
-    const canonicalHash = pageHash(roleId, next, route.params);
-    if (window.location.hash !== canonicalHash) {
-      window.history.replaceState(null, '', canonicalHash);
-    }
+    setActivePage('dashboard');
     setSidebarOpen(false);
-  }, [userId, userRole]);
-
-  useEffect(() => {
-    if (!userRole) return;
-    const roleId = userRole.toLowerCase() as RoleId;
-    const syncFromLocation = () => {
-      const route = readHashRoute();
-      const requested = pageFromLocation();
-      const next = pageAllowed(requested, roleId) ? requested : 'dashboard';
-      setActivePage(next);
-      setSidebarOpen(false);
-      const canonicalHash = pageHash(roleId, next, route.params);
-      if (window.location.hash !== canonicalHash) {
-        window.history.replaceState(null, '', canonicalHash);
-      }
-    };
-    window.addEventListener('popstate', syncFromLocation);
-    window.addEventListener('hashchange', syncFromLocation);
-    return () => {
-      window.removeEventListener('popstate', syncFromLocation);
-      window.removeEventListener('hashchange', syncFromLocation);
-    };
-  }, [userId, userRole]);
-
-  useEffect(() => {
-    if (loading || user || readHashRoute().path) return;
-    window.history.replaceState(null, '', loginHash());
-  }, [loading, user]);
+    setNotificationOpen(false);
+    setSelectedNotification(null);
+    setLocallyReadNotificationIds(new Set());
+  }, [user?.id]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setSidebarOpen(false);
-        setProfileOpen(false);
-      }
-    };
-    const closeProfileOnOutsideClick = (event: PointerEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
-        setProfileOpen(false);
+        setNotificationOpen(false);
       }
     };
     window.addEventListener('keydown', closeOnEscape);
-    window.addEventListener('pointerdown', closeProfileOnOutsideClick);
-    return () => {
-      window.removeEventListener('keydown', closeOnEscape);
-      window.removeEventListener('pointerdown', closeProfileOnOutsideClick);
-    };
+    return () => window.removeEventListener('keydown', closeOnEscape);
   }, []);
 
   useEffect(() => {
-    if (!notificationBadgeEnabled) return;
-    const timer = window.setInterval(reloadNotifications, 5 * 60_000);
-    window.addEventListener('focus', reloadNotifications);
-    window.addEventListener(NOTIFICATION_INBOX_CHANGED, reloadNotifications);
+    if (!user) return;
+    const refreshNotifications = () => {
+      reloadNotificationInbox();
+      reloadFinanceUnread();
+    };
+    const timer = window.setInterval(refreshNotifications, 10_000);
+    window.addEventListener('focus', refreshNotifications);
+    window.addEventListener('sse:notifications-changed', refreshNotifications);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('focus', reloadNotifications);
-      window.removeEventListener(NOTIFICATION_INBOX_CHANGED, reloadNotifications);
+      window.removeEventListener('focus', refreshNotifications);
+      window.removeEventListener('sse:notifications-changed', refreshNotifications);
     };
-  }, [notificationBadgeEnabled, reloadNotifications]);
+  }, [user, reloadNotificationInbox, reloadFinanceUnread]);
 
   useEffect(() => {
-    if (!chatEnabled) return;
-    const timer = window.setInterval(reloadChatUnread, 5 * 60_000);
-    window.addEventListener('focus', reloadChatUnread);
-    window.addEventListener(CHAT_UNREAD_CHANGED, reloadChatUnread);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('focus', reloadChatUnread);
-      window.removeEventListener(CHAT_UNREAD_CHANGED, reloadChatUnread);
+    const navigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ pageId?: string; filter?: string }>).detail;
+      if (!detail?.pageId) return;
+      setShortcutFilter({ pageId: detail.pageId, filter: detail.filter || '' });
+      setActivePage(detail.pageId);
+      setSidebarOpen(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
-  }, [chatEnabled, reloadChatUnread]);
+    window.addEventListener('sse:navigate', navigate);
+    return () => window.removeEventListener('sse:navigate', navigate);
+  }, []);
 
-  useEffect(() => {
-    if (!userId) return;
-    return subscribeRealtime((event) => {
-      if (event.type === 'NOTIFICATION') {
-        reloadNotifications();
-        window.dispatchEvent(new Event(NOTIFICATION_INBOX_CHANGED));
-      } else if (event.type === 'CHAT' || event.type === 'CHAT_READ') {
-        reloadChatUnread();
-        window.dispatchEvent(new CustomEvent(CHAT_REALTIME_RECEIVED, { detail: event.data }));
-      } else {
-        window.dispatchEvent(new CustomEvent(BUSINESS_DATA_CHANGED, { detail: event }));
-      }
-    });
-  }, [userId, reloadNotifications, reloadChatUnread]);
-
+  if (paymentReturn) {
+    return <PaymentReturnPage provider={paymentReturn} />;
+  }
   if (loading) {
     return <div className="login-screen"><div className="login-loading">Đang tải phiên đăng nhập…</div></div>;
   }
   if (!user) {
-    return <Suspense fallback={<PageLoading />}><LoginPage /></Suspense>;
+    return <LoginPage />;
   }
   if (user.passwordChangeRequired) {
-    return <Suspense fallback={<PageLoading />}><PasswordChangePage /></Suspense>;
+    return <PasswordChangePage />;
   }
 
   const roleId = user.role.toLowerCase() as RoleId;
   const role = roles.find((item) => item.id === roleId) ?? roles[0];
-  const notificationPage: Partial<Record<RoleId, PageId>> = { admin: 'A9', teacher: 'B7', student: 'C5', parent: 'D5' };
-  const chatPage: Partial<Record<RoleId, PageId>> = { teacher: 'B6', student: 'C7', parent: 'D3' };
-  const unreadNotifications = notificationUnread?.count ?? 0;
-  const unreadMessages = chatUnread?.count ?? 0;
   const activeModule = modules[role.id].find((item) => item.code === activePage);
   const pageTitle = activePage === 'dashboard' ? 'Tổng quan' : activeModule?.title ?? 'Chức năng';
   const pageSubtitle = activePage === 'dashboard' ? role.subtitle : activeModule?.summary ?? role.subtitle;
   const today = new Intl.DateTimeFormat('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' }).format(new Date());
-  const profilePage: Partial<Record<RoleId, PageId>> = { teacher: 'B11', student: 'C9', parent: 'D8' };
-  const initials = user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase();
   const selectPage = (page: PageId) => {
-    const next = pageAllowed(page, role.id) ? page : 'dashboard';
-    const nextHash = pageHash(role.id, next);
-    if (window.location.hash !== nextHash) window.history.pushState(null, '', nextHash);
-    setActivePage(next);
+    setShortcutFilter({ pageId: '', filter: '' });
+    setActivePage(page);
     setSidebarOpen(false);
-    setProfileOpen(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    window.requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }));
   };
-  const logoutAndRedirect = () => {
-    window.history.replaceState(null, '', loginHash());
-    logout();
+  const notificationTarget = (notification: Notification): { pageId: PageId; label: string } | null => {
+    const keys = [notification.type, notification.refType].filter(Boolean).map((value) => String(value).toUpperCase());
+    const financeRelated = ['INVOICE', 'PAYMENT'].includes(notification.type)
+      || ['INVOICE', 'PAYMENT_PROOF'].includes(notification.refType || '');
+    const yearResult = notification.type === 'YEAR_RESULT' || notification.refType === 'YEAR_RESULT';
+    if (yearResult) {
+      return { pageId: role.id === 'admin' ? 'A8' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem kết quả năm học' };
+    }
+    if (financeRelated) return { pageId: role.id === 'admin' ? 'A7' : role.id === 'parent' ? 'D4' : 'dashboard', label: 'Mở mục học phí' };
+    if (keys.some((key) => key.includes('ASSIGNMENT'))) return { pageId: role.id === 'teacher' ? 'B5' : role.id === 'student' ? 'C4' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem bài tập' };
+    if (keys.some((key) => key.includes('ATTENDANCE'))) return { pageId: role.id === 'teacher' ? 'B3' : role.id === 'student' ? 'C3' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem chuyên cần' };
+    if (keys.some((key) => key.includes('GRADE'))) return { pageId: role.id === 'teacher' ? 'B4' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem điểm số' };
+    if (keys.some((key) => key.includes('TIMETABLE'))) return { pageId: role.id === 'teacher' ? 'B2' : role.id === 'student' ? 'C2' : role.id === 'parent' ? 'D2' : 'dashboard', label: 'Xem thời khóa biểu' };
+    if (keys.some((key) => key.includes('CHAT'))) return { pageId: role.id === 'teacher' ? 'B6' : role.id === 'student' ? 'C7' : role.id === 'parent' ? 'D3' : 'dashboard', label: 'Mở trao đổi' };
+    if (role.id === 'admin') return { pageId: 'A9', label: 'Mở trung tâm thông báo' };
+    if (role.id === 'teacher') return { pageId: 'B10', label: 'Mở hộp thông báo' };
+    if (role.id === 'student') return { pageId: 'C5', label: 'Mở hộp thông báo' };
+    if (role.id === 'parent') return { pageId: 'D6', label: 'Mở hộp thông báo' };
+    return null;
   };
+  const unreadNotifications = (notificationData || []).filter((item) => !item.read && !locallyReadNotificationIds.has(item.id));
+  const unreadCount = unreadNotifications.length;
+  const markAllNotificationsRead = async () => {
+    if (!unreadCount) return;
+    const ids = unreadNotifications.map((item) => item.id);
+    setLocallyReadNotificationIds((current) => new Set([...current, ...ids]));
+    try {
+      await api.post('/notifications/read-all');
+      reloadNotificationInbox();
+      reloadFinanceUnread();
+      window.dispatchEvent(new Event('sse:notifications-changed'));
+    } catch {
+      setLocallyReadNotificationIds((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    }
+  };
+  const toggleNotificationPopover = () => {
+    if (notificationOpen) return setNotificationOpen(false);
+    setNotificationOpen(true);
+    void markAllNotificationsRead();
+  };
+  const openNotification = async (notification: Notification) => {
+    setNotificationOpen(false);
+    setSelectedNotification(notification);
+    if (!notification.read && !locallyReadNotificationIds.has(notification.id)) {
+      setLocallyReadNotificationIds((current) => new Set(current).add(notification.id));
+      try {
+        await api.post(`/notifications/${encodeURIComponent(notification.id)}/read`);
+        reloadNotificationInbox();
+        reloadFinanceUnread();
+        window.dispatchEvent(new Event('sse:notifications-changed'));
+      } catch {
+        setLocallyReadNotificationIds((current) => {
+          const next = new Set(current);
+          next.delete(notification.id);
+          return next;
+        });
+      }
+    }
+  };
+  const selectedNotificationTarget = selectedNotification ? notificationTarget(selectedNotification) : null;
+  const openSelectedNotificationTarget = () => {
+    if (!selectedNotificationTarget) return;
+    selectPage(selectedNotificationTarget.pageId);
+    setSelectedNotification(null);
+  };
+  const financeUnreadCount = financeUnreadData?.count || 0;
 
   return (
-    <ActiveChildProvider scopeKey={user.id}>
+    <ActiveChildProvider>
       <div className={`app-shell app-shell--${roleId}`}>
-        <a className="skip-link" href="#main-content">Bỏ qua menu, đến nội dung chính</a>
-        <ConnectivityBanner />
         <button className={`sidebar-backdrop ${sidebarOpen ? 'show' : ''}`} aria-label="Đóng menu" onClick={() => setSidebarOpen(false)} />
         <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sidebar-brand-row">
@@ -205,19 +196,21 @@ export default function App() {
           </div>
 
           <SessionCard role={role} name={user.fullName} />
-          <SidebarMenu
-            role={role}
-            activePage={activePage}
-            onSelect={selectPage}
-            badges={{ ...(notificationPage[roleId] ? { [notificationPage[roleId]!]: unreadNotifications } : {}), ...(chatPage[roleId] ? { [chatPage[roleId]!]: unreadMessages } : {}) }}
-          />
+          <SidebarMenu role={role} activePage={activePage} onSelect={(page) => {
+            if (['B10', 'C5', 'D6'].includes(page)) void markAllNotificationsRead();
+            selectPage(page);
+          }}
+            badges={role.id === 'teacher' ? { B10: unreadCount }
+              : role.id === 'student' ? { C5: unreadCount }
+                : role.id === 'parent' ? { D4: financeUnreadCount, D6: unreadCount }
+                  : {}} />
           <div className="sidebar-footer">
             <span>Hệ thống quản lý học đường</span>
             <small>Phiên bản 2026.1</small>
           </div>
         </aside>
 
-        <main className="workspace" id="main-content" tabIndex={-1}>
+        <main className="workspace">
           <header className="topbar">
             <div className="topbar-heading">
               <button className="mobile-menu-button" type="button" aria-label="Mở menu" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
@@ -227,85 +220,56 @@ export default function App() {
               </div>
             </div>
             <div className="topbar-actions">
-              <GlobalSearch onNavigate={selectPage} />
               <span className="topbar-date"><CalendarDays size={16} /> {today}</span>
+              <div className="topbar-notification">
+                <button className="notification-bell" type="button" aria-label={`Thông báo, ${unreadCount} chưa đọc`} aria-expanded={notificationOpen} onClick={toggleNotificationPopover}>
+                  <Bell size={18} />
+                  {unreadCount > 0 && <b>{unreadCount > 99 ? '99+' : unreadCount}</b>}
+                </button>
+                {notificationOpen && (
+                  <div className="notification-popover" role="dialog" aria-label="Thông báo mới">
+                    <header><strong>Thông báo gần đây</strong><span>{unreadCount ? `${unreadCount} chưa đọc` : 'Đã đọc hết'}</span></header>
+                    <div className="notification-popover-list">
+                      {(notificationData || []).slice(0, 6).map((notification) => (
+                        <button type="button" className={!notification.read && !locallyReadNotificationIds.has(notification.id) ? 'is-unread' : ''} key={notification.id} onClick={() => void openNotification(notification)}>
+                          <span>{notification.title}</span>
+                          <small>{notification.body}</small>
+                        </button>
+                      ))}
+                      {!notificationsLoading && (notificationData || []).length === 0 && <p>Chưa có thông báo</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button className="theme-toggle" type="button" onClick={toggleTheme} title={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'} aria-label={theme === 'light' ? 'Bật chế độ tối' : 'Bật chế độ sáng'}>
                 {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
               </button>
-              {notificationPage[roleId] && <button
-                className={`topbar-notification ${unreadNotifications > 0 ? 'has-unread' : ''} ${activePage === notificationPage[roleId] ? 'active' : ''}`}
-                type="button"
-                onClick={() => selectPage(notificationPage[roleId]!)}
-                title={unreadNotifications > 0 ? `${unreadNotifications} thông báo chưa đọc` : 'Không có thông báo mới'}
-                aria-label={unreadNotifications > 0 ? `Mở thông báo, có ${unreadNotifications} thông báo chưa đọc` : 'Mở thông báo'}
-              >
-                <Bell size={19} />
-                {unreadNotifications > 0 && <>
-                  <span className="notification-pulse" aria-hidden="true" />
-                  <strong>{unreadNotifications > 99 ? '99+' : unreadNotifications}</strong>
-                </>}
-              </button>}
-              {chatPage[roleId] && <button
-                className={`topbar-chat ${unreadMessages > 0 ? 'has-unread' : ''} ${activePage === chatPage[roleId] ? 'active' : ''}`}
-                type="button"
-                onClick={() => selectPage(chatPage[roleId]!)}
-                title={unreadMessages > 0 ? `${unreadMessages} tin nhắn chưa đọc` : 'Mở trao đổi tin nhắn'}
-                aria-label={unreadMessages > 0 ? `Mở trao đổi, có ${unreadMessages} tin nhắn chưa đọc` : 'Mở trao đổi tin nhắn'}
-              >
-                <MessageCircleMore size={19} />
-                {unreadMessages > 0 && <>
-                  <span className="notification-pulse" aria-hidden="true" />
-                  <strong>{unreadMessages > 99 ? '99+' : unreadMessages}</strong>
-                </>}
-              </button>}
-              <div className={`topbar-user-menu ${profileOpen ? 'open' : ''}`} ref={profileMenuRef}>
-                <button
-                  className="topbar-profile"
-                  type="button"
-                  aria-haspopup="menu"
-                  aria-expanded={profileOpen}
-                  aria-controls="topbar-profile-popup"
-                  onClick={() => setProfileOpen((value) => !value)}
-                >
-                  <span className="topbar-profile-avatar">
-                    {user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
-                  </span>
-                  <span className="topbar-profile-copy"><strong>{user.fullName}</strong><small>{role.label}</small></span>
-                  <ChevronDown className="topbar-profile-chevron" size={15} aria-hidden="true" />
-                </button>
-                {profileOpen && <div id="topbar-profile-popup" className="profile-popup" role="menu" aria-label="Thông tin người dùng">
-                  <header className="profile-popup-header">
-                    <span className="profile-popup-avatar">{user.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}</span>
-                    <div><strong>{user.fullName}</strong><span>{role.label}</span><small>@{user.username}</small></div>
-                  </header>
-                  <div className="profile-popup-details">
-                    <span><Mail size={15} /><span><small>Email</small><strong>{user.email || 'Chưa cập nhật'}</strong></span></span>
-                    <span><Phone size={15} /><span><small>Số điện thoại</small><strong>{user.phone || 'Chưa cập nhật'}</strong></span></span>
-                  </div>
-                  <div className="profile-popup-actions">
-                    {profilePage[roleId] ? <button type="button" role="menuitem" onClick={() => selectPage(profilePage[roleId]!)}>
-                      <Settings size={17} /><span><strong>Hồ sơ & cài đặt</strong><small>Cập nhật thông tin và thông báo</small></span>
-                    </button> : <button type="button" role="menuitem" onClick={() => selectPage('dashboard')}>
-                      <UserRound size={17} /><span><strong>Thông tin tài khoản</strong><small>Xem tổng quan quản trị</small></span>
-                    </button>}
-                    <button className="profile-popup-logout" type="button" role="menuitem" onClick={logoutAndRedirect}>
-                      <LogOut size={17} /><span><strong>Đăng xuất</strong><small>Kết thúc phiên làm việc an toàn</small></span>
-                    </button>
-                  </div>
-                </div>}
-              </div>
+              <button className="topbar-profile" type="button" onClick={() => setSecurityOpen(true)} title="Bảo mật tài khoản">
+                <span>{user.fullName.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>
+                <div><strong>{user.fullName}</strong><small>{role.label}</small></div>
+              </button>
+              <button className="logout-btn" onClick={logout} title="Đăng xuất" aria-label="Đăng xuất">
+                <LogOut size={17} /><span>Đăng xuất</span>
+              </button>
             </div>
           </header>
 
-          <Suspense fallback={<PageLoading />}>
-            {activePage === 'dashboard' ? (
-              <GeneralDashboard roleId={role.id} onNavigate={selectPage} />
-            ) : (
+          {activePage === 'dashboard' ? (
+            <GeneralDashboard roleId={role.id} />
+          ) : (
+            <ShortcutFilterProvider value={shortcutFilter}>
               <FeaturePage module={activeModule} role={role} />
-            )}
-          </Suspense>
+            </ShortcutFilterProvider>
+          )}
         </main>
       </div>
+      {securityOpen && <AccountSecurityModal onClose={() => setSecurityOpen(false)} />}
+      {selectedNotification && <NotificationDetailDialog
+        notification={selectedNotification}
+        onClose={() => setSelectedNotification(null)}
+        onOpenRelated={selectedNotificationTarget ? openSelectedNotificationTarget : undefined}
+        relatedLabel={selectedNotificationTarget?.label}
+      />}
     </ActiveChildProvider>
   );
 }
