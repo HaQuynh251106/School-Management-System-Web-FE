@@ -64,8 +64,11 @@ export function MyExamsLive({ actor }: { actor: Actor }) {
     { id: 'reviews', label: 'Xử lý phúc khảo', Icon: History, content: <TeacherReviewWorkspace /> },
   ] : actor === 'student' ? [
     { id: 'schedule', label: 'Lịch thi', Icon: CalendarClock, content: scheduleContent },
-    { id: 'results', label: 'Kết quả & phúc khảo', Icon: GraduationCap, content: <StudentResultWorkspace /> },
-  ] : [];
+    { id: 'results', label: 'Kết quả & phúc khảo', Icon: GraduationCap, content: <StudentResultWorkspace actor="student" /> },
+  ] : [
+    { id: 'schedule', label: 'Lịch thi', Icon: CalendarClock, content: scheduleContent },
+    { id: 'results', label: 'Kết quả của con', Icon: GraduationCap, content: <StudentResultWorkspace actor="parent" childId={childId} /> },
+  ];
 
   return <div className="my-exams-page">
     <section className="my-exams-hero">
@@ -159,9 +162,9 @@ function TeacherReviewWorkspace() {
   </Section>;
 }
 
-function StudentResultWorkspace() {
+function StudentResultWorkspace({ actor, childId }: { actor: 'student' | 'parent'; childId?: string | null }) {
   const toast = useToast();
-  const results = useApi<StudentExamResultView[]>('/me/exam-results');
+  const results = useApi<StudentExamResultView[]>(actor === 'student' ? '/me/exam-results' : childId ? `/children/${childId}/exam-results` : null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState('');
   const requestReview = async (result: StudentExamResultView) => {
@@ -174,8 +177,8 @@ function StudentResultWorkspace() {
     } catch (error: any) { toast.show('err', error.message); }
     finally { setBusyId(''); }
   };
-  return <Section title="Kết quả thi và phúc khảo" subtitle="Điểm chỉ hiển thị sau khi nhà trường công bố; yêu cầu được chuyển trực tiếp đến giáo viên phụ trách" wide>{toast.node}
-    <Async state={results} allowEmpty empty="Chưa có kết quả thi nào được công bố">{(rows) => <div className="student-result-grid">{rows.map((result) => <article key={result.resultId}><div className="student-result-main"><div><small>{result.examPeriodName}</small><h3>{result.subjectName}</h3>{result.note && <p>{result.note}</p>}</div><div className="student-result-score"><span>Điểm thi</span><strong>{result.score ?? '—'}</strong></div></div>{result.reviewId ? <div className={`student-review-status status-${(result.reviewStatus || '').toLowerCase()}`}><div><History size={17} /><strong>Phúc khảo: <StatusPill value={result.reviewStatus || 'PENDING'} /></strong></div><p>{result.reviewReason}</p>{result.reviewResolution && <><span>Kết luận của giáo viên</span><p>{result.reviewResolution}</p>{result.resolvedScore != null && <b>Điểm sau xử lý: {result.resolvedScore}</b>}</>}</div> : <div className="student-review-form"><label><span>Đề nghị phúc khảo</span><textarea className="live-input" placeholder="Mô tả lý do cần kiểm tra lại bài thi (ít nhất 10 ký tự)" value={reasons[result.resultId] || ''} onChange={(event) => setReasons({ ...reasons, [result.resultId]: event.target.value })} /></label><button className="live-btn ghost" disabled={busyId === result.resultId} onClick={() => requestReview(result)}><Send size={15} /> Gửi yêu cầu</button></div>}</article>)}</div>}</Async>
+  return <Section title={actor === 'parent' ? 'Kết quả thi của con' : 'Kết quả thi và phúc khảo'} subtitle={actor === 'parent' ? 'Theo dõi điểm và trạng thái phúc khảo do học sinh đã gửi' : 'Điểm chỉ hiển thị sau khi nhà trường công bố; yêu cầu được chuyển trực tiếp đến giáo viên phụ trách'} wide>{toast.node}
+    <Async state={results} allowEmpty empty="Chưa có kết quả thi nào được công bố">{(rows) => <div className="student-result-grid">{rows.map((result) => <article key={result.resultId}><div className="student-result-main"><div><small>{result.examPeriodName}</small><h3>{result.subjectName}</h3>{result.note && <p>{result.note}</p>}</div><div className="student-result-score"><span>Điểm thi</span><strong>{result.score ?? '—'}</strong></div></div>{result.reviewId ? <div className={`student-review-status status-${(result.reviewStatus || '').toLowerCase()}`}><div><History size={17} /><strong>Phúc khảo: <StatusPill value={result.reviewStatus || 'PENDING'} /></strong></div><p>{result.reviewReason}</p>{result.reviewResolution && <><span>Kết luận của giáo viên</span><p>{result.reviewResolution}</p>{result.resolvedScore != null && <b>Điểm sau xử lý: {result.resolvedScore}</b>}</>}</div> : actor === 'student' ? <div className="student-review-form"><label><span>Đề nghị phúc khảo</span><textarea className="live-input" placeholder="Mô tả lý do cần kiểm tra lại bài thi (ít nhất 10 ký tự)" value={reasons[result.resultId] || ''} onChange={(event) => setReasons({ ...reasons, [result.resultId]: event.target.value })} /></label><button className="live-btn ghost" disabled={busyId === result.resultId} onClick={() => requestReview(result)}><Send size={15} /> Gửi yêu cầu</button></div> : <p className="table-subline">Học sinh chưa gửi yêu cầu phúc khảo.</p>}</article>)}</div>}</Async>
   </Section>;
 }
 

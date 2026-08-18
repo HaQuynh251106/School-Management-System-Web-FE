@@ -1,6 +1,5 @@
 import type React from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { permissionRows } from '../data/mockData';
 import type { TabItem } from '../types';
 import { useHashString } from '../api/urlState';
 
@@ -99,25 +98,6 @@ export function FormPreview({ rows }: { rows: Array<[string, string]> }) {
   );
 }
 
-export function PermissionMatrix() {
-  return (
-    <div className="permission-matrix">
-      <div className="matrix-head">Quyền</div>
-      <div className="matrix-head">Quản trị</div>
-      <div className="matrix-head">Giáo viên</div>
-      <div className="matrix-head">Học sinh</div>
-      <div className="matrix-head">Phụ huynh</div>
-      {permissionRows.map((row) => [
-        <strong key={`${row.permission}-name`}>{row.permission}</strong>,
-        <span key={`${row.permission}-admin`}>{row.admin ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-teacher`}>{row.teacher ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-student`}>{row.student ? '✓' : '-'}</span>,
-        <span key={`${row.permission}-parent`}>{row.parent ? '✓' : '-'}</span>,
-      ])}
-    </div>
-  );
-}
-
 export function Section({
   title,
   subtitle,
@@ -170,7 +150,7 @@ const VI_LABELS: Record<string, string> = {
   SENT: 'Đã gửi', RETRYING: 'Đang gửi lại', MAINTENANCE: 'Đang bảo trì',
   READ: 'Đã đọc', UNREAD: 'Chưa đọc',
   PRESENT: 'Có mặt', ABSENT: 'Vắng mặt', ABSENT_EXCUSED: 'Vắng có phép', ABSENT_UNEXCUSED: 'Vắng không phép',
-  ADMIN: 'Quản trị viên', ACADEMIC_STAFF: 'Giáo vụ', ACCOUNTANT: 'Kế toán', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
+  ADMIN: 'Quản trị viên', TEACHER: 'Giáo viên', STUDENT: 'Học sinh', PARENT: 'Phụ huynh', SYSTEM: 'Hệ thống', GUEST: 'Khách',
   LOGIN: 'Đăng nhập', LOGIN_FAILED: 'Đăng nhập thất bại', CREATE: 'Tạo mới', UPDATE: 'Cập nhật', DELETE: 'Xóa', EXPORT: 'Xuất dữ liệu', PAYMENT: 'Thanh toán',
   ATTENDANCE_REMINDER: 'Nhắc điểm danh', ATTENDANCE_UNLOCK: 'Mở khóa điểm danh', ATTENDANCE_SESSION: 'Phiên điểm danh',
   FEE: 'Khoản thu', INVOICE: 'Hóa đơn', FINANCE_REMINDER: 'Nhắc hạn khoản thu',
@@ -198,4 +178,3 @@ export function StatusPill({ value }: { value: string }) {
 
   return <Badge tone={tone}>{viLabel(value)}</Badge>;
 }
-

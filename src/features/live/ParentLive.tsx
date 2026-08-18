@@ -3,11 +3,11 @@ import { BarChart3, CalendarDays, CheckCircle2, Clock3, CreditCard, BookOpen, Cl
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useActiveChild } from '../../api/activeChild';
-import type { ApiUser, Assignment, AttendanceRecord, ExamCategory, Grade, Invoice, PaymentInitResponse, Semester, Submission } from '../../api/types';
+import type { ApiUser, Assignment, AttendanceRecord, ExamCategory, Grade, GradeSubjectSummary, Invoice, PaymentInitResponse, Semester, Submission } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
 import { Async, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
 import { WeeklyTimetable } from './SharedLive';
-import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { formatScore, gradeColumns, scoreTone } from './gradebook';
 import { useHashString } from '../../api/urlState';
 import { Modal } from './Modal';
 
@@ -64,6 +64,8 @@ export function ParentMonitorLive() {
   const [semesterId, setSemesterId] = useHashString('semester', '');
   const effectiveSemesterId = semesterId || semesters.data?.find((item) => item.status === 'ACTIVE')?.id || semesters.data?.[0]?.id || '';
   const grades = useApi<Grade[]>(childId && effectiveSemesterId ? `/grades?studentId=${childId}&semesterId=${effectiveSemesterId}` : null);
+  const summaries = useApi<GradeSubjectSummary[]>(childId && effectiveSemesterId
+    ? `/grades/summary?studentId=${encodeURIComponent(childId)}&semesterId=${encodeURIComponent(effectiveSemesterId)}` : null);
   const att = useApi<AttendanceRecord[]>(childId ? `/attendance?studentId=${childId}` : null);
   const assignments = useApi<Assignment[]>(childId ? `/children/${childId}/assignments` : null);
   const submissions = useApi<Submission[]>(childId ? `/children/${childId}/submissions` : null);
@@ -78,6 +80,7 @@ export function ParentMonitorLive() {
     return [...unique.values()];
   }, [categories.data, grades.data]);
   const columns = useMemo(() => gradeColumns(categoryList), [categoryList]);
+  const summaryBySubject = useMemo(() => new Map((summaries.data || []).map((item) => [item.subjectId, item])), [summaries.data]);
   const subjectRows = useMemo(() => {
     const grouped = new Map<string, { subjectId: string; subjectName: string; grades: Grade[] }>();
     (grades.data || []).forEach((grade) => {
@@ -85,8 +88,8 @@ export function ParentMonitorLive() {
       row.grades.push(grade);
       grouped.set(grade.subjectId, row);
     });
-    return [...grouped.values()].map((row) => ({ ...row, average: weightedAverage(row.grades, categoryList) }));
-  }, [grades.data, categoryList]);
+    return [...grouped.values()].map((row) => ({ ...row, average: summaryBySubject.get(row.subjectId)?.average ?? null }));
+  }, [grades.data, summaryBySubject]);
   const submissionMap = useMemo(() => new Map((submissions.data || []).map((item) => [item.assignmentId, item])), [submissions.data]);
   const averages = subjectRows.map((row) => row.average).filter((score): score is number => score != null);
   const semesterAverage = averages.length ? Math.round(averages.reduce((sum, score) => sum + score, 0) / averages.length * 10) / 10 : null;
@@ -116,8 +119,8 @@ export function ParentMonitorLive() {
     <>{toast.node}<div className="parent-child-context"><Users size={17} /><span>Đang theo dõi</span><strong>{activeChild?.fullName || 'Học sinh'}</strong><small>{activeChild?.className || 'Chưa xếp lớp'}</small></div><FunctionTabs tabs={[
       { id: 'timetable', label: 'Thời khóa biểu', Icon: CalendarDays, content: (
         <Section title="Thời khóa biểu của con" subtitle={`Lịch học trong tuần của ${activeChild?.fullName || 'học sinh'}`} wide>
-          {activeChild?.classId
-            ? <WeeklyTimetable path={`/timetableSlots?classId=${encodeURIComponent(activeChild.classId)}`} />
+          {activeChild?.id
+            ? <WeeklyTimetable path={`/children/${encodeURIComponent(activeChild.id)}/timetable`} />
             : <div className="live-loading">Học sinh chưa được xếp lớp.</div>}
         </Section>
       ) },
@@ -126,7 +129,7 @@ export function ParentMonitorLive() {
           <select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effectiveSemesterId} onChange={(event) => setSemesterId(event.target.value)}>
             {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
           </select>}>
-          <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
+          <Async paginate state={{ data: subjectRows, loading: grades.loading || summaries.loading, error: grades.error || summaries.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
             {(rows) => <div className="gradebook-shell">
               <div className="gradebook-summary student-grade-summary">
                 <article className="gradebook-stat primary"><span><BarChart3 size={19} /></span><div><small>Trung bình học kỳ</small><strong>{formatScore(semesterAverage)}</strong><p>{averages.length} môn đủ dữ liệu</p></div></article>

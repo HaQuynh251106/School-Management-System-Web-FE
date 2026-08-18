@@ -2,8 +2,6 @@ import type { PageId, RoleId } from '../types';
 
 export const ROLE_PATHS: Record<RoleId, string> = {
   admin: 'quan-tri',
-  academic_staff: 'giao-vu',
-  accountant: 'ke-toan',
   teacher: 'giao-vien',
   student: 'hoc-sinh',
   parent: 'phu-huynh',
@@ -15,19 +13,15 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     A1T: 'giao-vien',
     A1P: 'phu-huynh',
     A1A: 'cuu-hoc-sinh',
-    A1O: 'nhan-su-van-hanh',
+    A2: 'co-cau-phan-lop',
+    A3: 'ke-hoach-thoi-khoa-bieu',
+    A4: 'ky-thi',
+    A5: 'tien-do-dao-tao',
     A6: 'lich-su-he-thong',
+    A7: 'tai-chinh',
     A8: 'bao-cao-thong-ke',
     A9: 'trung-tam-thong-bao',
-  },
-  academic_staff: {
-    E1: 'co-cau-dao-tao',
-    E2: 'xep-thoi-khoa-bieu',
-    E3: 'tao-ky-thi',
-    E4: 'cuu-hoc-sinh',
-  },
-  accountant: {
-    F1: 'tai-chinh-noi-bo',
+    A10: 'cau-lac-bo',
   },
   teacher: {
     B1: 'lop-duoc-phan-cong',
@@ -43,6 +37,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     B11: 'ho-so-cai-dat',
     B12: 'khao-thi',
     B13: 'hanh-kiem-tong-ket',
+    B14: 'tien-do-thuc-day',
   },
   student: {
     C1: 'ho-so-ca-nhan',
@@ -56,6 +51,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     C9: 'ho-so-cai-dat',
     C10: 'thi-phuc-khao',
     C11: 'tong-ket-nam-hoc',
+    C12: 'cau-lac-bo',
   },
   parent: {
     D1: 'chon-hoc-sinh',
@@ -68,6 +64,7 @@ export const PAGE_PATHS: Record<RoleId, Record<string, string>> = {
     D8: 'ho-so-cai-dat',
     D9: 'lich-thi-cua-con',
     D10: 'tong-ket-nam-hoc',
+    D11: 'cau-lac-bo-cua-con',
   },
 };
 

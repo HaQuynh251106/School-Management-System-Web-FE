@@ -167,6 +167,12 @@ export function AdminWorkloadPlanningLive() {
   const [grade, setGrade] = useState('K10');
   const [subjectId, setSubjectId] = useState('');
   const [periods, setPeriods] = useState(2);
+  const [totalPeriods, setTotalPeriods] = useState(36);
+  const [planStartDate, setPlanStartDate] = useState('');
+  const [planEndDate, setPlanEndDate] = useState('');
+  const [examWindowStart, setExamWindowStart] = useState('');
+  const [examWindowEnd, setExamWindowEnd] = useState('');
+  const [milestone, setMilestone] = useState('');
   const [plan, setPlan] = useState<AutoAssignmentPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<'subjects' | 'teachers' | 'review'>('subjects');
@@ -178,11 +184,24 @@ export function AdminWorkloadPlanningLive() {
   const saveRequirement = async () => {
     if (!semesterId || !subjectId) return;
     try {
-      await api.put('/curriculum-requirements', { semesterId, gradeLevel: grade, subjectId, weeklyPeriods: periods });
+      await api.put('/curriculum-requirements', {
+        semesterId, gradeLevel: grade, subjectId, weeklyPeriods: periods, totalPeriods,
+        startDate: planStartDate || null, endDate: planEndDate || null,
+        examWindowStart: examWindowStart || null, examWindowEnd: examWindowEnd || null,
+        milestone: milestone.trim() || null,
+      });
       toast.show('ok', 'Đã cập nhật định mức môn học');
       await requirements.reload();
       setSubjectId('');
     } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể lưu định mức'); }
+  };
+
+  const changeRequirementStatus = async (item: CurriculumRequirement, status: 'DRAFT' | 'LOCKED' | 'PUBLISHED') => {
+    try {
+      await api.put(`/curriculum-requirements/${item.id}/status`, { status, expectedVersion: item.version });
+      toast.show('ok', status === 'LOCKED' ? 'Đã khóa kế hoạch để rà soát' : status === 'PUBLISHED' ? 'Đã công bố kế hoạch đào tạo' : 'Đã mở lại bản nháp');
+      await requirements.reload();
+    } catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể cập nhật trạng thái kế hoạch'); }
   };
 
   const review = async (item: TeacherLoadRegistration, status: string) => {
@@ -242,17 +261,25 @@ export function AdminWorkloadPlanningLive() {
       </Section>
 
       {stage === 'subjects' && (
-      <Section title="Số tiết học mỗi tuần" subtitle="Chọn khối, môn học và nhập số tiết mà mỗi lớp cần học trong một tuần" wide>
+      <Section title="Kế hoạch đào tạo theo môn" subtitle="Chốt thời lượng, thời gian dạy, mốc kiến thức và cửa sổ thi cho từng khối trong học kỳ" wide>
         <div className="plain-language-help"><BookOpenCheck size={20} /><div><strong>Bước này trả lời một câu hỏi đơn giản</strong><span>Mỗi lớp của từng khối cần học môn này bao nhiêu tiết trong một tuần?</span></div></div>
         <div className="requirement-form">
           <select value={grade} onChange={(event) => setGrade(event.target.value)}>{GRADES.map((item) => <option key={item} value={item}>{item.replace('K', 'Khối ')}</option>)}</select>
           <select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">Chọn môn học</option>{(subjects.data || []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
           <input type="number" min={1} max={20} value={periods} onChange={(event) => setPeriods(Number(event.target.value))} />
+          <input type="number" min={1} max={500} title="Tổng số tiết" value={totalPeriods} onChange={(event) => setTotalPeriods(Number(event.target.value))} />
           <button className="live-btn primary" disabled={!subjectId} onClick={saveRequirement}><BookOpenCheck size={16} /> Lưu định mức</button>
+        </div>
+        <div className="live-form-grid">
+          <label><span>Bắt đầu môn học</span><input className="live-input" type="date" value={planStartDate} onChange={(event) => setPlanStartDate(event.target.value)} /></label>
+          <label><span>Kết thúc môn học</span><input className="live-input" type="date" min={planStartDate || undefined} value={planEndDate} onChange={(event) => setPlanEndDate(event.target.value)} /></label>
+          <label><span>Bắt đầu cửa sổ thi</span><input className="live-input" type="date" value={examWindowStart} onChange={(event) => setExamWindowStart(event.target.value)} /></label>
+          <label><span>Kết thúc cửa sổ thi</span><input className="live-input" type="date" min={examWindowStart || undefined} value={examWindowEnd} onChange={(event) => setExamWindowEnd(event.target.value)} /></label>
+          <label className="span-2"><span>Mốc kiến thức cần đạt</span><input className="live-input" value={milestone} onChange={(event) => setMilestone(event.target.value)} placeholder="Ví dụ: hoàn thành chương Hàm số trước kiểm tra giữa kỳ" /></label>
         </div>
         <div className="requirement-columns">{groupedRequirements.map((group) => <article key={group.grade}>
           <header><strong>{group.grade.replace('K', 'Khối ')}</strong><span>{group.rows.length} môn</span></header>
-          {group.rows.length ? group.rows.map((item) => <div key={item.id}><span>{item.subjectName}</span><b>{item.weeklyPeriods} tiết</b><button title="Xóa" onClick={async () => { await api.del(`/curriculum-requirements/${item.id}`); requirements.reload(); }}><Trash2 size={14} /></button></div>) : <p>Chưa có định mức</p>}
+          {group.rows.length ? group.rows.map((item) => <div key={item.id}><span>{item.subjectName}<small>{item.milestone || `${item.startDate || '—'} → ${item.endDate || '—'}`} · v{item.version}</small></span><b>{item.weeklyPeriods}/tuần · {item.totalPeriods} tiết</b><StatusPill value={item.planStatus} />{item.planStatus === 'DRAFT' && <button title="Khóa để rà soát" onClick={() => changeRequirementStatus(item, 'LOCKED')}><LockKeyhole size={14} /></button>}{item.planStatus === 'LOCKED' && <><button title="Mở lại bản nháp" onClick={() => changeRequirementStatus(item, 'DRAFT')}><RotateCcw size={14} /></button><button title="Công bố kế hoạch" onClick={() => changeRequirementStatus(item, 'PUBLISHED')}><Send size={14} /></button></>}{item.planStatus === 'DRAFT' && <button title="Xóa" onClick={async () => { await api.del(`/curriculum-requirements/${item.id}`); requirements.reload(); }}><Trash2 size={14} /></button>}</div>) : <p>Chưa có định mức</p>}
         </article>)}</div>
         <div className="wizard-footer"><span>Đã khai báo {(requirements.data || []).length} môn–khối</span><button className="live-btn primary" onClick={() => setStage('teachers')}>Tiếp theo: Kiểm tra giáo viên</button></div>
       </Section>

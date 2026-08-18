@@ -3,15 +3,16 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  BookOpenCheck,
   Clock3,
   FileClock,
   Filter,
-  LogIn,
   RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
   UserRound,
+  WalletCards,
 } from 'lucide-react';
 import { useApi } from '../../api/useApi';
 import type { PageResponse } from '../../api/types';
@@ -38,13 +39,49 @@ interface AuditStats {
 }
 
 const ACTION_TONE: Record<string, 'green' | 'blue' | 'orange' | 'red' | 'violet'> = {
-  LOGIN: 'green',
-  LOGIN_FAILED: 'red',
   CREATE: 'blue',
   UPDATE: 'orange',
   DELETE: 'red',
   PAYMENT: 'violet',
+  GRADE_CREATE: 'blue',
+  GRADE_UPDATE: 'orange',
+  PAYMENT_CONFIRMED: 'green',
+  PAYMENT_REJECTED: 'red',
+  PAYMENT_REFUND: 'orange',
+  USER_SECURITY: 'red',
+  USER_CHANGE: 'blue',
+  ATTENDANCE_CHANGE: 'orange',
+  TIMETABLE_CHANGE: 'violet',
+  ACADEMIC_PLAN: 'violet',
+  ACADEMIC_STRUCTURE: 'blue',
+  EXAM_CHANGE: 'orange',
   EXPORT: 'blue',
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  GRADE_CREATE: 'Thêm điểm',
+  GRADE_UPDATE: 'Sửa điểm',
+  PAYMENT_CONFIRMED: 'Xác nhận thanh toán',
+  PAYMENT_REJECTED: 'Từ chối thanh toán',
+  PAYMENT_REFUND: 'Hoàn tiền',
+  FINANCE_CHANGE: 'Thay đổi khoản thu',
+  ATTENDANCE_CHANGE: 'Sửa điểm danh',
+  TIMETABLE_CHANGE: 'Thay đổi thời khóa biểu',
+  ACADEMIC_PLAN: 'Thay đổi kế hoạch đào tạo',
+  ACADEMIC_STRUCTURE: 'Thay đổi cơ cấu năm học',
+  YEAR_END: 'Tổng kết năm học',
+  EXAM_CHANGE: 'Thay đổi kỳ thi',
+  USER_CHANGE: 'Thay đổi người dùng',
+  USER_SECURITY: 'Thay đổi bảo mật',
+  ASSIGNMENT_CHANGE: 'Thay đổi bài tập',
+  LEAVE_CHANGE: 'Xử lý đơn nghỉ',
+  CLUB_CHANGE: 'Thay đổi câu lạc bộ',
+  ANNOUNCEMENT: 'Phát hành thông báo',
+  CREATE: 'Tạo mới',
+  UPDATE: 'Cập nhật',
+  DELETE: 'Xóa dữ liệu',
+  PAYMENT: 'Thanh toán',
+  EXPORT: 'Xuất báo cáo',
 };
 
 const MODULE_LABELS: Record<string, string> = {
@@ -54,18 +91,26 @@ const MODULE_LABELS: Record<string, string> = {
   finance: 'Tài chính',
   notification: 'Thông báo',
   reports: 'Báo cáo',
+  report: 'Báo cáo',
   examination: 'Khảo thí',
   system: 'Hệ thống',
 };
 
 const ACTION_OPTIONS = [
-  ['LOGIN', 'Đăng nhập'],
-  ['LOGIN_FAILED', 'Đăng nhập thất bại'],
-  ['CREATE', 'Tạo mới'],
-  ['UPDATE', 'Cập nhật'],
+  ['GRADE_CREATE', 'Thêm điểm'],
+  ['GRADE_UPDATE', 'Sửa điểm'],
+  ['PAYMENT_CONFIRMED', 'Xác nhận thanh toán'],
+  ['PAYMENT_REJECTED', 'Từ chối thanh toán'],
+  ['PAYMENT_REFUND', 'Hoàn tiền'],
+  ['ATTENDANCE_CHANGE', 'Sửa điểm danh'],
+  ['TIMETABLE_CHANGE', 'Thay đổi thời khóa biểu'],
+  ['ACADEMIC_PLAN', 'Kế hoạch đào tạo'],
+  ['EXAM_CHANGE', 'Kỳ thi'],
+  ['USER_CHANGE', 'Người dùng'],
+  ['USER_SECURITY', 'Bảo mật tài khoản'],
+  ['ASSIGNMENT_CHANGE', 'Bài tập'],
   ['DELETE', 'Xóa dữ liệu'],
-  ['PAYMENT', 'Thanh toán'],
-  ['EXPORT', 'Xuất dữ liệu'],
+  ['EXPORT', 'Xuất báo cáo'],
 ] as const;
 
 function moduleLabel(value?: string) {
@@ -74,10 +119,15 @@ function moduleLabel(value?: string) {
 }
 
 function actionIcon(action: string) {
-  if (action === 'LOGIN' || action === 'LOGIN_FAILED') return LogIn;
+  if (action.startsWith('GRADE_')) return BookOpenCheck;
+  if (action.startsWith('PAYMENT')) return WalletCards;
   if (action === 'DELETE') return AlertTriangle;
   if (action === 'CREATE') return Sparkles;
   return Activity;
+}
+
+function actionLabel(action: string) {
+  return ACTION_LABELS[action] ?? viLabel(action);
 }
 
 export function AdminAuditLive() {
@@ -107,8 +157,10 @@ export function AdminAuditLive() {
 
   const logs = useApi<PageResponse<AuditLog>>(`/audit-logs/page?${params}`);
   const stats = useApi<AuditStats>('/audit-logs/stats');
-  const failedLogins = stats.data?.byAction.LOGIN_FAILED ?? 0;
-  const sensitiveActions = (stats.data?.byAction.DELETE ?? 0) + failedLogins;
+  const gradeEvents = (stats.data?.byAction.GRADE_CREATE ?? 0) + (stats.data?.byAction.GRADE_UPDATE ?? 0);
+  const paymentEvents = Object.entries(stats.data?.byAction ?? {})
+    .filter(([key]) => key === 'PAYMENT' || key.startsWith('PAYMENT_'))
+    .reduce((sum, [, value]) => sum + value, 0);
   const activeFilters = Number(Boolean(module)) + Number(Boolean(action)) + Number(Boolean(query.trim()));
 
   const moduleOptions = useMemo(() => {
@@ -129,33 +181,31 @@ export function AdminAuditLive() {
       <section className="audit-hero">
         <div className="audit-hero-copy">
           <span><ShieldCheck size={15} /> Trung tâm giám sát quản trị</span>
-          <h2>Lịch sử hệ thống</h2>
+          <h2>Nhật ký thay đổi quan trọng</h2>
           <p>Theo dõi minh bạch mọi hoạt động quan trọng, nhanh chóng phát hiện thao tác bất thường và truy vết người thực hiện.</p>
         </div>
         <div className="audit-hero-status">
-          <span className={sensitiveActions > 0 ? 'warning' : 'safe'}>
-            {sensitiveActions > 0 ? <AlertTriangle size={22} /> : <ShieldCheck size={22} />}
-          </span>
+          <span className="safe"><ShieldCheck size={22} /></span>
           <div>
             <small>Trạng thái giám sát</small>
-            <strong>{sensitiveActions > 0 ? `${sensitiveActions} sự kiện cần chú ý` : 'Hệ thống ổn định'}</strong>
-            <p>Dữ liệu được sắp xếp mới nhất trước</p>
+            <strong>{stats.data ? `${stats.data.total} thay đổi quan trọng` : 'Đang tải dữ liệu'}</strong>
+            <p>Lịch sử đăng nhập được quản lý riêng trong hồ sơ bảo mật</p>
           </div>
         </div>
       </section>
 
-      <section className="audit-kpi-grid" aria-label="Tổng quan lịch sử hệ thống">
+      <section className="audit-kpi-grid" aria-label="Tổng quan nhật ký thay đổi">
         <article className="audit-kpi primary">
           <span><FileClock size={21} /></span>
-          <div><small>Tổng sự kiện</small><strong>{stats.data?.total ?? '—'}</strong><p>Đã được lưu vết an toàn</p></div>
+          <div><small>Tổng thay đổi quan trọng</small><strong>{stats.data?.total ?? '—'}</strong><p>Không bao gồm đăng nhập và thao tác thường ngày</p></div>
         </article>
         <article className="audit-kpi success">
-          <span><LogIn size={21} /></span>
-          <div><small>Đăng nhập thành công</small><strong>{stats.data?.byAction.LOGIN ?? 0}</strong><p>Phiên truy cập hợp lệ</p></div>
+          <span><BookOpenCheck size={21} /></span>
+          <div><small>Thay đổi điểm</small><strong>{gradeEvents}</strong><p>Thêm mới và điều chỉnh điểm số</p></div>
         </article>
-        <article className={`audit-kpi ${failedLogins > 0 ? 'danger' : ''}`}>
-          <span><AlertTriangle size={21} /></span>
-          <div><small>Đăng nhập thất bại</small><strong>{failedLogins}</strong><p>{failedLogins > 0 ? 'Nên kiểm tra tài khoản liên quan' : 'Chưa phát hiện rủi ro'}</p></div>
+        <article className="audit-kpi">
+          <span><WalletCards size={21} /></span>
+          <div><small>Giao dịch thanh toán</small><strong>{paymentEvents}</strong><p>Xác nhận, từ chối và hoàn tiền</p></div>
         </article>
         <article className="audit-kpi">
           <span><BarChart3 size={21} /></span>
@@ -221,7 +271,7 @@ export function AdminAuditLive() {
 
       <section className="audit-list-panel">
         <header>
-          <div><span><Clock3 size={18} /></span><div><h3>Dòng thời gian hoạt động</h3><p>{logs.data?.totalElements ?? 0} sự kiện phù hợp với bộ lọc hiện tại</p></div></div>
+          <div><span><Clock3 size={18} /></span><div><h3>Dòng thời gian thay đổi</h3><p>{logs.data?.totalElements ?? 0} thay đổi phù hợp với bộ lọc hiện tại</p></div></div>
           {activeFilters > 0 && <Badge tone="blue">{activeFilters} bộ lọc</Badge>}
         </header>
 
@@ -238,7 +288,7 @@ export function AdminAuditLive() {
                       <td data-label="Người thực hiện">
                         <div className="audit-actor"><span><UserRound size={16} /></span><div><strong>{log.actorName || 'Hệ thống'}</strong><small>{viLabel(log.role)}</small></div></div>
                       </td>
-                      <td data-label="Hành động"><Badge tone={ACTION_TONE[log.action] || 'blue'}><ActionIcon size={12} /> {viLabel(log.action)}</Badge></td>
+                      <td data-label="Hành động"><Badge tone={ACTION_TONE[log.action] || 'blue'}><ActionIcon size={12} /> {actionLabel(log.action)}</Badge></td>
                       <td data-label="Phân hệ"><span className="audit-module">{moduleLabel(log.module)}</span></td>
                       <td data-label="Nội dung">
                         <div className="audit-detail"><strong>{log.detail || 'Không có mô tả bổ sung'}</strong>{(log.entityType || log.entityId) && <small>{[log.entityType, log.entityId].filter(Boolean).join(' · ')}</small>}</div>
@@ -254,7 +304,7 @@ export function AdminAuditLive() {
         {logs.data && (
           <ServerPagination
             data={logs.data}
-            itemLabel="sự kiện"
+            itemLabel="thay đổi"
             onPageChange={(nextPage) => setPageNumber(nextPage + 1, 'push')}
             onPageSizeChange={(value) => { setPageSize(value); setPageNumber(1); }}
           />

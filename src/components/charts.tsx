@@ -1,5 +1,4 @@
 import type React from 'react';
-import { eventFlow, invoiceStatus } from '../data/mockData';
 import type { Metric } from '../types';
 
 export function MetricCard({ metric }: { metric: Metric }) {
@@ -57,35 +56,6 @@ export function ColumnChart({ data, max, suffix }: { data: Array<{ label: string
           <span>{item.label}</span>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function SplitDashboard() {
-  return (
-    <div className="split-dashboard">
-      <div className="status-donut" aria-label="Trạng thái hóa đơn">
-        <div>
-          <strong>68%</strong>
-          <span>Paid</span>
-        </div>
-      </div>
-      <div className="mini-stats">
-        {invoiceStatus.map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}%</strong>
-          </div>
-        ))}
-      </div>
-      <div className="event-list">
-        {eventFlow.map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value.toLocaleString('vi-VN')}</strong>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

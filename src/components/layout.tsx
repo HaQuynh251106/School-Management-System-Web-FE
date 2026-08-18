@@ -1,6 +1,6 @@
 import type React from 'react';
 import { BarChart3, ChevronRight } from 'lucide-react';
-import { modules, roles } from '../data/mockData';
+import { modules, roles } from '../data/appMetadata';
 import type { PageId, RoleDefinition, RoleId } from '../types';
 
 export function SessionCard({ role, name }: { role: RoleDefinition; name?: string }) {

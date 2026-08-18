@@ -61,6 +61,7 @@ export function AdminReportsLive() {
   const [feePeriodId, setFeePeriodId] = useHashString('fee_period', '');
   const [startDate, setStartDate] = useHashString('from', '');
   const [endDate, setEndDate] = useHashString('to', '');
+  const [exportFormat, setExportFormat] = useState<'csv' | 'xlsx' | 'pdf'>('xlsx');
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(() => new Date());
   const overview = useApi<OverviewReport>('/reports/overview');
@@ -124,7 +125,7 @@ export function AdminReportsLive() {
 
   const exportReport = async (type: string) => {
     try {
-      const query = new URLSearchParams({ type });
+      const query = new URLSearchParams({ type, format: exportFormat });
       if (classId) query.set('classId', classId);
       if (type === 'grades' && semesterId) query.set('semesterId', semesterId);
       if (type === 'grades' && subjectId) query.set('subjectId', subjectId);
@@ -135,10 +136,10 @@ export function AdminReportsLive() {
       const href = URL.createObjectURL(result.blob);
       const anchor = document.createElement('a');
       anchor.href = href;
-      anchor.download = result.filename || `bao-cao-${type}.csv`;
+      anchor.download = result.filename || `bao-cao-${type}.${exportFormat}`;
       anchor.click();
       URL.revokeObjectURL(href);
-      toast.show('ok', 'Đã xuất báo cáo CSV từ dữ liệu hiện tại');
+      toast.show('ok', `Đã xuất báo cáo ${exportFormat.toUpperCase()} từ dữ liệu hiện tại`);
     } catch (error: any) {
       toast.show('err', error.message);
     }
@@ -166,6 +167,9 @@ export function AdminReportsLive() {
           <button type="button" className="report-refresh" onClick={reloadAll} disabled={refreshing}><RefreshCw size={16} className={refreshing ? 'is-spinning' : ''} /> Làm mới</button>
           <div className="report-export-menu">
             <span><Download size={16} /> Xuất dữ liệu</span>
+            <select aria-label="Định dạng tệp báo cáo" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as 'csv' | 'xlsx' | 'pdf')}>
+              <option value="xlsx">Excel (.xlsx)</option><option value="pdf">PDF (.pdf)</option><option value="csv">CSV (.csv)</option>
+            </select>
             <button type="button" onClick={() => exportReport('overview')}>Tổng quan</button>
             <button type="button" onClick={() => exportReport('grades')}>Học tập</button>
             <button type="button" onClick={() => exportReport('attendance')}>Chuyên cần</button>

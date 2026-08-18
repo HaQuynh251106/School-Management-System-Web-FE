@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 
-export type RoleId = 'admin' | 'academic_staff' | 'accountant' | 'teacher' | 'student' | 'parent';
+export type RoleId = 'admin' | 'teacher' | 'student' | 'parent';
 export type AttendanceStatus = 'present' | 'late' | 'absent';
 export type PageId = 'dashboard' | string;
 

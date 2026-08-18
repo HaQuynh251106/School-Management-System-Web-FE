@@ -1,0 +1,64 @@
+name: Deploy Web to Azure Production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: web-azure-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Test and build Web
+        env:
+          VITE_API_BASE: ${{ vars.VITE_API_BASE }}
+          VITE_SHOW_DEMO_ACCOUNTS: 'false'
+        run: |
+          set -Eeuo pipefail
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Upload static Web build
+        env:
+          STORAGE_ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+        run: |
+          set -Eeuo pipefail
+          account_key="$(az storage account keys list --account-name "$STORAGE_ACCOUNT" --query '[0].value' -o tsv)"
+          az storage blob upload-batch \
+            --account-name "$STORAGE_ACCOUNT" \
+            --account-key "$account_key" \
+            --destination '$web' \
+            --source dist \
+            --overwrite true \
+            --output none
+
+      - name: Verify production Web
+        env:
+          WEB_URL: ${{ vars.PRODUCTION_WEB_URL }}
+        run: curl --fail --silent --show-error "$WEB_URL" >/dev/null

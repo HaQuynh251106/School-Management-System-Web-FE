@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
-import { api } from '../../api/client';
+import { AlertTriangle, BarChart3, BellRing, CalendarCheck2, CalendarDays, CheckCircle2, Clock3, Eye, GraduationCap, History, IdCard, Inbox, LockKeyhole, Mail, MapPin, Megaphone, Phone, ReceiptText, RefreshCw, RotateCcw, Search, Send, ShieldCheck, SlidersHorizontal, TrendingUp, Trophy, UserCheck, UserRound, Users, UsersRound, UserX, WalletCards } from 'lucide-react';
+import { api, ApiError } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
-import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest } from '../../api/types';
+import type { Announcement, ApiUser, AttendanceDayStatus, AttendanceRecord, AttendanceSessionStatus, SchoolClass, Semester, ExamCategory, TimetableSlot, Grade, GradeChangeLog, GradeSubjectSummary, TeacherAnnouncementScope, TeacherGradebookContext, TeachingAssignment, FeePeriod, Invoice, FinanceClassSummary, ClassReminderResult, LeaveRequest } from '../../api/types';
 import { Badge, Section, StatusPill } from '../../components/ui';
 import { Async, useToast, DAY_LABEL, fmtDate, fmtDateTime, money, PaginatedData } from './common';
 import { Modal } from './Modal';
-import { formatScore, gradeColumns, gradeKey, scoreTone, weightedAverage } from './gradebook';
+import { formatScore, gradeColumns, gradeKey, scoreTone } from './gradebook';
 import { NotificationsLive } from './SharedLive';
 import { useHashString } from '../../api/urlState';
 import { TeacherLoadRegistrationLive } from './WorkloadPlanningLive';
@@ -265,6 +265,9 @@ export function TeacherAttendanceLive() {
     () => new Set((approvedLeaves.data || []).map((request) => request.studentId)),
     [approvedLeaves.data],
   );
+  const attendanceVersions = useMemo(() => new Map((attendance.data || []).map((record) => [
+    record.studentId, record.version,
+  ])), [attendance.data]);
   const [marks, setMarks] = useState<Record<string, { status: string; note: string }>>({});
   const [baseline, setBaseline] = useState<Record<string, { status: string; note: string }>>({});
   const [search, setSearch] = useHashString('q', '');
@@ -374,6 +377,7 @@ export function TeacherAttendanceLive() {
           studentId: student.id,
           status: marks[student.id]?.status || 'PRESENT',
           note: marks[student.id]?.note.trim() || null,
+          expectedVersion: attendanceVersions.get(student.id),
         })),
       };
       const saved = await api.post<AttendanceRecord[]>('/attendance/bulk', body);
@@ -384,12 +388,18 @@ export function TeacherAttendanceLive() {
       }));
       setMarks(next);
       setBaseline(next);
+      attendance.setData(saved);
       setHasSavedRegister(true);
       setLastSavedAt(`Lưu lúc ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`);
       sessionStatus.reload();
       toast.show('ok', `Đã lưu điểm danh ${saved.length} học sinh. Hệ thống chỉ gửi cảnh báo cho trường hợp cần phụ huynh chú ý; học sinh có đơn nghỉ đã duyệt không nhận thông báo trùng.`);
-    } catch (e: any) {
-      toast.show('err', e.message);
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        await attendance.reload();
+        toast.show('err', 'Sổ điểm danh vừa được cập nhật ở phiên khác. Dữ liệu mới nhất đã được tải lại; vui lòng kiểm tra trước khi lưu lại.');
+      } else {
+        toast.show('err', e instanceof Error ? e.message : 'Không thể lưu điểm danh');
+      }
     } finally {
       setSaving(false);
     }
@@ -617,6 +627,7 @@ export function TeacherGradesLive() {
   const [semesterId, setSemesterId] = useHashString('semester', '');
   const [selectedSubjectId, setSelectedSubjectId] = useHashString('subject', '');
   const [reason, setReason] = useState('');
+  const [historyGradeId, setHistoryGradeId] = useState('');
 
   useEffect(() => {
     if (!classId && classOpts.length) setClassId(classOpts[0]);
@@ -649,6 +660,10 @@ export function TeacherGradesLive() {
       ? `/grades?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}&subjectId=${encodeURIComponent(subjectId)}`
       : null,
   );
+  const summaries = useApi<GradeSubjectSummary[]>(classId && subjectId && semesterId
+    ? `/grades/summary?classId=${encodeURIComponent(classId)}&semesterId=${encodeURIComponent(semesterId)}&subjectId=${encodeURIComponent(subjectId)}`
+    : null);
+  const gradeHistory = useApi<GradeChangeLog[]>(historyGradeId ? `/grades/${encodeURIComponent(historyGradeId)}/change-logs` : null);
   const [scores, setScores] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -665,6 +680,10 @@ export function TeacherGradesLive() {
     gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1),
     grade.version,
   ])), [existing.data]);
+  const gradeByKey = useMemo(() => new Map((existing.data || []).map((grade) => [
+    gradeKey(grade.studentId, grade.category, grade.assessmentIndex ?? 1), grade,
+  ])), [existing.data]);
+  const summaryByStudent = useMemo(() => new Map((summaries.data || []).map((item) => [item.studentId, item])), [summaries.data]);
 
   const gradeRows = useMemo(() => (students.data || []).map((student) => {
     const values = columns.flatMap((column) => {
@@ -675,8 +694,8 @@ export function TeacherGradesLive() {
         score: Number(value),
       }];
     });
-    return { student, values, average: weightedAverage(values, cats.data || []) };
-  }), [students.data, cats.data, columns, scores]);
+    return { student, values, average: summaryByStudent.get(student.id)?.average ?? null };
+  }), [students.data, columns, scores, summaryByStudent]);
 
   const averages = gradeRows.map((row) => row.average).filter((score): score is number => score != null);
   const classAverage = averages.length
@@ -696,14 +715,21 @@ export function TeacherGradesLive() {
     const batches = columns.map((column) => ({
       column,
       entries: (students.data || [])
-        .filter((student) => scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== undefined && scores[gradeKey(student.id, column.category.code, column.assessmentIndex)] !== '')
+        .filter((student) => {
+          const key = gradeKey(student.id, column.category.code, column.assessmentIndex);
+          const value = scores[key];
+          const current = gradeByKey.get(key);
+          return value !== undefined && value !== '' && (!current || Number(value) !== current.score);
+        })
         .map((student) => {
           const key = gradeKey(student.id, column.category.code, column.assessmentIndex);
           return { studentId: student.id, score: Number(scores[key]), expectedVersion: gradeVersions.get(key) };
         }),
     })).filter((batch) => batch.entries.length);
     const entryCount = batches.reduce((total, batch) => total + batch.entries.length, 0);
-    if (!entryCount) return toast.show('err', 'Chưa nhập đầu điểm nào');
+    if (!entryCount) return toast.show('err', 'Không có điểm mới hoặc thay đổi cần lưu');
+    const updatesExistingGrade = batches.some((batch) => batch.entries.some((entry) => entry.expectedVersion !== undefined));
+    if (updatesExistingGrade && !reason.trim()) return toast.show('err', 'Vui lòng nhập lý do khi sửa điểm đã có');
 
     try {
       await Promise.all(batches.map((batch) => api.post('/grades/bulk', {
@@ -712,12 +738,18 @@ export function TeacherGradesLive() {
         semesterId,
         category: batch.column.category.code,
         assessmentIndex: batch.column.assessmentIndex,
-        reason,
+        reason: updatesExistingGrade ? reason.trim() : null,
         entries: batch.entries,
       })));
       toast.show('ok', `Đã lưu ${entryCount} đầu điểm. Điểm mới hoặc điểm thay đổi đã được tự động thông báo tới học sinh và phụ huynh.`);
-      existing.reload();
-    } catch (e: any) { toast.show('err', e.message); }
+      setReason('');
+      await Promise.all([existing.reload(), summaries.reload()]);
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 409) {
+        await Promise.all([existing.reload(), summaries.reload()]);
+        toast.show('err', 'Điểm vừa được cập nhật ở phiên khác. Dữ liệu mới nhất đã được tải lại; vui lòng kiểm tra trước khi lưu.');
+      } else toast.show('err', e instanceof Error ? e.message : 'Không thể lưu bảng điểm');
+    }
   };
 
   return (
@@ -739,7 +771,7 @@ export function TeacherGradesLive() {
           <div className="gradebook-auto-subject"><span>Môn chuyên ngành</span><strong>{gradebookContext.loading ? 'Đang xác định…' : subjectName || '—'}</strong><small>Tự động theo phân công giảng dạy</small></div>
         )}
         {canEdit ? (
-          <label className="gradebook-reason"><span>Lý do điều chỉnh (nếu có)</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+          <label className="gradebook-reason"><span>Lý do sửa điểm đã có *</span><input className="live-input" placeholder="Ví dụ: cập nhật sau phúc khảo" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
         ) : (
           <div className="gradebook-readonly-card"><Eye size={18} /><div><strong>Chế độ chỉ xem</strong><small>Điểm do giáo viên bộ môn {selectedSubject?.teacherName || 'phụ trách'} quản lý</small></div></div>
         )}
@@ -755,7 +787,7 @@ export function TeacherGradesLive() {
       )}
 
       {!ready ? <div className="gradebook-onboarding"><BarChart3 size={26} /><strong>Chọn lớp và học kỳ</strong><span>{gradebookContext.error || 'Môn học sẽ được hệ thống tự động xác định theo hồ sơ và phân công của giáo viên.'}</span></div> : existing.loading ? <div className="live-loading">Đang tải sổ điểm…</div> : (
-        <Async paginate state={{ data: gradeRows, loading: students.loading, error: students.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
+        <Async paginate state={{ data: gradeRows, loading: students.loading || summaries.loading, error: students.error || summaries.error }} empty="Lớp chưa có học sinh" itemLabel="học sinh">
           {(pagedGradeRows) => (
             <div className="gradebook-shell">
               <div className="gradebook-context"><div><small>Đang xem</small><strong>{classMap.get(classId) || classId} · {subjectName}</strong></div><span>{canEdit ? 'Có quyền chỉnh sửa' : 'Chỉ xem'} · {columns.length} đầu điểm</span></div>
@@ -780,7 +812,8 @@ export function TeacherGradesLive() {
                       <td className="gradebook-sticky-col"><strong>{row.student.fullName}</strong><small>{row.student.studentCode || row.student.username}</small></td>
                       {columns.map((column) => {
                         const key = gradeKey(row.student.id, column.category.code, column.assessmentIndex);
-                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><input className={`gradebook-score-input ${!canEdit ? 'locked' : ''} ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} aria-readonly={!canEdit} readOnly={!canEdit} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => canEdit && setScores({ ...scores, [key]: event.target.value })} /></td>;
+                        const grade = gradeByKey.get(key);
+                        return <td key={`${column.category.code}-${column.assessmentIndex}`}><div className="gradebook-score-cell"><input className={`gradebook-score-input ${!canEdit ? 'locked' : ''} ${scoreTone(scores[key] === undefined || scores[key] === '' ? null : Number(scores[key]))}`} aria-label={`${column.label} của ${row.student.fullName}`} aria-readonly={!canEdit} readOnly={!canEdit} type="number" min={0} max={10} step="0.1" placeholder="—" value={scores[key] ?? ''} onChange={(event) => canEdit && setScores({ ...scores, [key]: event.target.value })} />{grade && <button type="button" className="grade-history-button" title={`Xem lịch sử ${column.label} của ${row.student.fullName}`} onClick={() => setHistoryGradeId(grade.id)}><History size={13} /></button>}</div></td>;
                       })}
                       <td className="gradebook-total-cell"><strong className={`grade-total ${scoreTone(row.average)}`}>{row.average == null ? '' : formatScore(row.average)}</strong><small>{row.average == null ? 'Chưa đủ điểm' : 'Thang 10'}</small></td>
                       <td><span className={`gradebook-completion ${missing ? 'incomplete' : 'complete'}`}>{missing ? `Thiếu ${missing}` : 'Đủ điểm'}</span></td>
@@ -793,6 +826,11 @@ export function TeacherGradesLive() {
           )}
         </Async>
       )}
+      {historyGradeId && <Modal title="Lịch sử thay đổi điểm" onClose={() => setHistoryGradeId('')}>
+        <Async state={gradeHistory} allowEmpty empty="Chưa có thay đổi nào được ghi nhận">
+          {(items) => <div className="grade-change-history">{items.slice().sort((a, b) => b.changedAt.localeCompare(a.changedAt)).map((item) => <article key={item.id}><span><History size={15} /></span><div><strong>{item.action === 'CREATE' ? 'Thêm điểm' : `${formatScore(item.oldScore ?? null)} → ${formatScore(item.newScore ?? null)}`}</strong><p>{item.reason || 'Tạo đầu điểm mới'}</p><small>{fmtDateTime(item.changedAt)} · Người thực hiện: {item.changedBy}</small></div></article>)}</div>}
+        </Async>
+      </Modal>}
     </Section>
   );
 }

@@ -1,6 +1,6 @@
 // Kiểu dữ liệu khớp response của backend SSE.
 
-export type Role = 'ADMIN' | 'ACADEMIC_STAFF' | 'ACCOUNTANT' | 'TEACHER' | 'STUDENT' | 'PARENT';
+export type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 export interface PageResponse<T> {
   items: T[];
@@ -52,6 +52,7 @@ export interface ApiUser {
   guardianPhone?: string | null;
   teacherCode?: string | null;
   mainSubject?: string | null;
+  mainSubjectId?: string | null;
   childrenIds?: string[] | null;
   cohortId?: string | null;
   studentStatus?: 'ENROLLED' | 'GRADUATED' | 'WITHDRAWN' | 'TRANSFERRED' | null;
@@ -107,7 +108,17 @@ export interface TimetableSlot {
 
 export interface AttendanceRecord {
   id: string; studentId: string; classId?: string; slotId: string; date: string;
-  status: string; note?: string | null; subjectName?: string; periodNo?: number;
+  status: string; note?: string | null; subjectName?: string; periodNo?: number; version?: number;
+}
+
+export interface GradeSubjectSummary {
+  studentId: string; subjectId: string; subjectName: string; semesterId: string;
+  average?: number | null; complete: boolean; missingAssessmentKeys: string[];
+}
+
+export interface GradeChangeLog {
+  id: string; gradeId: string; action: 'CREATE' | 'UPDATE'; oldScore?: number | null; newScore?: number | null;
+  oldNote?: string | null; newNote?: string | null; changedBy: string; reason: string; changedAt: string;
 }
 
 export interface Grade {
@@ -150,7 +161,27 @@ export interface TeacherWorkload {
 }
 export interface CurriculumRequirement {
   id: string; semesterId: string; gradeLevel: string; subjectId: string; subjectName: string;
-  weeklyPeriods: number; createdAt: string; updatedAt: string;
+  weeklyPeriods: number; totalPeriods: number; startDate?: string | null; endDate?: string | null;
+  examWindowStart?: string | null; examWindowEnd?: string | null; milestone?: string | null;
+  planStatus: 'DRAFT' | 'LOCKED' | 'PUBLISHED'; version: number; createdAt: string; updatedAt: string;
+}
+export interface TeachingProgress {
+  id: string; timetableSlotId: string; classId: string; classCode: string;
+  subjectId: string; subjectName: string; semesterId: string;
+  teacherId: string; teacherName: string; lessonDate: string; completedPeriods: number;
+  topic: string; status: 'COMPLETED' | 'CANCELLED'; reason?: string | null;
+  makeupDate?: string | null; makeupStatus: 'NONE' | 'PROPOSED' | 'APPROVED' | 'REJECTED';
+  reviewNote?: string | null; reviewedBy?: string | null; reviewedAt?: string | null;
+  createdAt: string; updatedAt: string; version: number;
+}
+export interface ProgressBalanceRow {
+  classId: string; classCode: string; subjectId: string; subjectName: string;
+  lastLessonDate: string; completedPeriods: number; latestTopic: string;
+  dayGapFromLeader: number; periodGapFromLeader: number; withinTolerance: boolean;
+}
+export interface ProgressBalanceResponse {
+  semesterId: string; classSubjectCount: number; warningCount: number;
+  allowedDayGap: number; allowedPeriodGap: number; rows: ProgressBalanceRow[];
 }
 export interface TeacherLoadRegistration {
   id: string; teacherId: string; teacherCode?: string | null; teacherName: string;
@@ -204,6 +235,19 @@ export interface ExamSchedule {
   id: string; examPeriodId: string; subjectId: string; subjectName: string;
   examDate: string; startTime: string; durationMinutes: number; notes?: string | null;
   classIds: string[];
+}
+export interface ExamAutoPlanAllocation {
+  classId: string; classCode: string; studentCount: number; roomCode: string; capacity: number;
+  proctorId: string; proctorName: string; graderId: string; graderName: string;
+}
+export interface ExamAutoPlanSchedule {
+  scheduleId?: string | null; subjectId: string; subjectName: string; examDate: string;
+  startTime: string; durationMinutes: number; allocations: ExamAutoPlanAllocation[];
+}
+export interface ExamAutoPlanResult {
+  examPeriodId: string; planKey: string; requestHash: string; applied: boolean;
+  scheduleCount: number; schedules: ExamAutoPlanSchedule[]; blockers: string[];
+  constraints: Record<string, unknown>;
 }
 export interface ExamRoom {
   id: string; scheduleId: string; roomCode: string; capacity: number;
@@ -307,6 +351,17 @@ export interface Assignment {
 }
 export interface NotificationPreference { id: string; userId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; enabled: boolean; updatedAt: string; }
 export interface NotificationDeliveryLog { id: string; notificationId?: string | null; recipientId: string; channel: 'IN_APP' | 'PUSH' | 'EMAIL'; status: string; attempts: number; detail?: string | null; createdAt: string; }
+
+export interface Club {
+  id: string; code: string; name: string; description?: string | null; schedule: string;
+  capacity: number; approvedCount: number; availableSlots: number; waitlistCount: number;
+  feeAmount: number; approvalRequired: boolean; registrationStart: string; registrationEnd: string; active: boolean;
+}
+export interface ClubRegistration {
+  id: string; clubId: string; clubName: string; studentId: string; studentName: string;
+  requestedBy: string; status: string; invoiceId?: string | null; decisionNote?: string | null;
+  waitlistPosition: number; createdAt: string; decidedAt?: string | null; cancelledAt?: string | null;
+}
 export interface Submission {
   id: string; assignmentId: string; studentId: string; studentName: string; status: string;
   content?: string; submittedAt?: string; score?: number | null; feedback?: string | null;
@@ -334,7 +389,7 @@ export interface FeePeriodItem { id: string; feePeriodId: string; name: string; 
 export interface Invoice {
   id: string; code: string; studentId: string; studentName: string; parentId?: string; feePeriodId?: string;
   classId?: string | null; classCode?: string | null; gradeLevel?: string | null;
-  totalAmount: number; paidAmount: number; status: string; issuedAt?: string; dueDate?: string;
+  totalAmount: number; paidAmount: number; refundedAmount?: number; status: string; issuedAt?: string; dueDate?: string;
 }
 export interface Payment { id: string; invoiceId: string; amount: number; method: string; status: string; txnRef?: string; paidAt?: string; }
 export interface InvoiceDetail { invoice: Invoice; items: Array<{ id: string; invoiceId: string; name: string; amount: number }>; payments: Payment[]; }

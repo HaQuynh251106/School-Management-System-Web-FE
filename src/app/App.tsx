@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Bell, CalendarDays, ChevronDown, LogOut, Mail, Menu, MessageCircleMore, Moon, Phone, School, Settings, Sun, UserRound, X } from 'lucide-react';
-import { roles, modules } from '../data/mockData';
+import { roles, modules } from '../data/appMetadata';
 import type { PageId, RoleId } from '../types';
 import { SessionCard, SidebarMenu } from '../components/layout';
 import { useAuth } from '../api/auth';
@@ -8,7 +8,7 @@ import { ActiveChildProvider } from '../api/activeChild';
 import { useTheme } from '../api/theme';
 import { useApi } from '../api/useApi';
 import type { UnreadCount } from '../api/types';
-import { CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
+import { BUSINESS_DATA_CHANGED, CHAT_REALTIME_RECEIVED, CHAT_UNREAD_CHANGED, NOTIFICATION_INBOX_CHANGED } from '../api/liveEvents';
 import { GlobalSearch } from '../components/GlobalSearch';
 import { ConnectivityBanner } from '../components/SystemFeedback';
 import { readHashRoute } from '../api/urlState';
@@ -141,6 +141,8 @@ export default function App() {
       } else if (event.type === 'CHAT' || event.type === 'CHAT_READ') {
         reloadChatUnread();
         window.dispatchEvent(new CustomEvent(CHAT_REALTIME_RECEIVED, { detail: event.data }));
+      } else {
+        window.dispatchEvent(new CustomEvent(BUSINESS_DATA_CHANGED, { detail: event }));
       }
     });
   }, [userId, reloadNotifications, reloadChatUnread]);

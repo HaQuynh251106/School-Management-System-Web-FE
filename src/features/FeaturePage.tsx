@@ -6,10 +6,7 @@ import { AdminAuditLive } from './live/AdminAuditLive';
 import { AdminTimetableLive } from './live/AdminTimetableLive';
 import { ChatLive } from './live/ChatLive';
 // Live (nối backend thật)
-import {
-  AdminUsersLive, AdminOperationsUsersLive,
-  AdminFinanceLive, AdminNotificationsLive,
-} from './live/AdminLive';
+import { AdminUsersLive, AdminFinanceLive, AdminNotificationsLive } from './live/AdminLive';
 import { AdminAcademicLive } from './live/AdminAcademicManager';
 import { TeacherClassesLive, TeacherAttendanceLive, TeacherGradesLive, TeacherNotificationsLive, TeacherFinanceLive } from './live/TeacherLive';
 import { StudentProfileLive, StudentAcademicLive, StudentAttendanceLive } from './live/StudentLive';
@@ -22,13 +19,15 @@ import { AdminExamsLive } from './live/AdminExamsLive';
 import { MyExamsLive } from './live/MyExamsLive';
 import { ParentYearEndLive, StudentYearEndLive, TeacherConductLive } from './live/YearEndLive';
 import { AlumniLive } from './live/AlumniLive';
+import { AdminTeachingProgressLive, TeacherTeachingProgressLive } from './live/TeachingProgressLive';
+import { ClubLive } from './live/ClubLive';
 
 export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleDefinition }) {
   if (!module) {
     return <GeneralDashboard roleId={role.id} />;
   }
 
-  const showWorkspaceGuide = role.id === 'academic_staff' || role.id === 'accountant';
+  const showWorkspaceGuide = role.id === 'admin' && ['A2', 'A3', 'A4', 'A7'].includes(module.code);
   return <div className={`feature-page feature-page--${role.id}`}>
     {showWorkspaceGuide && <RoleWorkspaceIntro module={module} role={role} />}
     <FeatureBody code={module.code} />
@@ -36,11 +35,10 @@ export function FeaturePage({ module, role }: { module?: ModuleItem; role: RoleD
 }
 
 const WORKSPACE_STEPS: Record<string, string[]> = {
-  E1: ['Tạo năm học và học kỳ', 'Chuẩn hóa lớp, môn, phòng', 'Phân lớp và kiểm tra dữ liệu'],
-  E2: ['Tiếp nhận đăng ký tiết dạy', 'Phân công đúng chuyên môn', 'Tạo và duyệt thời khóa biểu'],
-  E3: ['Tạo kỳ thi', 'Xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
-  E4: ['Chọn niên khóa', 'Tra cứu học sinh đã tốt nghiệp', 'Mở hồ sơ lịch sử khi cần'],
-  F1: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
+  A2: ['Tạo năm học và học kỳ', 'Chuẩn hóa lớp, môn, phòng', 'Phân lớp và kiểm tra dữ liệu'],
+  A3: ['Tiếp nhận đăng ký tiết dạy', 'Phân công đúng chuyên môn', 'Tạo và phát hành thời khóa biểu'],
+  A4: ['Tạo kỳ thi', 'Tự xếp lịch, phòng và nhân sự', 'Công bố lịch chính thức'],
+  A7: ['Tạo đợt và khoản thu', 'Mở đợt, phát hành hóa đơn', 'Theo dõi công nợ', 'Đối soát thanh toán'],
 };
 
 function RoleWorkspaceIntro({ module, role }: { module: ModuleItem; role: RoleDefinition }) {
@@ -68,21 +66,15 @@ export function FeatureBody({ code }: { code: string }) {
     case 'A1T': return <AdminUsersLive fixedRole="TEACHER" />;
     case 'A1P': return <AdminUsersLive fixedRole="PARENT" />;
     case 'A1A': return <AlumniLive />;
-    case 'A1O': return <AdminOperationsUsersLive />;
     case 'A2': return <AdminAcademicLive />;
     case 'A3': return <AdminTimetableLive />;
     case 'A4': return <AdminExamsLive />;
+    case 'A5': return <AdminTeachingProgressLive />;
     case 'A6': return <AdminAuditLive />;
     case 'A7': return <AdminFinanceLive />;
     case 'A8': return <AdminReportsLive />;
     case 'A9': return <AdminNotificationsLive />;
-    // ---- Giáo vụ ----
-    case 'E1': return <AdminAcademicLive />;
-    case 'E2': return <AdminTimetableLive />;
-    case 'E3': return <AdminExamsLive />;
-    case 'E4': return <AlumniLive />;
-    // ---- Kế toán ----
-    case 'F1': return <AdminFinanceLive />;
+    case 'A10': return <ClubLive actor="admin" />;
     // ---- Teacher ----
     case 'B1': return <TeacherClassesLive />;
     case 'B2': return <MyTimetableLive />;
@@ -97,6 +89,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'B11': return <ProfileSettingsLive actor="teacher" />;
     case 'B12': return <MyExamsLive actor="teacher" />;
     case 'B13': return <TeacherConductLive />;
+    case 'B14': return <TeacherTeachingProgressLive />;
     // ---- Student ----
     case 'C1': return <StudentProfileLive />;
     case 'C2': return <StudentAcademicLive />;
@@ -109,6 +102,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'C9': return <ProfileSettingsLive actor="student" />;
     case 'C10': return <MyExamsLive actor="student" />;
     case 'C11': return <StudentYearEndLive />;
+    case 'C12': return <ClubLive actor="student" />;
     // ---- Parent ----
     case 'D1': return <ParentSwitchLive />;
     case 'D2': return <ParentMonitorLive />;
@@ -120,6 +114,7 @@ export function FeatureBody({ code }: { code: string }) {
     case 'D8': return <ProfileSettingsLive actor="parent" />;
     case 'D9': return <MyExamsLive actor="parent" />;
     case 'D10': return <ParentYearEndLive />;
+    case 'D11': return <ClubLive actor="parent" />;
     default: return <GeneralDashboard roleId="admin" />;
   }
 }

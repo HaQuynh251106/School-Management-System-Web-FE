@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PAGE_PATHS, pageHash, pagePath, resolvePageRoute, ROLE_PATHS } from './routes';
 import type { RoleId } from '../types';
-import { modules } from '../data/mockData';
+import { modules } from '../data/appMetadata';
 
 describe('semantic website routes', () => {
   it('covers every function displayed in the role menus', () => {
@@ -43,12 +43,9 @@ describe('semantic website routes', () => {
     });
   });
 
-  it('keeps old page-code links working for existing bookmarks', () => {
-    expect(resolvePageRoute('F1')).toEqual({
-      roleId: 'accountant',
-      pageId: 'F1',
-      legacy: true,
-    });
+  it('keeps valid four-role page-code links and rejects retired role bookmarks', () => {
+    expect(resolvePageRoute('F1')).toBeNull();
+    expect(resolvePageRoute('E2')).toBeNull();
     expect(resolvePageRoute('B3')).toEqual({
       roleId: 'teacher',
       pageId: 'B3',
@@ -57,9 +54,9 @@ describe('semantic website routes', () => {
   });
 
   it('preserves filters and pagination in a semantic URL', () => {
-    expect(pageHash('accountant', 'F1', new URLSearchParams({
+    expect(pageHash('admin', 'A7', new URLSearchParams({
       page: '2',
       status: 'OVERDUE',
-    }))).toBe('#/ke-toan/tai-chinh-noi-bo?page=2&status=OVERDUE');
+    }))).toBe('#/quan-tri/tai-chinh?page=2&status=OVERDUE');
   });
 });

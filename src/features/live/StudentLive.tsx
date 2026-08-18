@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
-import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass } from '../../api/types';
+import type { Grade, GradeSubjectSummary, Semester, AttendanceRecord, ExamCategory, SchoolClass } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate } from './common';
 import { WeeklyTimetable } from './SharedLive';
 import { BarChart3, BookOpen, CalendarDays, CheckCircle2, GraduationCap, IdCard, MapPin, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
+import { formatScore, gradeColumns, scoreTone } from './gradebook';
 
 /* ===== C1 — Hồ sơ ===== */
 export function StudentProfileLive() {
@@ -127,6 +127,8 @@ export function StudentAcademicLive() {
   const [sem, setSem] = useState('');
   const effSem = sem || semesters.data?.[0]?.id || '';
   const grades = useApi<Grade[]>(effSem ? `/grades?semesterId=${effSem}` : null);
+  const summaries = useApi<GradeSubjectSummary[]>(effSem ? `/grades/summary?semesterId=${encodeURIComponent(effSem)}` : null);
+  const summaryBySubject = useMemo(() => new Map((summaries.data || []).map((item) => [item.subjectId, item])), [summaries.data]);
 
   const categoryList = useMemo<ExamCategory[]>(() => {
     if (categories.data?.length) return categories.data;
@@ -147,8 +149,8 @@ export function StudentAcademicLive() {
       row.grades.push(grade);
       grouped.set(grade.subjectId, row);
     });
-    return [...grouped.values()].map((row) => ({ ...row, average: weightedAverage(row.grades, categoryList) }));
-  }, [grades.data, categoryList]);
+    return [...grouped.values()].map((row) => ({ ...row, average: summaryBySubject.get(row.subjectId)?.average ?? null }));
+  }, [grades.data, summaryBySubject]);
   const columns = useMemo(() => gradeColumns(categoryList), [categoryList]);
 
   const subjectAverages = subjectRows.map((row) => row.average).filter((score): score is number => score != null);
@@ -169,7 +171,7 @@ export function StudentAcademicLive() {
           action={<select className="live-select gradebook-semester-select" aria-label="Chọn học kỳ" value={effSem} onChange={(e) => setSem(e.target.value)}>
             {(semesters.data || []).map((semester) => <option key={semester.id} value={semester.id}>{semester.name}</option>)}
           </select>}>
-          <Async paginate state={{ data: subjectRows, loading: grades.loading, error: grades.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
+          <Async paginate state={{ data: subjectRows, loading: grades.loading || summaries.loading, error: grades.error || summaries.error }} empty="Chưa có điểm trong học kỳ này" itemLabel="môn học">
             {(pagedSubjectRows) => (
               <div className="gradebook-shell">
                 <div className="gradebook-summary student-grade-summary">

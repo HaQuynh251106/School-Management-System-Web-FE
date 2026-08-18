@@ -4,7 +4,7 @@ import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   ApiUser, AcademicYear, Semester, SchoolClass, Subject, Room,
-  ExamCategory, FeePeriod, FeePeriodItem, Invoice, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
+  ExamCategory, FeePeriod, FeePeriodItem, Invoice, Payment, FinanceOverview, FinanceClassSummary, HomeroomDebtReminderResult, VietQrPendingPayment,
   ImportPreview, ImportResult, LoginHistory, PageResponse, StudentYearlySummary, YearRolloverPreview, YearRolloverResult, Announcement, NotificationDeliveryLog,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
@@ -16,13 +16,13 @@ import { useHashNumber, useHashString } from '../../api/urlState';
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
   username: '', fullName: '', role: 'STUDENT', password: 'Sse@123456',
-  email: '', phone: '', avatarUrl: '', teacherCode: '', mainSubject: '',
-  studentCode: '', classId: '', dateOfBirth: '', gender: '', placeOfBirth: '',
+  email: '', phone: '', avatarUrl: '', mainSubjectId: '',
+  classId: '', dateOfBirth: '', gender: '', placeOfBirth: '',
   ethnicity: 'Kinh', nationality: 'Việt Nam', address: '', enrollmentDate: '',
   guardianName: '', guardianPhone: '',
 };
 
-type ManagedUserRole = 'STUDENT' | 'TEACHER' | 'PARENT' | 'ACADEMIC_STAFF' | 'ACCOUNTANT';
+type ManagedUserRole = 'ADMIN' | 'STUDENT' | 'TEACHER' | 'PARENT';
 
 const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: string; createLabel: string; itemLabel: string; empty: string }> = {
   STUDENT: {
@@ -46,19 +46,12 @@ const USER_ROLE_CONFIG: Record<ManagedUserRole, { title: string; subtitle: strin
     itemLabel: 'phụ huynh',
     empty: 'Chưa có phụ huynh',
   },
-  ACADEMIC_STAFF: {
-    title: 'Tài khoản Giáo vụ',
-    subtitle: 'Nhân sự phụ trách cơ cấu đào tạo, thời khóa biểu và kỳ thi',
-    createLabel: 'Thêm Giáo vụ',
-    itemLabel: 'nhân sự Giáo vụ',
-    empty: 'Chưa có tài khoản Giáo vụ',
-  },
-  ACCOUNTANT: {
-    title: 'Tài khoản Kế toán',
-    subtitle: 'Nhân sự phụ trách đợt thu, hóa đơn, công nợ và thanh toán',
-    createLabel: 'Thêm Kế toán',
-    itemLabel: 'nhân sự Kế toán',
-    empty: 'Chưa có tài khoản Kế toán',
+  ADMIN: {
+    title: 'Quản trị viên',
+    subtitle: 'Tài khoản quản trị có quyền vận hành toàn bộ nhà trường',
+    createLabel: 'Thêm quản trị viên',
+    itemLabel: 'quản trị viên',
+    empty: 'Chưa có quản trị viên',
   },
 };
 
@@ -86,6 +79,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   ].filter(Boolean).join('&');
   const users = useApi<PageResponse<ApiUser>>(`/users/page?${params}`);
   const classes = useApi<SchoolClass[]>('/classes');
+  const subjects = useApi<Subject[]>('/subjects');
   const students = useApi<ApiUser[]>('/users?role=STUDENT');
   const toast = useToast();
   const [showEditor, setShowEditor] = useState(false);
@@ -148,12 +142,10 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
   };
 
   const resetPassword = async (u: ApiUser) => {
-    const value = window.prompt(`Nhập mật khẩu mới cho ${u.fullName} (để trống để hệ thống tự sinh):`, '');
-    if (value === null) return;
-    if (value && value.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    if (!window.confirm(`Gửi yêu cầu đặt lại xác thực cho ${u.fullName}? Mọi phiên đăng nhập cũ sẽ bị thu hồi.`)) return;
     try {
-      const result = await api.post<{ password: string }>(`/users/${u.id}/reset-password`, { newPassword: value || null });
-      toast.show('ok', `Mật khẩu tạm thời của ${u.fullName}: ${result.password}`);
+      const result = await api.post<{ authType: 'LOCAL' | 'SSO'; action: string; message: string }>(`/users/${u.id}/reset-password`);
+      toast.show('ok', `${u.fullName}: ${result.message}`);
     } catch (e: any) { toast.show('err', e.message); }
   };
 
@@ -236,9 +228,7 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       email: user.email || '',
       phone: user.phone || '',
       avatarUrl: user.avatarUrl || '',
-      teacherCode: user.teacherCode || '',
-      mainSubject: user.mainSubject || '',
-      studentCode: user.studentCode || '',
+      mainSubjectId: user.mainSubjectId || '',
       classId: user.classId || '',
       dateOfBirth: user.dateOfBirth || '',
       gender: user.gender || '',
@@ -255,7 +245,11 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
 
   const saveUser = async () => {
     if (!form.username.trim() || !form.fullName.trim()) return toast.show('err', 'Vui lòng nhập tên đăng nhập và họ tên');
-    if (!editingUser && form.password.length < 8) return toast.show('err', 'Mật khẩu phải có ít nhất 8 ký tự');
+    if (!form.email.trim() || !form.phone.trim()) return toast.show('err', 'Email và số điện thoại là bắt buộc');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return toast.show('err', 'Email không hợp lệ');
+    if (!/^[0-9+ .()-]{7,30}$/.test(form.phone.trim())) return toast.show('err', 'Số điện thoại không hợp lệ');
+    if (!editingUser && form.password.length < 10) return toast.show('err', 'Mật khẩu phải có ít nhất 10 ký tự');
+    if (form.role === 'TEACHER' && !form.mainSubjectId) return toast.show('err', 'Vui lòng chọn môn giảng dạy chính');
     if (form.role === 'STUDENT' && !form.classId) return toast.show('err', 'Vui lòng chọn lớp cho học sinh');
     const cls = classes.data?.find((c) => c.id === form.classId);
     const body: Record<string, unknown> = {
@@ -267,12 +261,10 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       body.password = form.password || 'Sse@123456';
     }
     if (form.role === 'TEACHER') {
-      body.teacherCode = form.teacherCode.trim();
-      body.mainSubject = form.mainSubject.trim();
+      body.mainSubjectId = form.mainSubjectId;
     }
     if (form.role === 'STUDENT') {
       Object.assign(body, {
-        studentCode: form.studentCode.trim() || null,
         classId: form.classId,
         className: cls?.code || '',
         dateOfBirth: form.dateOfBirth || null,
@@ -319,7 +311,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
         {!fixedRole && <select className="live-select" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="">Tất cả vai trò</option>
           <option value="ADMIN">Quản trị viên</option><option value="TEACHER">Giáo viên</option>
-          <option value="ACADEMIC_STAFF">Giáo vụ</option><option value="ACCOUNTANT">Kế toán</option>
           <option value="STUDENT">Học sinh</option><option value="PARENT">Phụ huynh</option>
         </select>}
         <input className="live-input grow" placeholder="Tìm tên / username / mã…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -452,18 +443,18 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
                 <Field label="Họ và tên *"><input value={form.fullName} onChange={(e) => set('fullName', e.target.value)} placeholder="Nguyễn Văn A" /></Field>
                 <Field label="Tên đăng nhập *"><input value={form.username} disabled={Boolean(editingUser)} onChange={(e) => set('username', e.target.value)} placeholder="vd: hs.vana" /></Field>
                 {!editingUser && <Field label="Mật khẩu *"><input type="password" value={form.password} onChange={(e) => set('password', e.target.value)} /></Field>}
-                <Field label="Email"><input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="a@sse.edu.vn" /></Field>
-                <Field label="Số điện thoại"><input type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="09xxxxxxxx" /></Field>
+                <Field label="Email *"><input required type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="a@sse.edu.vn" /></Field>
+                <Field label="Số điện thoại *"><input required type="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="09xxxxxxxx" /></Field>
                 <Field label="Ảnh đại diện (URL)"><input type="url" value={form.avatarUrl} onChange={(e) => set('avatarUrl', e.target.value)} placeholder="https://…" /></Field>
               </div>
             </section>
 
             {form.role === 'TEACHER' && (
               <section className="admin-user-form-section">
-                <header><span><IdCard size={18} /></span><div><h4>Thông tin giảng dạy</h4><p>Mã cán bộ và chuyên ngành phụ trách</p></div></header>
+                <header><span><IdCard size={18} /></span><div><h4>Thông tin giảng dạy</h4><p>Mã giáo viên được hệ thống tự sinh để bảo đảm không trùng</p></div></header>
                 <div className="admin-user-form-grid">
-                  <Field label="Mã giáo viên"><input value={form.teacherCode} onChange={(e) => set('teacherCode', e.target.value)} placeholder="GV003" /></Field>
-                  <Field label="Môn chính"><input value={form.mainSubject} onChange={(e) => set('mainSubject', e.target.value)} placeholder="Toán" /></Field>
+                  <Field label="Môn giảng dạy chính *"><select required value={form.mainSubjectId} onChange={(e) => set('mainSubjectId', e.target.value)}><option value="">— Chọn môn trong trường —</option>{(subjects.data || []).map((subject) => <option key={subject.id} value={subject.id}>{subject.code} · {subject.name}</option>)}</select></Field>
+                  <div className="admin-user-privacy-note"><IdCard size={16} /><span>Mã giáo viên sẽ hiển thị sau khi tạo tài khoản thành công.</span></div>
                 </div>
               </section>
             )}
@@ -471,9 +462,8 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
             {form.role === 'STUDENT' && (
               <>
                 <section className="admin-user-form-section">
-                  <header><span><School size={18} /></span><div><h4>Thông tin học tập</h4><p>Lớp học, mã học sinh và thời điểm nhập học</p></div></header>
+                  <header><span><School size={18} /></span><div><h4>Thông tin học tập</h4><p>Mã học sinh được hệ thống tự sinh; quản trị viên chỉ chọn lớp và thời điểm nhập học</p></div></header>
                   <div className="admin-user-form-grid">
-                    <Field label="Mã học sinh"><input value={form.studentCode} onChange={(e) => set('studentCode', e.target.value)} placeholder="Để trống để hệ thống tự sinh" /></Field>
                     <Field label="Lớp học *">
                       <select value={form.classId} onChange={(e) => set('classId', e.target.value)}>
                         <option value="">— Chọn lớp —</option>
@@ -551,19 +541,6 @@ export function AdminUsersLive({ fixedRole }: { fixedRole?: ManagedUserRole }) {
       )}
     </Section>
   );
-}
-
-export function AdminOperationsUsersLive() {
-  return <div className="operations-users-page">
-    <div className="operations-role-guide">
-      <span><ShieldCheck size={22} /></span>
-      <div><strong>Phân quyền theo đúng bộ phận</strong><small>Admin chỉ tạo và quản lý tài khoản. Giáo vụ phụ trách đào tạo, thời khóa biểu và kỳ thi; Kế toán phụ trách toàn bộ tài chính nội bộ.</small></div>
-    </div>
-    <FunctionTabs tabs={[
-      { id: 'academic-staff', label: 'Tài khoản Giáo vụ', Icon: School, content: <AdminUsersLive fixedRole="ACADEMIC_STAFF" /> },
-      { id: 'accountant', label: 'Tài khoản Kế toán', Icon: CircleDollarSign, content: <AdminUsersLive fixedRole="ACCOUNTANT" /> },
-    ]} />
-  </div>;
 }
 
 /* ============ A2 — Cơ cấu đào tạo (thêm tạo phòng học) ============ */
@@ -939,6 +916,9 @@ export function AdminFinanceLive() {
     ? '/finance/classes'
     : `/finance/classes?periodId=${encodeURIComponent(invoicePeriod)}`);
   const pendingVietQr = useApi<VietQrPendingPayment[]>('/payments/vietqr/pending');
+  const invoices = useApi<Invoice[]>(`/invoices${invoicePeriod === 'ALL' ? '' : `?periodId=${encodeURIComponent(invoicePeriod)}`}`);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
+  const paymentHistory = useApi<Payment[]>(selectedInvoiceId ? `/payments?invoiceId=${encodeURIComponent(selectedInvoiceId)}` : null);
   const [showPeriodEditor, setShowPeriodEditor] = useState(false);
   const [editingPeriod, setEditingPeriod] = useState<FeePeriod | null>(null);
   const [periodForm, setPeriodForm] = useState(EMPTY_PERIOD_FORM);
@@ -1133,6 +1113,33 @@ export function AdminFinanceLive() {
     finally { setReconcilingPaymentId(null); }
   };
 
+  const recordCash = async (invoice: Invoice) => {
+    const remaining = Math.max(0, invoice.totalAmount - invoice.paidAmount);
+    const raw = window.prompt(`Số tiền mặt ghi nhận cho ${invoice.code}:`, String(remaining));
+    if (raw == null) return;
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > remaining) return toast.show('err', 'Số tiền phải lớn hơn 0 và không vượt quá công nợ');
+    const payerName = window.prompt('Tên người nộp tiền:', invoice.studentName) || invoice.studentName;
+    setBusy(true);
+    try { await api.post('/payments/cash', { invoiceId: invoice.id, amount, payerName, note: 'Thu tại trường' }); toast.show('ok', 'Đã ghi nhận tiền mặt và tạo biên nhận'); await Promise.all([invoices.reload(), overview.reload(), classSummaries.reload()]); if (selectedInvoiceId === invoice.id) paymentHistory.reload(); }
+    catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể ghi nhận thanh toán'); }
+    finally { setBusy(false); }
+  };
+
+  const refundInvoice = async (invoice: Invoice) => {
+    const refundable = Math.max(0, invoice.paidAmount - (invoice.refundedAmount || 0));
+    const raw = window.prompt(`Số tiền cần hoàn cho ${invoice.code}:`, String(refundable));
+    if (raw == null) return;
+    const amount = Number(raw);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > refundable) return toast.show('err', 'Số tiền hoàn không hợp lệ');
+    const reason = window.prompt('Lý do hoàn tiền (bắt buộc):', '')?.trim() || '';
+    if (!reason) return toast.show('err', 'Vui lòng nhập lý do hoàn tiền');
+    setBusy(true);
+    try { await api.post(`/invoices/${invoice.id}/refund`, { amount, reason }); toast.show('ok', 'Đã hoàn tiền và lưu lịch sử giao dịch'); await Promise.all([invoices.reload(), overview.reload(), classSummaries.reload()]); if (selectedInvoiceId === invoice.id) paymentHistory.reload(); }
+    catch (error) { toast.show('err', error instanceof Error ? error.message : 'Không thể hoàn tiền'); }
+    finally { setBusy(false); }
+  };
+
   const collectionRate = Math.min(100, Math.max(0, overview.data?.collectionRate || 0));
   const configuredTotal = (items.data || []).reduce((sum, item) => sum + item.amount, 0);
 
@@ -1250,6 +1257,13 @@ export function AdminFinanceLive() {
                 </tbody></table></div>}
               </PaginatedData>}
             </Async>
+          </Section>
+        ) },
+        { id: 'transactions', label: 'Giao dịch & hoàn tiền', description: 'Thu tiền mặt, xem lịch sử và hoàn tiền có kiểm soát', Icon: ReceiptText, content: (
+          <Section title="Quản lý giao dịch" subtitle="Mọi thao tác đều cập nhật hóa đơn, biên nhận và nhật ký kiểm toán trong cùng một giao dịch" wide>
+            <div className="finance-filterbar"><select className="live-input" value={invoicePeriod} onChange={(event) => setInvoicePeriod(event.target.value)}><option value="ALL">Tất cả đợt thu</option>{(periods.data || []).map((period) => <option key={period.id} value={period.id}>{period.name || period.code}</option>)}</select><span>{(invoices.data || []).length} hóa đơn</span></div>
+            <Async state={invoices} allowEmpty empty="Chưa có hóa đơn để xử lý">{(rows) => <PaginatedData items={rows} pageSize={10} itemLabel="hóa đơn">{(pageRows) => <div className="finance-table-wrap"><table className="live-table finance-table"><thead><tr><th>Hóa đơn</th><th>Học sinh</th><th>Phải thu</th><th>Đã thu / hoàn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{pageRows.map((invoice) => <tr key={invoice.id}><td><strong>{invoice.code}</strong><small>{fmtDate(invoice.dueDate)}</small></td><td>{invoice.studentName}</td><td>{money(invoice.totalAmount)}</td><td><strong>{money(invoice.paidAmount)}</strong><small>{invoice.refundedAmount ? `Đã hoàn ${money(invoice.refundedAmount)}` : 'Chưa hoàn tiền'}</small></td><td><StatusPill value={invoice.status} /></td><td><div className="finance-row-actions"><button className="live-btn subtle" onClick={() => setSelectedInvoiceId(invoice.id)}><Eye size={14} /> Lịch sử</button>{!['PAID', 'REFUNDED', 'CANCELLED'].includes(invoice.status) && <button className="live-btn" disabled={busy} onClick={() => recordCash(invoice)}>Thu tiền mặt</button>}{invoice.paidAmount > (invoice.refundedAmount || 0) && <button className="live-btn ghost" disabled={busy} onClick={() => refundInvoice(invoice)}>Hoàn tiền</button>}</div></td></tr>)}</tbody></table></div>}</PaginatedData>}</Async>
+            {selectedInvoiceId && <div className="finance-period-workspace"><header><div><span>Lịch sử giao dịch</span><h3>{(invoices.data || []).find((item) => item.id === selectedInvoiceId)?.code}</h3></div><button className="live-btn ghost" onClick={() => paymentHistory.reload()}><RefreshCw size={14} /> Làm mới</button></header><Async state={paymentHistory} allowEmpty empty="Hóa đơn chưa có giao dịch">{(rows) => <div className="finance-item-list">{rows.map((payment) => <article key={payment.id}><span><ReceiptText size={17} /></span><div><strong>{payment.method}</strong><small>{payment.txnRef || payment.id} · {fmtDateTime(payment.paidAt)}</small></div><b>{money(payment.amount)}</b><StatusPill value={payment.status} /></article>)}</div>}</Async></div>}
           </Section>
         ) },
         { id: 'invoices', label: 'Công nợ theo lớp', description: 'Theo dõi và giao GVCN nhắc hạn', Icon: FileText, content: (

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   BookOpenCheck, CalendarClock, CheckCircle2, ClipboardPenLine, DoorOpen, Lock, Megaphone, Pencil,
-  Plus, RefreshCw, Save, ShieldCheck, Trash2, Unlock, UsersRound, X,
+  Plus, RefreshCw, Save, ShieldCheck, Sparkles, Trash2, Unlock, UsersRound, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
   AcademicYear, ApiUser, EligibleExamGrader, ExamCandidate, ExamGradingAssignment,
-  ExamPeriod, ExamPeriodSummary, ExamRoom, ExamSchedule, Room, SchoolClass, Semester, Subject,
+  ExamAutoPlanResult, ExamPeriod, ExamPeriodSummary, ExamRoom, ExamSchedule, Room, SchoolClass, Semester, Subject,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
 import { Async, fmtDate, useToast } from './common';
@@ -62,6 +62,11 @@ export function AdminExamsLive() {
   const [graderForm, setGraderForm] = useState({ classId: '', teacherId: '' });
   const [setupStep, setSetupStep] = useState<ExamSetupStep>('rooms');
   const [busy, setBusy] = useState(false);
+  const [autoSubjectIds, setAutoSubjectIds] = useState<string[]>([]);
+  const [autoStartTime, setAutoStartTime] = useState('07:30');
+  const [autoDuration, setAutoDuration] = useState(90);
+  const [autoPlan, setAutoPlan] = useState<ExamAutoPlanResult | null>(null);
+  const [autoPlanKey, setAutoPlanKey] = useState('');
 
   useEffect(() => {
     if (!periodId && periods.data?.length) setPeriodId(periods.data[0].period.id);
@@ -205,6 +210,29 @@ export function AdminExamsLive() {
     classIds: current.classIds.includes(classId) ? current.classIds.filter((id) => id !== classId) : [...current.classIds, classId],
   }));
 
+  const toggleAutoSubject = (subjectId: string) => {
+    setAutoPlan(null); setAutoPlanKey('');
+    setAutoSubjectIds((current) => current.includes(subjectId) ? current.filter((id) => id !== subjectId) : [...current, subjectId]);
+  };
+
+  const runAutoPlan = async (apply: boolean) => {
+    if (!periodId || !autoSubjectIds.length) return toast.show('err', 'Chọn ít nhất một môn thi');
+    const key = autoPlanKey || crypto.randomUUID();
+    setBusy(true);
+    try {
+      const result = await api.post<ExamAutoPlanResult>(`/exam-periods/${periodId}/auto-plan`, {
+        subjectIds: autoSubjectIds, startTime: autoStartTime, durationMinutes: autoDuration,
+        apply, idempotencyKey: key,
+      });
+      setAutoPlanKey(result.planKey || key); setAutoPlan(result);
+      if (apply) {
+        toast.show('ok', `Đã tạo tự động ${result.scheduleCount} ca thi cùng phòng, giám thị và người chấm`);
+        refreshExam();
+      } else toast.show(result.blockers.length ? 'err' : 'ok', result.blockers.length ? 'Phương án còn điều kiện cần xử lý' : 'Đã tạo bản xem trước, chưa ghi dữ liệu');
+    } catch (error: any) { toast.show('err', error.message); }
+    finally { setBusy(false); }
+  };
+
   const saveRoom = () => scheduleId && run(async () => {
     const created = await api.post<ExamRoom>(`/exam-schedules/${scheduleId}/rooms`, { ...roomForm, id: editingRoomId || undefined });
     setAllocationRoomId(created.id);
@@ -321,6 +349,12 @@ export function AdminExamsLive() {
       </Section> },
       { id: 'schedule', label: 'Lịch & phòng', description: 'Xếp môn, phòng, giám thị và giáo viên chấm', Icon: DoorOpen, content: <Section title="Lịch thi, phòng thi và giám thị" subtitle="Chọn rõ lớp áp dụng; hệ thống ngăn trùng giờ, phòng và giám thị" wide>
         {!periodId ? <div className="empty-state"><strong>Chọn kỳ thi để lập lịch</strong></div> : <>
+          <section className="exam-auto-plan-panel">
+            <header><span><Sparkles size={20} /></span><div><strong>Tự động lập toàn bộ lịch thi</strong><small>Backend xếp ngày, phòng, thí sinh, giám thị và người chấm trong một giao dịch.</small></div></header>
+            <div className="exam-auto-subjects">{(subjects.data || []).map((subject) => <label key={subject.id} className={autoSubjectIds.includes(subject.id) ? 'selected' : ''}><input type="checkbox" checked={autoSubjectIds.includes(subject.id)} onChange={() => toggleAutoSubject(subject.id)} />{subject.name}</label>)}</div>
+            <div className="exam-auto-controls"><label><span>Giờ bắt đầu</span><input className="live-input" type="time" value={autoStartTime} onChange={(event) => { setAutoStartTime(event.target.value); setAutoPlan(null); setAutoPlanKey(''); }} /></label><label><span>Thời lượng mỗi môn</span><input className="live-input" type="number" min="15" max="480" value={autoDuration} onChange={(event) => { setAutoDuration(Number(event.target.value)); setAutoPlan(null); setAutoPlanKey(''); }} /></label><button className="live-btn ghost" disabled={busy || !autoSubjectIds.length} onClick={() => runAutoPlan(false)}><Sparkles size={15} /> Xem phương án</button><button className="live-btn" disabled={busy || !autoPlan || autoPlan.blockers.length > 0 || autoPlan.applied} onClick={() => runAutoPlan(true)}><CheckCircle2 size={15} /> Áp dụng phương án</button></div>
+            {autoPlan && <div className={`exam-auto-result ${autoPlan.blockers.length ? 'blocked' : 'ready'}`}><strong>{autoPlan.scheduleCount} ca thi dự kiến</strong>{autoPlan.blockers.length ? <ul>{autoPlan.blockers.map((item) => <li key={item}>{item}</li>)}</ul> : <div>{autoPlan.schedules.map((item) => <span key={`${item.subjectId}-${item.examDate}`}><b>{item.subjectName}</b> · {fmtDate(item.examDate)} {item.startTime} · {item.allocations.length} lớp</span>)}</div>}</div>}
+          </section>
           <div className={`exam-schedule-editor ${editingScheduleId ? 'editing' : ''}`}>
             <div className="exam-editor-heading"><div><strong>{editingScheduleId ? 'Chỉnh sửa ca thi' : 'Tạo ca thi mới'}</strong><span>{editingScheduleId ? 'Thay đổi được kiểm tra xung đột trước khi lưu' : 'Mỗi ca thi phải chọn ít nhất một lớp áp dụng'}</span></div>{editingScheduleId && <button className="icon-action" title="Hủy chỉnh sửa" onClick={resetScheduleForm}><X size={17} /></button>}</div>
             <div className="exam-form-grid schedule">

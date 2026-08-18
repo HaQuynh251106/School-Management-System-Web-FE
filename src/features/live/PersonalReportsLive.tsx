@@ -4,6 +4,7 @@ import { useActiveChild } from '../../api/activeChild';
 import { useApi } from '../../api/useApi';
 import { Section } from '../../components/ui';
 import { Async, money, useToast } from './common';
+import { useState } from 'react';
 
 type PersonalReport = {
   role: string; studentCount: number; classCount: number; gradeCount: number; averageScore: number;
@@ -18,22 +19,26 @@ export function PersonalReportsLive({ actor }: { actor: 'teacher' | 'student' | 
   const query = actor === 'parent' && childId ? `?childId=${encodeURIComponent(childId)}` : '';
   const report = useApi<PersonalReport>(actor === 'parent' && !childId ? null : `/me/reports${query}`);
   const toast = useToast();
+  const [format, setFormat] = useState<'xlsx' | 'pdf' | 'csv'>('xlsx');
 
-  const exportCsv = async () => {
+  const exportReport = async () => {
     try {
-      const result = await api.download(`/me/reports/export${query}`);
+      const params = new URLSearchParams();
+      if (actor === 'parent' && childId) params.set('childId', childId);
+      params.set('format', format);
+      const result = await api.download(`/me/reports/export?${params}`);
       const href = URL.createObjectURL(result.blob);
       const anchor = document.createElement('a');
       anchor.href = href;
-      anchor.download = result.filename || 'bao-cao-ca-nhan.csv';
+      anchor.download = result.filename || `bao-cao-ca-nhan.${format}`;
       anchor.click();
       URL.revokeObjectURL(href);
-      toast.show('ok', 'Đã xuất báo cáo CSV');
+      toast.show('ok', `Đã xuất báo cáo ${format.toUpperCase()}`);
     } catch (error: any) { toast.show('err', error.message); }
   };
 
   if (actor === 'parent' && !childId) return <Section title="Báo cáo của con" subtitle="Chưa chọn học sinh" wide><div className="live-loading">Chọn học sinh trước khi xem báo cáo.</div></Section>;
-  return <Section title={actor === 'teacher' ? 'Báo cáo giảng dạy' : actor === 'student' ? 'Báo cáo học tập cá nhân' : 'Báo cáo của con'} subtitle="Số liệu đúng phạm vi vai trò, có thể xuất CSV để lưu trữ" wide action={<button className="live-btn" onClick={exportCsv}><Download size={15} /> Xuất báo cáo</button>}>
+  return <Section title={actor === 'teacher' ? 'Báo cáo giảng dạy' : actor === 'student' ? 'Báo cáo học tập cá nhân' : 'Báo cáo của con'} subtitle="Số liệu đúng phạm vi vai trò, có thể xuất Excel, PDF hoặc CSV" wide action={<div className="finance-row-actions"><select className="live-select" aria-label="Định dạng báo cáo" value={format} onChange={(event) => setFormat(event.target.value as 'xlsx' | 'pdf' | 'csv')}><option value="xlsx">Excel</option><option value="pdf">PDF</option><option value="csv">CSV</option></select><button className="live-btn" onClick={exportReport}><Download size={15} /> Xuất báo cáo</button></div>}>
     {toast.node}
     <Async state={report}>{(data) => <div className="personal-report-page">
       <div className="personal-report-kpis">

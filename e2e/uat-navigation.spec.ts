@@ -11,27 +11,19 @@ type UatRole = {
 const roles: UatRole[] = [
   {
     label: 'Quản trị', username: 'admin', password: process.env.E2E_ADMIN_PASSWORD ?? '', landing: 'quan-tri',
-    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'cuu-hoc-sinh', 'nhan-su-van-hanh', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
-  },
-  {
-    label: 'Giáo vụ', username: 'giaovu', password: process.env.E2E_ACADEMIC_STAFF_PASSWORD ?? '', landing: 'giao-vu',
-    pages: ['tong-quan', 'co-cau-dao-tao', 'xep-thoi-khoa-bieu', 'tao-ky-thi', 'cuu-hoc-sinh'],
-  },
-  {
-    label: 'Kế toán', username: 'ketoan', password: process.env.E2E_ACCOUNTANT_PASSWORD ?? '', landing: 'ke-toan',
-    pages: ['tong-quan', 'tai-chinh-noi-bo'],
+    pages: ['tong-quan', 'hoc-sinh', 'giao-vien', 'phu-huynh', 'cuu-hoc-sinh', 'co-cau-phan-lop', 'ke-hoach-thoi-khoa-bieu', 'ky-thi', 'tien-do-dao-tao', 'tai-chinh', 'cau-lac-bo', 'lich-su-he-thong', 'bao-cao-thong-ke', 'trung-tam-thong-bao'],
   },
   {
     label: 'Giáo viên', username: 'gv.nguyenminh', password: process.env.E2E_TEACHER_PASSWORD ?? '', landing: 'giao-vien',
-    pages: ['tong-quan', 'lop-duoc-phan-cong', 'thoi-khoa-bieu', 'diem-danh', 'bang-diem', 'bai-tap', 'trao-doi', 'thong-bao', 'cong-no-lop-chu-nhiem', 'duyet-don-xin-nghi', 'bao-cao-giang-day', 'ho-so-cai-dat', 'khao-thi', 'hanh-kiem-tong-ket'],
+    pages: ['tong-quan', 'lop-duoc-phan-cong', 'thoi-khoa-bieu', 'diem-danh', 'bang-diem', 'tien-do-thuc-day', 'bai-tap', 'trao-doi', 'thong-bao', 'cong-no-lop-chu-nhiem', 'duyet-don-xin-nghi', 'bao-cao-giang-day', 'ho-so-cai-dat', 'khao-thi', 'hanh-kiem-tong-ket'],
   },
   {
     label: 'Học sinh', username: 'hs.nguyenminhan', password: process.env.E2E_STUDENT_PASSWORD ?? '', landing: 'hoc-sinh',
-    pages: ['tong-quan', 'ho-so-ca-nhan', 'theo-doi-hoc-tap', 'chuyen-can', 'bai-tap', 'thong-bao', 'xin-nghi-hoc', 'trao-doi', 'bao-cao-ca-nhan', 'ho-so-cai-dat', 'thi-phuc-khao', 'tong-ket-nam-hoc'],
+    pages: ['tong-quan', 'ho-so-ca-nhan', 'theo-doi-hoc-tap', 'chuyen-can', 'bai-tap', 'thong-bao', 'xin-nghi-hoc', 'trao-doi', 'bao-cao-ca-nhan', 'ho-so-cai-dat', 'thi-phuc-khao', 'tong-ket-nam-hoc', 'cau-lac-bo'],
   },
   {
     label: 'Phụ huynh', username: 'ph.nguyenvanhung', password: process.env.E2E_PARENT_PASSWORD ?? '', landing: 'phu-huynh',
-    pages: ['tong-quan', 'chon-hoc-sinh', 'hoc-tap-cua-con', 'lien-lac-giao-vien-chu-nhiem', 'hoc-phi-thanh-toan', 'thong-bao', 'xac-nhan-nghi-hoc', 'bao-cao-cua-con', 'ho-so-cai-dat', 'lich-thi-cua-con', 'tong-ket-nam-hoc'],
+    pages: ['tong-quan', 'chon-hoc-sinh', 'hoc-tap-cua-con', 'lien-lac-giao-vien-chu-nhiem', 'hoc-phi-thanh-toan', 'thong-bao', 'xac-nhan-nghi-hoc', 'bao-cao-cua-con', 'ho-so-cai-dat', 'lich-thi-cua-con', 'tong-ket-nam-hoc', 'cau-lac-bo-cua-con'],
   },
 ];
 
@@ -44,7 +36,7 @@ async function login(page: Page, role: UatRole) {
 }
 
 test.beforeAll(async ({ request }) => {
-  expect(roles.every((role) => role.password), 'Phải cấu hình đủ mật khẩu UAT cho sáu vai trò').toBeTruthy();
+  expect(roles.every((role) => role.password), 'Phải cấu hình đủ mật khẩu UAT cho bốn vai trò').toBeTruthy();
   const apiUrl = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000';
   expect((await request.get(`${apiUrl}/health`)).ok(), 'Backend UAT phải hoạt động').toBeTruthy();
 });

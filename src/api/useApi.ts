@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from './client';
+import { BUSINESS_DATA_CHANGED, businessEventAffectsPath, type BusinessDataChangedDetail } from './liveEvents';
 
 /** GET có loading/error + reload. Truyền path=null để bỏ qua (chưa đủ điều kiện). */
 export function useApi<T = any>(path: string | null) {
@@ -37,6 +38,16 @@ export function useApi<T = any>(path: string | null) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!path) return;
+    const refreshDomainData = (raw: Event) => {
+      const detail = (raw as CustomEvent<BusinessDataChangedDetail>).detail;
+      if (detail?.type && businessEventAffectsPath(detail.type, path)) void reload();
+    };
+    window.addEventListener(BUSINESS_DATA_CHANGED, refreshDomainData);
+    return () => window.removeEventListener(BUSINESS_DATA_CHANGED, refreshDomainData);
+  }, [path, reload]);
 
   return { data, loading, error, errorInfo, reload, setData };
 }
