@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BookOpen, CalendarDays, CheckCircle2, Circle, ClipboardList, DoorOpen,
-  Layers3, Pencil, Plus, RotateCcw, Save, School, Search,
+  Layers3, Pencil, Plus, Save, School, Search,
   Trash2, UserPlus, X,
 } from 'lucide-react';
 import { api } from '../../api/client';
@@ -72,12 +72,13 @@ export function AcademicStructureWorkspace({ initialTabId = 'years' }: {
   }, [selectedYearId, years.data]);
 
   useEffect(() => {
-    const first = (classes.data || []).find((item) => (
+    const available = (classes.data || []).filter((item) => (
       item.academicYearId === selectedYearId
       && item.gradeLevel === selectedGrade
+      && item.status !== 'INACTIVE'
     ));
-    if (!selectedClassId || !(classes.data || []).some((item) => item.id === selectedClassId)) {
-      setSelectedClassId(first?.id || '');
+    if (!available.some((item) => item.id === selectedClassId)) {
+      setSelectedClassId(available[0]?.id || '');
     }
   }, [classes.data, selectedClassId, selectedGrade, selectedYearId]);
 
@@ -292,7 +293,8 @@ function GradesTab({ state, classes, years, selectedYearId, setSelectedYearId }:
       <div className="live-toolbar"><select className="live-select" value={selectedYearId} onChange={(event) => setSelectedYearId(event.target.value)}>{years.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select></div>
       <Async state={state} empty="Chưa có dữ liệu khối">{(items) => (
         <div className="academic-grade-grid">{items.map((grade) => {
-          const gradeClasses = classes.filter((item) => item.academicYearId === selectedYearId && item.gradeLevel === grade.code);
+          const gradeClasses = classes.filter((item) => item.academicYearId === selectedYearId
+            && item.gradeLevel === grade.code && item.status !== 'INACTIVE');
           return <article key={grade.code}><span>{grade.code}</span><strong>{grade.name}</strong><small>{gradeClasses.length} lớp · {gradeClasses.reduce((sum, item) => sum + item.studentCount, 0)} học sinh</small></article>;
         })}</div>
       )}</Async>
@@ -318,6 +320,7 @@ function ClassesTab(props: {
   const filtered = useMemo(() => props.classes.filter((item) => (
     item.academicYearId === props.selectedYearId
     && item.gradeLevel === props.selectedGrade
+    && item.status !== 'INACTIVE'
     && (!props.classSearch || `${item.code} ${item.name}`.toLowerCase().includes(props.classSearch.toLowerCase()))
   )), [props.classes, props.selectedYearId, props.selectedGrade, props.classSearch]);
   const selectedClass = props.classes.find((item) => item.id === props.selectedClassId);
@@ -332,12 +335,6 @@ function ClassesTab(props: {
       });
       setForm({ code: '', name: '', maxStudents: 45, homeroomTeacherId: '', homeRoomId: '' });
       props.notify('ok', 'Đã tạo lớp học.'); props.onChanged();
-    } catch (error) { props.notify('err', errorMessage(error)); }
-  };
-  const ensureDefaults = async () => {
-    try {
-      const result = await api.post<{ createdClasses: number }>(`/academic/high-school-defaults/ensure?academicYearId=${encodeURIComponent(props.selectedYearId)}`);
-      props.notify('ok', `Đã bổ sung ${result.createdClasses} lớp còn thiếu.`); props.onChanged();
     } catch (error) { props.notify('err', errorMessage(error)); }
   };
   const assignHomeroom = async (classId: string, teacherId: string) => {
@@ -383,7 +380,6 @@ function ClassesTab(props: {
         <select className="live-select" value={props.selectedYearId} onChange={(event) => props.setSelectedYearId(event.target.value)}>{props.years.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
         <select className="live-select" value={props.selectedGrade} onChange={(event) => props.setSelectedGrade(event.target.value)}>{GRADES.map((grade) => <option key={grade} value={grade}>Khối {grade.slice(1)}</option>)}</select>
         <label className="academic-search"><Search size={15} /><input value={props.classSearch} onChange={(event) => props.setClassSearch(event.target.value)} placeholder="Tìm mã hoặc tên lớp" /></label>
-        {props.canManageStructure && <button className="live-btn ghost" onClick={ensureDefaults}><RotateCcw size={15} /> Bổ sung đủ 30 lớp</button>}
       </div>
       {props.canManageStructure && <div className="live-toolbar academic-create-bar">
         <input className="live-input" placeholder="10A1" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />

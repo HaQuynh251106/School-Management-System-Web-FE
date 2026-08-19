@@ -108,7 +108,8 @@ function TeachingAssignmentManager({ semesterId: semesterFilter, onSemesterChang
   const [workloadPage, setWorkloadPage] = useState(1);
   const [workloadPageSize, setWorkloadPageSize] = useState(5);
   const activeYear = years.data?.find((year) => year.status === 'ACTIVE');
-  const activeClasses = (classes.data ?? []).filter((item) => item.academicYearId === activeYear?.id);
+  const activeClasses = (classes.data ?? []).filter((item) => item.academicYearId === activeYear?.id
+    && item.status !== 'INACTIVE');
   const activeSemesters = (semesters.data ?? [])
     .filter((item) => item.academicYearId === activeYear?.id)
     .sort((left, right) => left.sequence - right.sequence);
@@ -457,7 +458,8 @@ function TimetableEditor({ semesterId, onSemesterChange: setSemesterId }: Semest
   const blank = { assignmentId: '', dayOfWeek: 'MON', periodNo: 1, subjectId: '', teacherId: '', roomCode: '', startTime: '07:00', endTime: '07:45' };
   const [form, setForm] = useState({ ...blank });
   const activeYear = years.data?.find((year) => year.status === 'ACTIVE');
-  const activeClasses = (classes.data ?? []).filter((item) => item.academicYearId === activeYear?.id);
+  const activeClasses = (classes.data ?? []).filter((item) => item.academicYearId === activeYear?.id
+    && item.status !== 'INACTIVE');
   const filteredActiveClasses = useMemo(() => {
     const keyword = classSearch.trim().toLocaleLowerCase('vi');
     return keyword ? activeClasses.filter((item) => `${item.code} ${item.name || ''}`.toLocaleLowerCase('vi').includes(keyword)) : activeClasses;

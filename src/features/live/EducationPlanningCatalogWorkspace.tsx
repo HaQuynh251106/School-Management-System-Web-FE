@@ -164,7 +164,8 @@ function CombinationsPanel({ state, years, yearId, grade, setGrade, classes, sub
   const [createOpen, setCreateOpen] = useState(false);
   const [classSelections, setClassSelections] = useState<Record<string, string[]>>({});
   const activeYear = years.find((item) => item.status === 'ACTIVE') || years.find((item) => item.id === yearId);
-  const selectedClasses = useMemo(() => classes.filter((item) => item.academicYearId === yearId && item.gradeLevel === grade), [classes, grade, yearId]);
+  const selectedClasses = useMemo(() => classes.filter((item) => item.academicYearId === yearId
+    && item.gradeLevel === grade && item.status !== 'INACTIVE'), [classes, grade, yearId]);
   useEffect(() => {
     setClassSelections(Object.fromEntries((state.data || []).map((detail) => [detail.combination.id, detail.classIds])));
   }, [state.data]);
