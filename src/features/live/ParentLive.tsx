@@ -6,7 +6,7 @@ import { useShortcutFilter } from '../../api/shortcutFilter';
 import { useActiveChild } from '../../api/activeChild';
 import type { ApiUser, Grade, AttendanceRecord, Invoice, PaymentInitResponse, PaymentProof, PaymentHistory, PaymentRefund, PaymentReceiptDownload } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, InfoGrid } from '../../components/ui';
-import { Async, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
+import { Async, PaginatedData, useToast, ATT_LABEL, fmtDate, fmtDateTime, money } from './common';
 import { ExtracurricularLive, WeeklyTimetable } from './SharedLive';
 import { AssignmentsLive } from './AssignmentWorkspace';
 import { AttendanceOverview, GradeOverview } from './LearningOverview';
@@ -367,10 +367,11 @@ export function ParentInvoiceLive() {
   };
 
   const renderInvoiceTable = (rows: Invoice[], mode: 'UNPAID' | 'PAID' | 'INACTIVE') => (
-    <div className="parent-semester-table-wrap">
+    <PaginatedData items={rows} itemLabel="hóa đơn" resetKey={`${activeChild?.id || ''}|${mode}`}>
+    {(pageRows) => <div className="parent-semester-table-wrap">
       <table className="live-table parent-semester-invoice-table">
         <thead><tr><th>Khoản thu</th><th>Hạn đóng</th><th>Tổng tiền</th><th>{mode === 'PAID' ? 'Đã thu' : 'Còn phải đóng'}</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
-        <tbody>{rows.map((invoice) => {
+        <tbody>{pageRows.map((invoice) => {
           const proof = latestProofByInvoice.get(invoice.id);
           const remaining = Math.max(0, invoice.totalAmount - invoice.paidAmount);
           return (
@@ -391,7 +392,8 @@ export function ParentInvoiceLive() {
           );
         })}</tbody>
       </table>
-    </div>
+    </div>}
+    </PaginatedData>
   );
 
   if (!accessGranted) {

@@ -7,7 +7,7 @@ import { api, ApiError } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type { StudentYearResult, YearReviewResult } from '../../api/types';
 import { Badge, Section } from '../../components/ui';
-import { Async, useToast } from './common';
+import { Async, PaginatedData, useToast } from './common';
 
 export function YearResultPanel({ studentId }: { studentId?: string | null }) {
   const path = studentId
@@ -86,16 +86,16 @@ export function YearResultPanel({ studentId }: { studentId?: string | null }) {
 
             <div className="year-result-subjects">
               <div className="year-result-subject-title"><BookOpenCheck size={18} /><strong>Kết quả theo môn</strong></div>
-              <div className="year-result-table-wrap"><table className="live-table">
+              <div className="year-result-table-wrap"><PaginatedData items={selected.subjects} itemLabel="môn học" resetKey={selected.academicYearId}>{(pageItems) => <table className="live-table">
                 <thead><tr><th>Môn học</th><th>HK1</th><th>HK2</th><th>Cả năm</th><th>Đánh giá</th></tr></thead>
-                <tbody>{selected.subjects.map((subject) => <tr key={subject.subjectId}>
+                <tbody>{pageItems.map((subject) => <tr key={subject.subjectId}>
                   <td><strong>{subject.subjectName}</strong></td>
                   <td>{score(subject.semesterOneAverage)}</td>
                   <td>{score(subject.semesterTwoAverage)}</td>
                   <td><strong>{score(subject.yearlyAverage)}</strong></td>
                   <td><Badge tone={subject.belowMinimum ? 'red' : 'green'}>{subject.belowMinimum ? 'Dưới ngưỡng' : 'Đạt'}</Badge></td>
                 </tr>)}</tbody>
-              </table></div>
+              </table>}</PaginatedData></div>
               {!selected.subjects.length && <p className="year-result-no-subjects">Kết quả tổng quát đã công bố; chưa có snapshot chi tiết môn học.</p>}
             </div>
 

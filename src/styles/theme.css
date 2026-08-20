@@ -287,12 +287,12 @@ body {
 
 .logout-btn:hover { border-color: #f1aaa5; background: #fff6f5; color: #b42318; }
 
-/* Dashboard hero with one generated four-panel illustration sprite. */
+/* Dashboard introduction shared by all four roles. */
 .portal-hero {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
-  min-height: 310px;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--portal-border);
   border-radius: 24px;
@@ -309,7 +309,7 @@ body {
   flex-direction: column;
   justify-content: center;
   min-width: 0;
-  padding: 34px 18px 34px 38px;
+  padding: 34px 38px;
 }
 
 .portal-hero-kicker {
@@ -370,28 +370,6 @@ body {
 }
 
 .portal-hero-facts svg { color: var(--portal-accent); }
-
-.portal-hero-art {
-  position: relative;
-  min-height: 310px;
-  background-image: url('/images/role-dashboard-sprite.png');
-  background-repeat: no-repeat;
-  background-size: 400% 100%;
-  isolation: isolate;
-}
-
-.portal-hero-art::after {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, var(--surface) 0%, transparent 18%);
-  content: "";
-  opacity: 0.7;
-}
-
-.role-art--admin { background-position: 0 center; }
-.role-art--teacher { background-position: 33.333% center; }
-.role-art--student { background-position: 66.667% center; }
-.role-art--parent { background-position: 100% center; }
 
 .metric-grid { gap: 16px; }
 .metric-card {
@@ -617,7 +595,6 @@ body {
 [data-theme="dark"] .portal-hero { --portal-soft: color-mix(in srgb, var(--portal-accent) 12%, var(--surface)); --portal-border: color-mix(in srgb, var(--portal-accent) 32%, var(--border)); }
 
 [data-theme="dark"] .logout-btn:hover { background: #321d23; }
-[data-theme="dark"] .portal-hero-art::after { background: linear-gradient(90deg, var(--surface) 0%, transparent 20%); opacity: 0.82; }
 
 [data-theme="dark"] .app-shell :is(
   .info-tile, .form-preview > div, .class-card, .config-row, .assignment-card,
@@ -727,8 +704,7 @@ body {
   .mobile-menu-button { display: grid; }
   .topbar { top: 8px; flex-direction: row; align-items: center; }
   .topbar-actions { width: auto; }
-  .portal-hero { grid-template-columns: minmax(0, 1fr) 300px; min-height: 290px; }
-  .portal-hero-art { min-height: 290px; }
+  .portal-hero { grid-template-columns: minmax(0, 1fr); min-height: 0; }
   .portal-hero-facts strong:last-child { display: none; }
 }
 
@@ -753,8 +729,6 @@ body {
   .portal-hero { grid-template-columns: 1fr; min-height: 0; }
   .portal-hero-copy { padding: 24px 22px 18px; }
   .portal-hero-copy h2 { font-size: 1.75rem; }
-  .portal-hero-art { min-height: 230px; background-size: 400% 100%; }
-  .portal-hero-art::after { background: linear-gradient(180deg, var(--surface) 0%, transparent 22%); }
   .portal-hero-facts { align-items: stretch; flex-direction: column; }
   .portal-hero-facts strong { justify-content: flex-start; }
   .login-theme-toggle { top: 12px; right: 12px; width: 40px; padding: 0; }

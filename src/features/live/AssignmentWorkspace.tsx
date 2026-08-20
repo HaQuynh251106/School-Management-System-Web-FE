@@ -66,6 +66,8 @@ const emptyForm = {
 
 export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; childId?: string | null }) {
   const shortcut = useShortcutFilter(actor === 'teacher' ? 'B5' : actor === 'student' ? 'C4' : '');
+  const statusFilter = shortcut.get('status') || '';
+  const query = childId || '';
   const [currentTime, setCurrentTime] = useState(0);
   useEffect(() => setCurrentTime(Date.now()), []);
   const toast = useToast();
@@ -478,7 +480,7 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
         </div>
       )}
 
-      <Async state={visibleAssignments} empty="Chưa có bài tập">
+      <Async paginate state={visibleAssignments} empty="Chưa có bài tập" itemLabel="bài tập" resetKey={`${actor}|${statusFilter}|${query}`}>
         {(items) => (
           <div className="live-table-wrap">
             <table className="live-table assignment-table">
@@ -652,10 +654,10 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
           )}
           {detailSubmission && <div className="submission-history-grid">
             <div><strong><Layers3 size={15} /> Lịch sử nộp bài</strong>
-              <Async state={submissionVersions} empty="Chưa có phiên bản lưu trữ">{(versions) => <ul>{versions.map((version) => <li key={version.id}>Lần {version.versionNo} · {fmtDateTime(version.submittedAt)} · {version.attachmentName || 'Không có file'}</li>)}</ul>}</Async>
+              <Async paginate pageSize={5} state={submissionVersions} empty="Chưa có phiên bản lưu trữ" itemLabel="lần nộp">{(versions) => <ul>{versions.map((version) => <li key={version.id}>Lần {version.versionNo} · {fmtDateTime(version.submittedAt)} · {version.attachmentName || 'Không có file'}</li>)}</ul>}</Async>
             </div>
             <div><strong><RotateCcw size={15} /> Yêu cầu nộp lại</strong>
-              <Async state={resubmissionHistory} empty="Không có yêu cầu nộp lại">{(requests) => <ul>{requests.map((request) => <li key={request.id}><StatusPill value={request.status} /> {request.reason}{request.allowedUntil ? ` · đến ${fmtDateTime(request.allowedUntil)}` : ''}</li>)}</ul>}</Async>
+              <Async paginate pageSize={5} state={resubmissionHistory} empty="Không có yêu cầu nộp lại" itemLabel="yêu cầu nộp lại">{(requests) => <ul>{requests.map((request) => <li key={request.id}><StatusPill value={request.status} /> {request.reason}{request.allowedUntil ? ` · đến ${fmtDateTime(request.allowedUntil)}` : ''}</li>)}</ul>}</Async>
             </div>
           </div>}
         </div>
@@ -677,7 +679,7 @@ export function AssignmentsLive({ actor, childId }: { actor: AssignmentActor; ch
             <button className="live-btn subtle" onClick={remindDue}><Bell size={14} /> Nhắc học sinh chưa nộp</button>
             <button className="live-btn subtle" onClick={exportSubmissions}><Download size={14} /> Xuất danh sách</button>
           </div>
-          <Async state={teacherSubmissions} empty="Chưa có học sinh nộp bài">
+          <Async paginate state={teacherSubmissions} empty="Chưa có học sinh nộp bài" itemLabel="bài nộp" resetKey={selectedTeacherAssignment.id}>
             {(items) => (
               <div className="live-table-wrap">
                 <table className="live-table">

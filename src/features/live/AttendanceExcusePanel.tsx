@@ -72,7 +72,7 @@ export function AttendanceExcusePanel({ mode, studentId, records = [] }: Props) 
       <textarea className="live-input" maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Lý do xin phép *" />
       <button className="live-btn" disabled={!!busyId} onClick={submit}><Send size={15} /> Gửi đơn</button>
     </div>}
-    <Async state={requests} empty={mode === 'review' ? 'Không có đơn đang chờ duyệt' : 'Chưa có đơn xin phép'}>
+    <Async paginate state={requests} empty={mode === 'review' ? 'Không có đơn đang chờ duyệt' : 'Chưa có đơn xin phép'} itemLabel="đơn xin phép" resetKey={mode}>
       {(items) => <div className="live-table-wrap"><table className="live-table">
         <thead><tr><th>{mode === 'review' ? 'Học sinh' : 'Ngày gửi'}</th><th>Lý do</th><th>Trạng thái</th><th>Phản hồi</th>{mode === 'review' && <th />}</tr></thead>
         <tbody>{items.map((request) => {

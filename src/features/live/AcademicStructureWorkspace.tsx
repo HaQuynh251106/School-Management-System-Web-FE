@@ -14,7 +14,7 @@ import type {
   EducationProgram, Room, SchoolClass, Semester, Subject,
 } from '../../api/types';
 import { FunctionTabs, Section, StatusPill } from '../../components/ui';
-import { Async, fmtDate, useToast } from './common';
+import { Async, fmtDate, PaginatedData, useToast } from './common';
 import { TrainingPlanCurriculum } from './TrainingPlanCurriculum';
 import { EducationPlanningCatalogWorkspace } from './EducationPlanningCatalogWorkspace';
 import { EducationPlanCompletionPanel } from './EducationPlanCompletionPanel';
@@ -256,7 +256,7 @@ function YearsTab({ state, semesters, selectedYearId, setSelectedYearId, canMana
         <input className="live-input grow" placeholder="Tên năm học" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <button className="live-btn" onClick={submit}><Plus size={15} /> Tạo năm học</button>
       </div>}
-      <Async state={state} empty="Chưa có năm học">{(items) => (
+      <Async paginate state={state} empty="Chưa có năm học" itemLabel="năm học">{(items) => (
         <table className="live-table academic-year-table"><thead><tr><th>Mã</th><th>Tên</th><th>Thời gian</th><th>Trạng thái</th><th /></tr></thead>
           <tbody>{items.map((year) => <tr key={year.id} className={selectedYear?.id === year.id ? 'is-selected' : ''}>
             <td><button className="academic-year-link" onClick={() => setSelectedYearId(year.id)}>{year.code}</button></td><td>{year.name}</td>
@@ -352,10 +352,28 @@ function ClassesTab(props: {
       props.notify('ok', 'Đã cập nhật phòng học cố định của lớp.'); props.onChanged();
     } catch (error) { props.notify('err', errorMessage(error)); }
   };
-  const availableHomeRooms = (classId?: string) => props.rooms.filter((room) => (
+  const updateClassCapacity = async (schoolClass: SchoolClass, maxStudents: number) => {
+    if (maxStudents < schoolClass.studentCount) {
+      return props.notify('err', `Sĩ số tối đa không thể nhỏ hơn ${schoolClass.studentCount} học sinh đang có.`);
+    }
+    try {
+      await api.put(`/classes/${schoolClass.id}`, {
+        code: schoolClass.code, name: schoolClass.name, gradeLevel: schoolClass.gradeLevel,
+        homeroomTeacherId: schoolClass.homeroomTeacherId || null,
+        homeRoomId: schoolClass.homeRoomId || null, maxStudents,
+      });
+      props.notify('ok', `Đã cập nhật sĩ số tối đa lớp ${schoolClass.code}.`); props.onChanged();
+    } catch (error) { props.notify('err', errorMessage(error)); }
+  };
+  const availableHomeRooms = (classId?: string, requiredCapacity = 1) => props.rooms.filter((room) => (
     room.active !== false
     && (room.roomType || 'GENERAL').toUpperCase() === 'GENERAL'
+    && (room.capacity || 0) >= requiredCapacity
     && !props.classes.some((schoolClass) => schoolClass.id !== classId && schoolClass.homeRoomId === room.id)
+  ));
+  const teacherConflict = (teacherId: string, classId?: string) => props.classes.find((schoolClass) => (
+    schoolClass.academicYearId === props.selectedYearId
+    && schoolClass.homeroomTeacherId === teacherId && schoolClass.id !== classId
   ));
   const assignStudents = async () => {
     if (!props.selectedStudents.length) return props.notify('err', 'Chọn ít nhất một học sinh.');
@@ -388,30 +406,32 @@ function ClassesTab(props: {
       {props.canManageStructure && <div className="live-toolbar academic-create-bar">
         <input className="live-input" placeholder="10A1" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />
         <input className="live-input grow" placeholder="Tên lớp" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-        <input className="live-input" type="number" min={1} max={100} value={form.maxStudents} onChange={(event) => setForm({ ...form, maxStudents: Number(event.target.value) })} />
-        <select className="live-select" value={form.homeroomTeacherId} onChange={(event) => setForm({ ...form, homeroomTeacherId: event.target.value })}><option value="">Chưa gán GVCN</option>{props.teachers.filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}</select>
-        <select className="live-select" value={form.homeRoomId} onChange={(event) => setForm({ ...form, homeRoomId: event.target.value })}><option value="">Tự tạo phòng cố định</option>{availableHomeRooms().map((room) => <option key={room.id} value={room.id}>{room.code}</option>)}</select>
+        <label className="field-stack"><span>Sĩ số tối đa</span><input className="live-input" type="number" min={1} max={100} value={form.maxStudents} onChange={(event) => setForm({ ...form, maxStudents: Number(event.target.value) })} /></label>
+        <select className="live-select" value={form.homeroomTeacherId} onChange={(event) => setForm({ ...form, homeroomTeacherId: event.target.value })}><option value="">Chưa gán GVCN</option>{props.teachers.filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => { const conflict = teacherConflict(teacher.id); return <option key={teacher.id} value={teacher.id} disabled={!!conflict}>{teacher.fullName}{conflict ? ` · đang chủ nhiệm ${conflict.code}` : ''}</option>; })}</select>
+        <select className="live-select" value={form.homeRoomId} onChange={(event) => { const room = props.rooms.find((item) => item.id === event.target.value); setForm({ ...form, homeRoomId: event.target.value, maxStudents: room?.capacity || form.maxStudents }); }}><option value="">Tự tạo phòng đúng sức chứa lớp</option>{availableHomeRooms(undefined, form.maxStudents).map((room) => <option key={room.id} value={room.id}>{room.code} · {room.capacity} chỗ</option>)}</select>
         <button className="live-btn" onClick={createClass}><Plus size={15} /> Tạo lớp</button>
       </div>}
       <div className="academic-class-layout">
         <div className="academic-class-list">
-          <table className="live-table"><thead><tr><th>Lớp</th><th>Sĩ số</th><th>Phòng cố định</th><th>GVCN</th></tr></thead><tbody>
-            {filtered.map((item) => <tr key={item.id} className={props.selectedClassId === item.id ? 'selected' : ''} onClick={() => props.setSelectedClassId(item.id)}>
+          <PaginatedData items={filtered} itemLabel="lớp học" resetKey={`${props.selectedYearId}|${props.selectedGrade}|${props.classSearch}`}>
+          {(pageItems) => <table className="live-table"><thead><tr><th>Lớp</th><th>Sĩ số</th><th>Phòng cố định</th><th>GVCN</th></tr></thead><tbody>
+            {pageItems.map((item) => <tr key={item.id} className={props.selectedClassId === item.id ? 'selected' : ''} onClick={() => props.setSelectedClassId(item.id)}>
               <td><strong>{item.code}</strong><small>{item.name}</small></td>
-              <td>{item.studentCount}/{item.maxStudents || item.capacity || 45}</td>
-              <td>{props.canManageStructure ? <select className="live-select" value={item.homeRoomId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeRoom(item.id, event.target.value)}>{availableHomeRooms(item.id).map((room) => <option key={room.id} value={room.id}>{room.code}</option>)}</select> : props.rooms.find((room) => room.id === item.homeRoomId)?.code || 'Chưa gán'}</td>
-              <td>{props.canManageStructure ? <select className="live-select" value={item.homeroomTeacherId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeroom(item.id, event.target.value)}><option value="">Chưa gán</option>{props.teachers.filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.fullName}</option>)}</select> : props.teachers.find((teacher) => teacher.id === item.homeroomTeacherId)?.fullName || 'Chưa gán'}</td>
+              <td>{props.canManageStructure ? <span className="inline-capacity"><strong>{item.studentCount}/</strong><input aria-label={`Sĩ số tối đa lớp ${item.code}`} className="coefficient-input" type="number" min={item.studentCount || 1} max={100} defaultValue={item.maxStudents || item.studentCount} onClick={(event) => event.stopPropagation()} onBlur={(event) => { const value = Number(event.target.value); if (value !== item.maxStudents) updateClassCapacity(item, value); }} /></span> : `${item.studentCount}/${item.maxStudents || '—'}`}</td>
+              <td>{props.canManageStructure ? <select className="live-select" value={item.homeRoomId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeRoom(item.id, event.target.value)}>{availableHomeRooms(item.id, item.studentCount).map((room) => <option key={room.id} value={room.id}>{room.code} · {room.capacity} chỗ</option>)}</select> : props.rooms.find((room) => room.id === item.homeRoomId)?.code || 'Chưa gán'}</td>
+              <td>{props.canManageStructure ? <select className="live-select" value={item.homeroomTeacherId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeroom(item.id, event.target.value)}><option value="">Chưa gán</option>{props.teachers.filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => { const conflict = teacherConflict(teacher.id, item.id); return <option key={teacher.id} value={teacher.id} disabled={!!conflict}>{teacher.fullName}{conflict ? ` · đang chủ nhiệm ${conflict.code}` : ''}</option>; })}</select> : props.teachers.find((teacher) => teacher.id === item.homeroomTeacherId)?.fullName || 'Chưa gán'}</td>
             </tr>)}
-          </tbody></table>
+          </tbody></table>}
+          </PaginatedData>
         </div>
         <div className="academic-roster">
           <header><div><strong>{selectedClass?.code || 'Chọn lớp'}</strong><small>{props.enrollments.data?.length || 0} học sinh đang học</small></div></header>
-          <Async state={props.enrollments} allowEmpty empty="Lớp chưa có học sinh">{(items) => (
+          <Async paginate state={props.enrollments} allowEmpty empty="Lớp chưa có học sinh" itemLabel="học sinh" resetKey={props.selectedClassId}>{(items) => (
             items.length ? <table className="live-table"><thead><tr><th>Học sinh</th><th>Mã</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{item.studentName}</td><td>{item.studentCode || '—'}</td><td>{props.canManageEnrollment && <button className="icon-action danger" title="Bỏ khỏi lớp" onClick={() => removeEnrollment(item.id)}><Trash2 size={15} /></button>}</td></tr>)}</tbody></table> : <div className="empty-state"><strong>Lớp chưa có học sinh</strong></div>
           )}</Async>
           {props.canManageEnrollment && selectedClass && <div className="academic-enrollment-picker">
             <label className="academic-search"><Search size={15} /><input value={props.candidateSearch} onChange={(event) => props.setCandidateSearch(event.target.value)} placeholder="Tìm học sinh chưa phân lớp" /></label>
-            <div className="academic-candidates">{(props.candidates.data || []).slice(0, 50).map((student) => <label key={student.id}><input type="checkbox" checked={props.selectedStudents.includes(student.id)} onChange={() => props.setSelectedStudents(props.selectedStudents.includes(student.id) ? props.selectedStudents.filter((id) => id !== student.id) : [...props.selectedStudents, student.id])} /><span>{student.fullName}<small>{student.studentCode || 'Chưa có mã'}</small></span></label>)}</div>
+            <PaginatedData items={props.candidates.data || []} itemLabel="học sinh chưa phân lớp" resetKey={`${props.selectedClassId}|${props.candidateSearch}`}>{(pageItems) => <div className="academic-candidates">{pageItems.map((student) => <label key={student.id}><input type="checkbox" checked={props.selectedStudents.includes(student.id)} onChange={() => props.setSelectedStudents(props.selectedStudents.includes(student.id) ? props.selectedStudents.filter((id) => id !== student.id) : [...props.selectedStudents, student.id])} /><span>{student.fullName}<small>{student.studentCode || 'Chưa có mã'}</small></span></label>)}</div>}</PaginatedData>
             <div className="live-toolbar"><input className="live-input grow" value={props.enrollmentReason} onChange={(event) => props.setEnrollmentReason(event.target.value)} placeholder="Lý do phân lớp" /><button className="live-btn" onClick={assignStudents}><UserPlus size={15} /> Phân lớp ({props.selectedStudents.length})</button></div>
           </div>}
         </div>
@@ -441,7 +461,7 @@ function SubjectsTab({ state, canManage, onChanged, notify }: {
   return (
     <Section title="Môn học" subtitle="Danh mục môn dùng cho phân công, kế hoạch, lịch và kết quả" wide>
       {canManage && <div className="live-toolbar"><input className="live-input" placeholder="MATH" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /><input className="live-input grow" placeholder="Tên môn" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /><select className="live-select" value={form.subjectType} onChange={(event) => setForm({ ...form, subjectType: event.target.value })}><option value="MANDATORY">Bắt buộc</option><option value="OPTIONAL">Lựa chọn</option><option value="SPECIALIZED">Chuyên đề</option><option value="EDUCATIONAL_ACTIVITY">Hoạt động</option></select><input className="live-input" placeholder="Tổ chuyên môn" value={form.departmentName} onChange={(event) => setForm({ ...form, departmentName: event.target.value })} /><select className="live-select" value={form.requiredRoomType} onChange={(event) => setForm({ ...form, requiredRoomType: event.target.value })}><option value="GENERAL">Phòng thường</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="GYM">Nhà thể chất</option></select><button className="live-btn" onClick={submit}><Plus size={15} /> Thêm môn</button></div>}
-      <Async state={state} empty="Chưa có môn học">{(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Loại môn</th><th>Tổ chuyên môn</th><th>Đánh giá</th><th>Loại phòng</th><th>Trạng thái</th><th /></tr></thead><tbody>{items.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{canManage ? <select className="live-select" value={subject.subjectType || 'MANDATORY'} onChange={(event) => update(subject, { subjectType: event.target.value as Subject['subjectType'] })}><option value="MANDATORY">Bắt buộc</option><option value="OPTIONAL">Lựa chọn</option><option value="SPECIALIZED">Chuyên đề</option><option value="EDUCATIONAL_ACTIVITY">Hoạt động</option></select> : subject.subjectType}</td><td>{canManage ? <input className="live-input" defaultValue={subject.departmentName || ''} onBlur={(event) => update(subject, { departmentName: event.target.value })} /> : subject.departmentName || '—'}</td><td>{subject.assessmentMethod === 'COMMENT' ? 'Nhận xét' : 'Điểm số'}</td><td>{canManage ? <select className="live-select" value={subject.requiredRoomType || 'GENERAL'} onChange={(event) => update(subject, { requiredRoomType: event.target.value })}><option value="GENERAL">Phòng thường</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="GYM">Nhà thể chất</option></select> : subject.requiredRoomType || 'GENERAL'}</td><td>{subject.active ? 'Đang dùng' : 'Ngừng dùng'}</td><td>{canManage && <button className="live-btn small ghost" onClick={() => update(subject, { active: !subject.active })}>{subject.active ? 'Ngừng dùng' : 'Kích hoạt'}</button>}</td></tr>)}</tbody></table>}</Async>
+      <Async paginate state={state} empty="Chưa có môn học" itemLabel="môn học">{(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Loại môn</th><th>Tổ chuyên môn</th><th>Đánh giá</th><th>Loại phòng</th><th>Trạng thái</th><th /></tr></thead><tbody>{items.map((subject) => <tr key={subject.id}><td><strong>{subject.code}</strong></td><td>{subject.name}</td><td>{canManage ? <select className="live-select" value={subject.subjectType || 'MANDATORY'} onChange={(event) => update(subject, { subjectType: event.target.value as Subject['subjectType'] })}><option value="MANDATORY">Bắt buộc</option><option value="OPTIONAL">Lựa chọn</option><option value="SPECIALIZED">Chuyên đề</option><option value="EDUCATIONAL_ACTIVITY">Hoạt động</option></select> : subject.subjectType}</td><td>{canManage ? <input className="live-input" defaultValue={subject.departmentName || ''} onBlur={(event) => update(subject, { departmentName: event.target.value })} /> : subject.departmentName || '—'}</td><td>{subject.assessmentMethod === 'COMMENT' ? 'Nhận xét' : 'Điểm số'}</td><td>{canManage ? <select className="live-select" value={subject.requiredRoomType || 'GENERAL'} onChange={(event) => update(subject, { requiredRoomType: event.target.value })}><option value="GENERAL">Phòng thường</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="GYM">Nhà thể chất</option></select> : subject.requiredRoomType || 'GENERAL'}</td><td>{subject.active ? 'Đang dùng' : 'Ngừng dùng'}</td><td>{canManage && <button className="live-btn small ghost" onClick={() => update(subject, { active: !subject.active })}>{subject.active ? 'Ngừng dùng' : 'Kích hoạt'}</button>}</td></tr>)}</tbody></table>}</Async>
     </Section>
   );
 }
@@ -506,6 +526,10 @@ function PlansTab(props: {
     setSubjectForm((current) => current.semesterId ? current : ({ ...current, semesterId: semester.id, startDate: semester.startDate || '', endDate: semester.endDate || '' }));
   }, [planSemesters]);
   const createPlan = async () => {
+    const selectedProgram = programs.data?.find((item) => item.id === programId);
+    if (!selectedProgram || selectedProgram.status !== 'ACTIVE') {
+      return props.notify('err', 'Chọn chương trình ở trạng thái Đang áp dụng. Chương trình bản nháp vẫn hiển thị để bạn biết cần hoàn thiện và áp dụng trước.');
+    }
     try {
       await api.post('/academic/training-plans', { academicYearId: props.selectedYearId, gradeLevel: props.selectedGrade, name: planName || `Kế hoạch ${props.selectedGrade}`, maxProgressGapDays: maxGap, programId, description });
       props.notify('ok', 'Đã tạo kế hoạch giáo dục năm học ở trạng thái nháp.'); props.onChanged();
@@ -571,7 +595,7 @@ function PlansTab(props: {
       <div className="live-toolbar academic-filter-bar">
         <select className="live-select" value={props.selectedYearId} onChange={(event) => props.setSelectedYearId(event.target.value)}>{props.years.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
         <select className="live-select" value={props.selectedGrade} onChange={(event) => props.setSelectedGrade(event.target.value)}>{GRADES.map((grade) => <option key={grade} value={grade}>Khối {grade.slice(1)}</option>)}</select>
-        <select className="live-select grow" value={programId} disabled={!editablePlan && !!currentPlan} onChange={(event) => setProgramId(event.target.value)}><option value="">Chọn chương trình</option>{(programs.data || []).filter((item) => item.status === 'ACTIVE' || item.id === programId).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select>
+        <select className="live-select grow" value={programId} disabled={!editablePlan && !!currentPlan} onChange={(event) => setProgramId(event.target.value)}><option value="">Chọn chương trình</option>{(programs.data || []).map((item) => <option key={item.id} value={item.id} disabled={!currentPlan && item.status !== 'ACTIVE'}>{item.code} · {item.name} · {item.status === 'ACTIVE' ? 'Đang áp dụng' : item.status === 'DRAFT' ? 'Bản nháp — cần áp dụng trước' : 'Đã lưu trữ'}</option>)}</select>
         {!!planVersions.length && <select className="live-select" value={props.selectedPlanId} onChange={(event) => { setPlanSection('overview'); props.setSelectedPlanId(event.target.value); }}>
           {planVersions.map((plan) => <option key={plan.id} value={plan.id}>Phiên bản {plan.versionNumber} · {{ DRAFT: 'Nháp', SUBMITTED: 'Chờ kiểm tra', REVISION_REQUIRED: 'Yêu cầu sửa', APPROVED: 'Đã phê duyệt', PUBLISHED: 'Đang áp dụng', ARCHIVED: 'Đã lưu trữ', LOCKED: 'Đã khóa' }[plan.status]}</option>)}
         </select>}
@@ -607,7 +631,7 @@ function PlansTab(props: {
           <label className="academic-check"><input type="checkbox" checked={subjectForm.examRequired} onChange={(event) => setSubjectForm({ ...subjectForm, examRequired: event.target.checked })} /> Có đánh giá định kỳ</label>
           <div className="live-toolbar form-actions"><button className="live-btn" onClick={addPlanSubject}>{editingSubjectId ? <Save size={15} /> : <Plus size={15} />} {editingSubjectId ? 'Lưu chỉnh sửa' : 'Thêm môn'}</button>{editingSubjectId && <button className="live-btn ghost" onClick={() => setEditingSubjectId('')}><X size={15} /> Hủy sửa</button>}</div>
         </div>}
-        {instructionalPlanSubjects.length ? <table className="live-table"><thead><tr><th>Học kỳ</th><th>Môn</th><th>Tiết/tuần</th><th>Tổng tiết</th><th>Thời gian</th><th>Đánh giá định kỳ</th><th /></tr></thead><tbody>{instructionalPlanSubjects.map((row) => <tr key={row.id}><td>{planSemesters.find((semester) => semester.id === row.semesterId)?.code}</td><td><strong>{props.subjects.find((subject) => subject.id === row.subjectId)?.name || row.subjectId}</strong></td><td>{row.weeklyPeriods}</td><td>{row.totalPeriods}</td><td>{fmtDate(row.startDate)} đến {fmtDate(row.endDate)}</td><td>{row.examRequired ? 'Có' : 'Không'}</td><td>{editablePlan && props.canManagePlanContent && <div className="table-row-actions"><button className="icon-action" title="Chỉnh sửa" onClick={() => editPlanSubject(row)}><Pencil size={15} /></button><button className="icon-action danger" title="Xóa khỏi kế hoạch" onClick={() => deletePlanSubject(row.id)}><Trash2 size={15} /></button></div>}</td></tr>)}</tbody></table> : <div className="empty-state"><strong>Chưa cấu hình môn học</strong><span>Bấm “Đồng bộ từ chương trình” bên dưới để tạo đủ môn cho cả hai học kỳ.</span></div>}
+        {instructionalPlanSubjects.length ? <PaginatedData items={instructionalPlanSubjects} itemLabel="môn trong kế hoạch" resetKey={currentPlan?.id}>{(items) => <table className="live-table"><thead><tr><th>Học kỳ</th><th>Môn</th><th>Tiết/tuần</th><th>Tổng tiết</th><th>Thời gian</th><th>Đánh giá định kỳ</th><th /></tr></thead><tbody>{items.map((row) => <tr key={row.id}><td>{planSemesters.find((semester) => semester.id === row.semesterId)?.code}</td><td><strong>{props.subjects.find((subject) => subject.id === row.subjectId)?.name || row.subjectId}</strong></td><td>{row.weeklyPeriods}</td><td>{row.totalPeriods}</td><td>{fmtDate(row.startDate)} đến {fmtDate(row.endDate)}</td><td>{row.examRequired ? 'Có' : 'Không'}</td><td>{editablePlan && props.canManagePlanContent && <div className="table-row-actions"><button className="icon-action" title="Chỉnh sửa" onClick={() => editPlanSubject(row)}><Pencil size={15} /></button><button className="icon-action danger" title="Xóa khỏi kế hoạch" onClick={() => deletePlanSubject(row.id)}><Trash2 size={15} /></button></div>}</td></tr>)}</tbody></table>}</PaginatedData> : <div className="empty-state"><strong>Chưa cấu hình môn học</strong><span>Bấm “Đồng bộ từ chương trình” bên dưới để tạo đủ môn cho cả hai học kỳ.</span></div>}
         <EducationPlanCompletionPanel plan={currentPlan} planSubjects={instructionalPlanSubjects}
           section="overview"
           semesters={planSemesters} subjects={props.subjects} classes={props.classes}
@@ -641,10 +665,14 @@ function RoomsTab({ state, canManage, onChanged, notify }: {
     try { await api.put(`/rooms/${room.id}`, { ...room, active: room.active === false }); notify('ok', 'Đã cập nhật trạng thái phòng.'); onChanged(); }
     catch (error) { notify('err', errorMessage(error)); }
   };
+  const updateCapacity = async (room: Room, capacity: number) => {
+    try { await api.put(`/rooms/${room.id}`, { ...room, capacity }); notify('ok', `Đã cập nhật sức chứa phòng ${room.code}.`); onChanged(); }
+    catch (error) { notify('err', errorMessage(error)); }
+  };
   return (
     <Section title="Phòng học" subtitle="Phòng dùng cho thời khóa biểu và lịch thi" wide>
-      {canManage && <div className="live-toolbar"><input className="live-input" placeholder="P201" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /><input className="live-input" type="number" min={1} max={500} value={form.capacity} onChange={(event) => setForm({ ...form, capacity: Number(event.target.value) })} /><select className="live-select" value={form.roomType} onChange={(event) => setForm({ ...form, roomType: event.target.value })}><option value="GENERAL">Phòng thường</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="GYM">Nhà thể chất</option><option value="MUSIC">Phòng âm nhạc</option><option value="ART">Phòng mỹ thuật</option></select><button className="live-btn" onClick={submit}><Plus size={15} /> Thêm phòng</button></div>}
-      <Async state={state} empty="Chưa có phòng học">{(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Loại phòng</th><th>Sức chứa</th><th>Trạng thái</th><th /></tr></thead><tbody>{items.map((room) => <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td>{room.roomType || 'GENERAL'}</td><td>{room.capacity || '—'}</td><td>{(room as Room & { active?: boolean }).active === false ? 'Ngừng dùng' : 'Đang dùng'}</td><td>{canManage && <button className="live-btn small ghost" onClick={() => toggle(room)}>{(room as Room & { active?: boolean }).active === false ? 'Kích hoạt' : 'Ngừng dùng'}</button>}</td></tr>)}</tbody></table>}</Async>
+      {canManage && <div className="live-toolbar"><input className="live-input" placeholder="P201" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} /><input className="live-input grow" placeholder="Tên phòng" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /><label className="field-stack"><span>Sức chứa tối đa</span><input className="live-input" type="number" min={1} max={500} value={form.capacity} onChange={(event) => setForm({ ...form, capacity: Number(event.target.value) })} /></label><select className="live-select" value={form.roomType} onChange={(event) => setForm({ ...form, roomType: event.target.value })}><option value="GENERAL">Phòng thường</option><option value="LAB">Phòng thí nghiệm</option><option value="COMPUTER">Phòng máy tính</option><option value="GYM">Nhà thể chất</option><option value="MUSIC">Phòng âm nhạc</option><option value="ART">Phòng mỹ thuật</option></select><button className="live-btn" onClick={submit}><Plus size={15} /> Thêm phòng</button></div>}
+      <Async paginate state={state} empty="Chưa có phòng học" itemLabel="phòng học">{(items) => <table className="live-table"><thead><tr><th>Mã</th><th>Tên</th><th>Loại phòng</th><th>Sức chứa tối đa</th><th>Trạng thái</th><th /></tr></thead><tbody>{items.map((room) => <tr key={room.id}><td><strong>{room.code}</strong></td><td>{room.name}</td><td>{room.roomType || 'GENERAL'}</td><td>{canManage ? <input aria-label={`Sức chứa phòng ${room.code}`} className="coefficient-input" type="number" min={1} max={500} defaultValue={room.capacity || 1} onBlur={(event) => { const value = Number(event.target.value); if (value !== room.capacity) updateCapacity(room, value); }} /> : room.capacity || '—'}</td><td>{(room as Room & { active?: boolean }).active === false ? 'Ngừng dùng' : 'Đang dùng'}</td><td>{canManage && <button className="live-btn small ghost" onClick={() => toggle(room)}>{(room as Room & { active?: boolean }).active === false ? 'Kích hoạt' : 'Ngừng dùng'}</button>}</td></tr>)}</tbody></table>}</Async>
     </Section>
   );
 }

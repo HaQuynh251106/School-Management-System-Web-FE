@@ -9,7 +9,7 @@ import type {
   StudentImportResult, LoginHistory, Announcement, RbacPermission, RbacRole, UserSession, UserDevice, Notification, NotificationDeliveryLog, NotificationOperationsSummary, NotificationProviderStatus,
 } from '../../api/types';
 import { Section, FunctionTabs, StatusPill, Badge, viLabel } from '../../components/ui';
-import { Async, useToast, money, fmtDate, fmtDateTime } from './common';
+import { Async, PaginatedData, useToast, money, fmtDate, fmtDateTime } from './common';
 import { Modal, Field } from './Modal';
 import { AcademicStructureWorkspace } from './AcademicStructureWorkspace';
 import { ExamScheduleWorkspace } from './ExamScheduleWorkspace';
@@ -2152,13 +2152,14 @@ export function AdminFinanceLive() {
                       <div><span>Đã phát hành</span><strong>{preview.existingInvoiceCount}</strong></div>
                       <div><span>Tổng phát hành mới</span><strong>{money(preview.newTotalAmount)}</strong></div>
                     </div>
-                    <table className="live-table finance-preview-table">
+                    <PaginatedData items={preview.students} itemLabel="học sinh xem trước" resetKey={preview.feePeriodId}>
+                    {(pageStudents) => <table className="live-table finance-preview-table">
                       <thead><tr><th>Học sinh</th><th>Lớp</th><th>Số khoản</th><th>Tổng tiền</th><th>Trạng thái</th></tr></thead>
-                      <tbody>{preview.students.slice(0, 100).map((student) => (
+                      <tbody>{pageStudents.map((student) => (
                         <tr key={student.studentId}><td>{student.studentName}</td><td>{student.className || '—'}</td><td>{student.itemCount}</td><td>{money(student.totalAmount)}</td>
                           <td><Badge tone={student.alreadyIssued ? 'green' : 'orange'}>{student.alreadyIssued ? 'Đã có hóa đơn' : 'Chờ phát hành'}</Badge></td></tr>
-                      ))}</tbody>
-                    </table>
+                      ))}</tbody></table>}
+                    </PaginatedData>
                   </div>
                 )}
               </div>
@@ -2296,13 +2297,14 @@ export function AdminFinanceLive() {
                   </table>
                 )}
                 {!!reconciliationDetail.issues.length && (
-                  <table className="live-table finance-reconciliation-issue-table">
+                  <PaginatedData items={reconciliationDetail.issues} itemLabel="sai lệch đối soát" resetKey={reconciliationDetail.id}>
+                    {(pageItems) => <table className="live-table finance-reconciliation-issue-table">
                     <thead><tr><th>Mức độ</th><th>Loại sai lệch</th><th>Đối tượng</th><th>Kỳ vọng</th><th>Thực tế</th><th>Nội dung</th></tr></thead>
-                    <tbody>{reconciliationDetail.issues.map((issue) => (
+                    <tbody>{pageItems.map((issue) => (
                       <tr key={issue.id}><td><StatusPill value={issue.severity} /></td><td><strong>{issue.issueType}</strong></td><td>{issue.entityType}<small>{issue.entityId}</small></td>
                         <td>{issue.expectedAmount == null ? '—' : money(issue.expectedAmount)}</td><td>{issue.actualAmount == null ? '—' : money(issue.actualAmount)}</td><td>{issue.message}</td></tr>
-                    ))}</tbody>
-                  </table>
+                    ))}</tbody></table>}
+                  </PaginatedData>
                 )}
               </div>
             )}
@@ -2585,7 +2587,7 @@ export function AdminNotificationsLive() {
           <span><small>Lần gọi provider</small><strong>{operationSummary.data.deliveryAttempts}</strong></span>
         </div>}
         <FunctionTabs tabs={[
-          { id: 'failed', label: `Cần gửi lại (${failedNotifications.data?.length || 0})`, Icon: AlertTriangle, content: <Async state={failedNotifications} empty="Không có thông báo gửi thất bại">{(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Kênh</th><th>Nội dung</th><th>Số lần</th><th>Lỗi cuối</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Badge tone="blue">{item.channel || 'IN_APP'}</Badge></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td>{item.attemptCount || 0}</td><td>{item.errorMessage || '—'}</td><td><button className="live-btn subtle" onClick={() => retryNotification(item.id)}><RefreshCw size={14} /> Gửi lại</button></td></tr>)}</tbody></table></div>}</Async> },
+          { id: 'failed', label: `Cần gửi lại (${failedNotifications.data?.length || 0})`, Icon: AlertTriangle, content: <Async paginate state={failedNotifications} empty="Không có thông báo gửi thất bại" itemLabel="thông báo lỗi">{(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Kênh</th><th>Nội dung</th><th>Số lần</th><th>Lỗi cuối</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><Badge tone="blue">{item.channel || 'IN_APP'}</Badge></td><td><strong>{item.title}</strong><small>{item.body}</small></td><td>{item.attemptCount || 0}</td><td>{item.errorMessage || '—'}</td><td><button className="live-btn subtle" onClick={() => retryNotification(item.id)}><RefreshCw size={14} /> Gửi lại</button></td></tr>)}</tbody></table></div>}</Async> },
           { id: 'logs', label: 'Nhật ký gửi', Icon: History, content: <Async paginate state={deliveryLogs} empty="Chưa có lượt gửi nào" itemLabel="lượt gửi">{(items) => <div className="admin-table-scroll"><table className="live-table"><thead><tr><th>Thời gian</th><th>Kênh / provider</th><th>Lần</th><th>Trạng thái</th><th>Phản hồi</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td>{fmtDateTime(item.attemptedAt)}</td><td><strong>{item.channel}</strong><small>{item.provider}</small></td><td>{item.attemptNo}</td><td><StatusPill value={item.status} /></td><td>{item.errorMessage || item.providerResponse || '—'}</td></tr>)}</tbody></table></div>}</Async> },
         ]} />
       </Section>

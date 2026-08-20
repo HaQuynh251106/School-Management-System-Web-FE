@@ -13,7 +13,7 @@ import type {
   ExamVersionDetail, ExamVersionDiff, Room, SchoolHoliday, Semester,
 } from '../../api/types';
 import { FunctionTabs, Section } from '../../components/ui';
-import { Async, fmtDate, fmtDateTime, useToast } from './common';
+import { Async, fmtDate, fmtDateTime, PaginatedData, useToast } from './common';
 import { Field, FormValidationSummary, Modal } from './Modal';
 
 const EXAM_TYPE_LABEL: Record<string, string> = {
@@ -58,6 +58,7 @@ export function ExamScheduleWorkspace() {
     { suppressErrorStatuses: [404] },
   );
   const [versionId, setVersionId] = useState('');
+  const selectedVersionId = versionId;
   const selectedVersion = versions.data?.find((item) => item.id === versionId && item.examPeriodId === periodId);
   const detail = useApi<ExamVersionDetail>(
     periodId && selectedVersion ? `/exam-periods/${periodId}/versions/${versionId}` : null,
@@ -650,7 +651,7 @@ export function ExamScheduleWorkspace() {
         <ExamValidationStrip detail={detail.data} />
         <Section title="Lịch thi và phòng thi" subtitle="Mở từng môn để xem phòng, giám thị và danh sách học sinh" wide>
           <Async state={detail} empty="Phiên bản chưa có lịch thi">
-            {(data) => <div className="exam-session-list">{data.sessions.map((session) => {
+            {(data) => <PaginatedData items={data.sessions} itemLabel="ca thi" resetKey={selectedVersionId}>{(pageSessions) => <div className="exam-session-list">{pageSessions.map((session) => {
               const expanded = expandedSessions.has(session.id);
               return <article key={session.id} id={`exam-session-${session.id}`} className={`exam-session-row source-${session.sourceSyncStatus.toLowerCase()}`}>
                 <div className="exam-session-main">
@@ -675,12 +676,12 @@ export function ExamScheduleWorkspace() {
                       <span>Chính: {room.primaryProctorName}</span><span>Dự phòng: {room.backupProctorName}</span>
                       {canEdit && <button className="icon-action" title="Đổi phòng hoặc giám thị" onClick={() => setRoomEdit(room)}><Save size={14} /></button>}
                     </div>
-                    {roomOpen && <table className="live-table compact"><thead><tr><th>SBD</th><th>Mã học sinh</th><th>Họ tên</th><th>Lớp</th></tr></thead>
-                      <tbody>{room.students.map((student) => <tr key={student.studentId}><td>{String(student.seatNo).padStart(3, '0')}</td><td>{student.studentCode}</td><td><strong>{student.studentName}</strong></td><td>{student.classCode}</td></tr>)}</tbody></table>}
+                    {roomOpen && <PaginatedData items={room.students} pageSize={20} itemLabel="học sinh" resetKey={room.id}>{(pageStudents) => <table className="live-table compact"><thead><tr><th>SBD</th><th>Mã học sinh</th><th>Họ tên</th><th>Lớp</th></tr></thead>
+                      <tbody>{pageStudents.map((student) => <tr key={student.studentId}><td>{String(student.seatNo).padStart(3, '0')}</td><td>{student.studentCode}</td><td><strong>{student.studentName}</strong></td><td>{student.classCode}</td></tr>)}</tbody></table>}</PaginatedData>}
                   </div>;
                 })}</div>}
               </article>;
-            })}</div>}
+            })}</div>}</PaginatedData>}
           </Async>
         </Section>
       </> },
@@ -698,11 +699,11 @@ export function ExamScheduleWorkspace() {
           <button className="live-btn" disabled={busy || awayIssues.length > 0} onClick={addAway}>{editingAwayId ? <Save size={15} /> : <Plus size={15} />} {editingAwayId ? 'Lưu thay đổi' : 'Ghi nhận'}</button>
           {editingAwayId && <button className="live-btn ghost" onClick={() => { setEditingAwayId(null); setAwayForm({ teacherId: '', unavailableDate: '', endDate: '', allDay: true, startTime: '', endTime: '', unavailabilityType: 'LEAVE', reason: '' }); }}>Hủy sửa</button>}
         </div></>}
-        <Async state={detail} allowEmpty>{(data) => <table className="live-table"><thead><tr><th>Giáo viên</th><th>Loại</th><th>Khoảng ngày</th><th>Khoảng giờ</th><th>Lý do</th><th>Ảnh hưởng</th><th /></tr></thead>
-          <tbody>{data.teacherUnavailability.map((row) => <tr key={row.id}><td><strong>{row.teacherName}</strong><small>{row.createdByName} · {fmtDateTime(row.createdAt)}</small></td><td>{UNAVAILABILITY_LABELS[row.unavailabilityType] || row.unavailabilityType}</td><td>{row.unavailableDate === row.endDate ? fmtDate(row.unavailableDate) : `${fmtDate(row.unavailableDate)} – ${fmtDate(row.endDate)}`}</td><td>{row.startTime ? `${row.startTime}–${row.endTime}` : 'Cả ngày'}</td><td>{row.reason}</td><td>{row.affectedSessionCount > 0 ? <span className="exam-impact-warning">{row.affectedSessionCount} ca</span> : 'Không'}</td><td>{canEdit && <div className="exam-session-actions"><button className="icon-action" title="Chỉnh sửa lịch bận/nghỉ" onClick={() => editAway(row)}><Pencil size={14} /></button><button className="icon-action danger" title="Xóa lịch bận/nghỉ" onClick={() => setAwayToDelete(row)}><Trash2 size={14} /></button></div>}</td></tr>)}</tbody></table>}</Async>
+        <Async state={detail} allowEmpty>{(data) => <PaginatedData items={data.teacherUnavailability} itemLabel="lịch bận/nghỉ" resetKey={selectedVersionId}>{(pageRows) => <table className="live-table"><thead><tr><th>Giáo viên</th><th>Loại</th><th>Khoảng ngày</th><th>Khoảng giờ</th><th>Lý do</th><th>Ảnh hưởng</th><th /></tr></thead>
+          <tbody>{pageRows.map((row) => <tr key={row.id}><td><strong>{row.teacherName}</strong><small>{row.createdByName} · {fmtDateTime(row.createdAt)}</small></td><td>{UNAVAILABILITY_LABELS[row.unavailabilityType] || row.unavailabilityType}</td><td>{row.unavailableDate === row.endDate ? fmtDate(row.unavailableDate) : `${fmtDate(row.unavailableDate)} – ${fmtDate(row.endDate)}`}</td><td>{row.startTime ? `${row.startTime}–${row.endTime}` : 'Cả ngày'}</td><td>{row.reason}</td><td>{row.affectedSessionCount > 0 ? <span className="exam-impact-warning">{row.affectedSessionCount} ca</span> : 'Không'}</td><td>{canEdit && <div className="exam-session-actions"><button className="icon-action" title="Chỉnh sửa lịch bận/nghỉ" onClick={() => editAway(row)}><Pencil size={14} /></button><button className="icon-action danger" title="Xóa lịch bận/nghỉ" onClick={() => setAwayToDelete(row)}><Trash2 size={14} /></button></div>}</td></tr>)}</tbody></table>}</PaginatedData>}</Async>
       </Section> },
       { id: 'history', label: 'Lịch sử phiên bản', Icon: History, content: <Section title="Lịch sử phiên bản" subtitle="Mọi lần phát hành và điều chỉnh đều được giữ lại" wide>
-        <Async state={versions} empty="Chưa có phiên bản">{(items) => <table className="live-table"><thead><tr><th>Phiên bản</th><th>Trạng thái</th><th>Lý do</th><th>Người tạo</th><th>Lần kiểm tra cuối</th><th>Phát hành</th></tr></thead>
+        <Async paginate state={versions} empty="Chưa có phiên bản" itemLabel="phiên bản lịch thi">{(items) => <table className="live-table"><thead><tr><th>Phiên bản</th><th>Trạng thái</th><th>Lý do</th><th>Người tạo</th><th>Lần kiểm tra cuối</th><th>Phát hành</th></tr></thead>
           <tbody>{items.map((version) => <tr key={version.id}><td><strong>v{version.versionNo}</strong></td><td><ExamStatusChip value={version.status} /></td><td>{version.changeReason}</td><td>{version.createdByName}<small>{fmtDateTime(version.createdAt)}</small></td><td>{version.lastValidatedAt ? <>{fmtDateTime(version.lastValidatedAt)}<small>{version.validationCurrent ? 'Còn hiệu lực' : 'Đã hết hiệu lực'} · {version.lastValidationErrorCount || 0} lỗi · {version.lastValidationWarningCount || 0} cảnh báo</small></> : 'Chưa kiểm tra'}</td><td>{version.publishedByName || '—'}<small>{fmtDateTime(version.publishedAt)}</small></td></tr>)}</tbody></table>}</Async>
       </Section> },
     ]} />}
@@ -791,13 +792,13 @@ function ExamValidationStrip({ detail }: { detail: ExamVersionDetail | null }) {
       <span>{validation.sessionCount} môn/khối · {validation.roomCount} phòng · {validation.studentCount} lượt học sinh</span></div>
     {validation.issues.length > 0 && <details className="exam-issue-details" open={!validation.valid}>
       <summary>{validation.errorCount} lỗi bắt buộc · {validation.warningCount} cảnh báo</summary>
-      <div className="exam-issue-groups">{grouped.map(([code, issues]) => <details key={code} open={issues.some((issue) => issue.severity === 'ERROR')}>
+      <PaginatedData items={grouped} itemLabel="nhóm lỗi lịch thi" pageSize={5} resetKey={detail.version.id}>{(pageGroups) => <div className="exam-issue-groups">{pageGroups.map(([code, issues]) => <details key={code} open={issues.some((issue) => issue.severity === 'ERROR')}>
         <summary>{issueCodeLabel(code)} · {issues.length}</summary>
         <div className="exam-issue-list">{issues.map((issue, index) => <span key={`${issue.code}-${index}`}>
           <span><b>{issue.severity === 'ERROR' ? 'Lỗi' : 'Cảnh báo'}:</b> {issue.message}</span>
           {issue.sessionId && <button type="button" onClick={() => document.getElementById(`exam-session-${issue.sessionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>Đi tới ca thi</button>}
         </span>)}</div>
-      </details>)}</div>
+      </details>)}</div>}</PaginatedData>
     </details>}
   </section>;
 }
@@ -909,7 +910,7 @@ function RoomEditModal({ assignment, rooms, teachers, busy, onClose, onSave }: {
 export function PublishedExamSchedule({ path, teacher = false }: { path: string; teacher?: boolean }) {
   const schedule = useApi<import('../../api/types').PublishedExamView[]>(path);
   return <Section title={teacher ? 'Lịch coi thi' : 'Lịch thi'} subtitle={teacher ? 'Các ca được phân công coi thi chính hoặc dự phòng' : 'Ngày thi, môn thi, phòng thi và thời gian'} wide>
-    <Async state={schedule} empty={teacher ? 'Chưa có lịch coi thi được phát hành' : 'Chưa có lịch thi được phát hành'}>
+    <Async paginate state={schedule} empty={teacher ? 'Chưa có lịch coi thi được phát hành' : 'Chưa có lịch thi được phát hành'} itemLabel={teacher ? 'ca coi thi' : 'ca thi'}>
       {(rows) => <div className="published-exam-list">{rows.map((row, index) => <article key={`${row.periodId}-${row.subjectId}-${row.examDate}-${index}`}>
         <div className="published-exam-date"><strong>{fmtDate(row.examDate)}</strong><span>{row.startTime}–{row.endTime}</span></div>
         <div><small>{row.periodName} · {row.semesterName}</small><strong>{row.subjectName}</strong><span>{gradeLabel(row.gradeLevel)} · {row.durationMinutes} phút</span></div>

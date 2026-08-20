@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BookCopy, Check, GraduationCap, Plus, Save, UsersRound } from 'lucide-react';
+import { BookCopy, Check, GraduationCap, Plus, Save, Sparkles, Trash2, UsersRound } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import type {
@@ -8,6 +8,7 @@ import type {
 } from '../../api/types';
 import { Section, StatusPill } from '../../components/ui';
 import { Async } from './common';
+import { useConfirm } from '../../app/ConfirmDialog';
 
 type Notify = (type: 'ok' | 'err', message: string) => void;
 type Mode = 'programs' | 'combinations' | 'teacher-subjects';
@@ -78,6 +79,8 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
   grade: string; setGrade: (grade: string) => void; subjects: Subject[];
   canManage: boolean; notify: Notify;
 }) {
+  const gradeLevel = grade;
+  const confirmAction = useConfirm();
   const [programForm, setProgramForm] = useState({ code: '', name: '', startYear: 2018, description: '' });
   const [createOpen, setCreateOpen] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ subjectId: '', subjectType: 'MANDATORY', annualPeriods: 70, semester1Periods: 35, semester2Periods: 35, weeklyPeriods: 2, required: true, notes: '' });
@@ -115,6 +118,17 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
       programSubjects.reload(); notify('ok', 'Đã cập nhật cấu hình số tiết. Kế hoạch nháp có thể bấm “Đồng bộ từ chương trình” để nhận số tiết mới.');
     } catch (error) { notify('err', message(error)); }
   };
+  const deleteSubject = async (row: EducationProgramSubject) => {
+    if (!(await confirmAction({ title: 'Xóa môn khỏi chương trình', message: 'Chỉ xóa cấu hình trong chương trình nháp; danh mục môn của trường không bị ảnh hưởng.', confirmLabel: 'Xóa môn', tone: 'danger' }))) return;
+    try { await api.del(`/academic/education-planning/programs/${programId}/subjects/${row.id}`); programSubjects.reload(); notify('ok', 'Đã xóa môn khỏi chương trình nháp.'); }
+    catch (error) { notify('err', message(error)); }
+  };
+  const autoConfigure = async (allGrades: boolean) => {
+    try {
+      const result = await api.post<{ created: number; grades: string[] }>(`/academic/education-planning/programs/${programId}/subjects/auto-configure`, allGrades ? {} : { gradeLevel: grade });
+      programSubjects.reload(); notify('ok', `Đã tự động bổ sung ${result.created} cấu hình môn cho ${result.grades.join(', ')}. Các dòng cũ được giữ nguyên.`);
+    } catch (error) { notify('err', message(error)); }
+  };
   const activateProgram = async () => {
     if (!selectedProgram) return;
     try {
@@ -125,7 +139,9 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
       notify('ok', `Đã áp dụng ${selectedProgram.name}. Chương trình áp dụng trước đó đã được lưu trữ.`);
     } catch (error) { notify('err', message(error)); }
   };
-  return <Section title="Chương trình giáo dục" subtitle="Cấu hình môn và số tiết chuẩn theo từng khối, không hardcode trong thuật toán" wide>
+  const semester1Total = (programSubjects.data || []).reduce((sum, row) => sum + row.semester1Periods, 0);
+  const semester2Total = (programSubjects.data || []).reduce((sum, row) => sum + row.semester2Periods, 0);
+  return <Section title="Chương trình giáo dục" subtitle="Cấu hình môn và số tiết chuẩn theo từng khối; hệ thống hỗ trợ tạo mặc định và vẫn cho phép điều chỉnh" wide>
     <div className="live-toolbar academic-filter-bar">
       <BookCopy size={18} />
       <select className="live-select grow" value={programId} onChange={(event) => setProgramId(event.target.value)}>
@@ -136,6 +152,8 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
       </select>
       {canManage && selectedProgram && selectedProgram.status !== 'ACTIVE' && <button className="live-btn" onClick={activateProgram}><Check size={15} /> Áp dụng chương trình</button>}
     </div>
+    <div className="academic-readiness"><BookCopy size={17} /><span><strong>HK1 và HK2</strong> là số tiết riêng của từng môn trong từng học kỳ; <strong>Cả năm = HK1 + HK2</strong>. Ví dụ Toán 35 + 35 = 70 tiết/năm. Số 35 không phải quỹ tiết dùng chung để trừ giữa Toán và Ngữ văn.</span></div>
+    <div className="live-toolbar"><span className="semantic-chip info">Tổng khối {grade}: HK1 {semester1Total} tiết · HK2 {semester2Total} tiết · Cả năm {semester1Total + semester2Total} tiết</span>{canManage && selectedProgram?.status !== 'ARCHIVED' && <><button className="live-btn secondary" onClick={() => autoConfigure(false)}><Sparkles size={15} /> Tự động cấu hình {grade}</button><button className="live-btn ghost" onClick={() => autoConfigure(true)}><Sparkles size={15} /> Tự động cấu hình cả 3 khối</button></>}</div>
     {canManage && <div className="planning-create-toggle"><button className="live-btn ghost" onClick={() => setCreateOpen((open) => !open)}><Plus size={15} /> Tạo chương trình khác</button></div>}
     {canManage && createOpen && <div className="planning-editor">
       <div className="live-toolbar"><input className="live-input" placeholder="Mã chương trình" value={programForm.code} onChange={(e) => setProgramForm({ ...programForm, code: e.target.value })} /><input className="live-input grow" placeholder="Tên chương trình" value={programForm.name} onChange={(e) => setProgramForm({ ...programForm, name: e.target.value })} /><input className="live-input" type="number" value={programForm.startYear} onChange={(e) => setProgramForm({ ...programForm, startYear: Number(e.target.value) })} /><button className="live-btn" onClick={createProgram}><Plus size={15} /> Tạo bản nháp</button><button className="live-btn ghost" onClick={() => setCreateOpen(false)}>Hủy</button></div>
@@ -144,13 +162,13 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
     {canManage && programId && <div className="live-toolbar academic-create-bar">
       <select className="live-select grow" value={subjectForm.subjectId} onChange={(e) => { const selected = subjects.find((item) => item.id === e.target.value); setSubjectForm({ ...subjectForm, subjectId: e.target.value, subjectType: selected?.subjectType || 'MANDATORY' }); }}><option value="">Chọn môn</option>{subjects.filter((item) => item.active && !(programSubjects.data || []).some((row) => row.subjectId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       <select className="live-select" value={subjectForm.subjectType} onChange={(e) => setSubjectForm({ ...subjectForm, subjectType: e.target.value })}><option value="MANDATORY">Bắt buộc</option><option value="OPTIONAL">Lựa chọn</option><option value="SPECIALIZED">Chuyên đề</option><option value="EDUCATIONAL_ACTIVITY">Hoạt động giáo dục</option></select>
-      <label>HK1 <input className="live-input compact" type="number" value={subjectForm.semester1Periods} onChange={(e) => { const value = Number(e.target.value); setSubjectForm({ ...subjectForm, semester1Periods: value, annualPeriods: value + subjectForm.semester2Periods }); }} /></label>
-      <label>HK2 <input className="live-input compact" type="number" value={subjectForm.semester2Periods} onChange={(e) => { const value = Number(e.target.value); setSubjectForm({ ...subjectForm, semester2Periods: value, annualPeriods: subjectForm.semester1Periods + value }); }} /></label>
+      <label>HK1 (tiết/môn) <input className="live-input compact" type="number" value={subjectForm.semester1Periods} onChange={(e) => { const value = Number(e.target.value); setSubjectForm({ ...subjectForm, semester1Periods: value, annualPeriods: value + subjectForm.semester2Periods, weeklyPeriods: Math.max(1, Math.ceil(Math.max(value / 18, subjectForm.semester2Periods / 17))) }); }} /></label>
+      <label>HK2 (tiết/môn) <input className="live-input compact" type="number" value={subjectForm.semester2Periods} onChange={(e) => { const value = Number(e.target.value); setSubjectForm({ ...subjectForm, semester2Periods: value, annualPeriods: subjectForm.semester1Periods + value, weeklyPeriods: Math.max(1, Math.ceil(Math.max(subjectForm.semester1Periods / 18, value / 17))) }); }} /></label>
       <label>Cả năm <input className="live-input compact calculated" type="number" value={subjectForm.annualPeriods} readOnly title="Tự động bằng HK1 + HK2" /></label>
       <label className="academic-check"><input type="checkbox" checked={subjectForm.required} onChange={(e) => setSubjectForm({ ...subjectForm, required: e.target.checked })} /> Bắt buộc</label>
       <button className="live-btn" onClick={saveSubject}><Plus size={15} /> Thêm</button>
     </div>}
-    <Async state={programSubjects} allowEmpty empty="Chưa có môn trong chương trình của khối">{(items) => <table className="live-table"><thead><tr><th>Môn</th><th>Loại</th><th>HK1</th><th>HK2</th><th>Cả năm</th><th>Tiết/tuần</th><th>Bắt buộc</th><th /></tr></thead><tbody>{items.map((row) => { const draft = subjectDrafts[row.id] || row; const updatePeriods = (field: 'semester1Periods' | 'semester2Periods', value: number) => setSubjectDrafts((current) => { const changed = { ...draft, [field]: value }; return { ...current, [row.id]: { ...changed, annualPeriods: changed.semester1Periods + changed.semester2Periods } }; }); return <tr key={row.id}><td><strong>{subjects.find((item) => item.id === row.subjectId)?.name || row.subjectId}</strong></td><td>{SUBJECT_TYPE_LABELS[row.subjectType] || row.subjectType}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.semester1Periods} onChange={(e) => updatePeriods('semester1Periods', Number(e.target.value))} /> : row.semester1Periods}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.semester2Periods} onChange={(e) => updatePeriods('semester2Periods', Number(e.target.value))} /> : row.semester2Periods}</td><td>{canManage ? <input className="coefficient-input calculated" type="number" value={draft.annualPeriods} readOnly title="Tự động bằng HK1 + HK2" /> : row.annualPeriods}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.weeklyPeriods} onChange={(e) => setSubjectDrafts((current) => ({ ...current, [row.id]: { ...draft, weeklyPeriods: Number(e.target.value) } }))} /> : row.weeklyPeriods}</td><td>{row.required ? 'Có' : 'Không'}</td><td>{canManage && <button className="icon-action" title="Lưu số tiết" onClick={() => updateSubject(draft)}><Save size={15} /></button>}</td></tr>; })}</tbody></table>}</Async>
+    <Async paginate state={programSubjects} allowEmpty empty="Chưa có môn trong chương trình của khối. Có thể dùng Tự động cấu hình để bắt đầu." itemLabel="môn trong chương trình" resetKey={`${programId}|${gradeLevel}`}>{(items) => <table className="live-table"><thead><tr><th>Môn</th><th>Loại</th><th>HK1</th><th>HK2</th><th>Cả năm</th><th>Tiết/tuần</th><th>Bắt buộc</th><th /></tr></thead><tbody>{items.map((row) => { const draft = subjectDrafts[row.id] || row; const updatePeriods = (field: 'semester1Periods' | 'semester2Periods', value: number) => setSubjectDrafts((current) => { const changed = { ...draft, [field]: value }; return { ...current, [row.id]: { ...changed, annualPeriods: changed.semester1Periods + changed.semester2Periods, weeklyPeriods: Math.max(1, Math.ceil(Math.max(changed.semester1Periods / 18, changed.semester2Periods / 17))) } }; }); return <tr key={row.id}><td><strong>{subjects.find((item) => item.id === row.subjectId)?.name || row.subjectId}</strong></td><td>{SUBJECT_TYPE_LABELS[row.subjectType] || row.subjectType}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.semester1Periods} onChange={(e) => updatePeriods('semester1Periods', Number(e.target.value))} /> : row.semester1Periods}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.semester2Periods} onChange={(e) => updatePeriods('semester2Periods', Number(e.target.value))} /> : row.semester2Periods}</td><td>{canManage ? <input className="coefficient-input calculated" type="number" value={draft.annualPeriods} readOnly title="Tự động bằng HK1 + HK2" /> : row.annualPeriods}</td><td>{canManage ? <input className="coefficient-input" type="number" value={draft.weeklyPeriods} onChange={(e) => setSubjectDrafts((current) => ({ ...current, [row.id]: { ...draft, weeklyPeriods: Number(e.target.value) } }))} /> : row.weeklyPeriods}</td><td>{row.required ? 'Có' : 'Không'}</td><td>{canManage && <div className="table-row-actions"><button className="icon-action" title="Lưu số tiết" onClick={() => updateSubject(draft)}><Save size={15} /></button>{selectedProgram?.status === 'DRAFT' && <button className="icon-action danger" title="Xóa khỏi chương trình nháp" onClick={() => deleteSubject(row)}><Trash2 size={15} /></button>}</div>}</td></tr>; })}</tbody></table>}</Async>
   </Section>;
 }
 
@@ -194,7 +212,7 @@ function CombinationsPanel({ state, years, yearId, grade, setGrade, classes, sub
   return <Section title="Tổ hợp môn lựa chọn" subtitle="Xác định nhóm môn áp dụng cho từng lớp trước khi lập kế hoạch và xếp lịch" wide>
     <div className="live-toolbar academic-filter-bar"><GraduationCap size={18} /><div className="active-year-indicator"><small>Năm học đang áp dụng</small><strong>{activeYear?.name || 'Chưa có năm học đang mở'}</strong></div><select className="live-select" value={grade} onChange={(e) => setGrade(e.target.value)}>{['K10', 'K11', 'K12'].map((item) => <option key={item} value={item}>Khối {item.slice(1)}</option>)}</select>{canManage && <button className="live-btn ghost" onClick={() => setCreateOpen((open) => !open)}><Plus size={15} /> Tạo tổ hợp</button>}</div>
     {canManage && createOpen && <div className="planning-editor"><div className="live-toolbar"><input className="live-input" placeholder="KHTN" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} /><input className="live-input grow" placeholder="Tên tổ hợp" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /><button className="live-btn" onClick={create}><Plus size={15} /> Lưu tổ hợp</button><button className="live-btn ghost" onClick={() => setCreateOpen(false)}>Hủy</button></div><div className="planning-chip-grid">{subjects.filter((item) => item.active && item.subjectType !== 'EDUCATIONAL_ACTIVITY').map((item) => <button type="button" className={`planning-choice ${form.subjectIds.includes(item.id) ? 'selected' : ''}`} key={item.id} onClick={() => toggle(item.id)}>{form.subjectIds.includes(item.id) && <Check size={14} />}{item.name}</button>)}</div></div>}
-    <Async state={state} allowEmpty empty="Chưa có tổ hợp môn">{(items) => <div className="planning-combination-list">{items.map((detail) => { const assigned = classSelections[detail.combination.id] || []; return <article className="planning-combination" key={detail.combination.id}><header><div><strong>{detail.combination.name}</strong><small>{detail.combination.code} · {detail.subjectIds.length} môn · {assigned.length} lớp</small></div><StatusPill value={detail.combination.status} /></header><p>{detail.subjectIds.map((id) => subjects.find((item) => item.id === id)?.name || id).join(' · ')}</p><div className="combination-assignment-summary"><strong>Lớp đã gán:</strong><span>{assigned.length ? assigned.map((id) => selectedClasses.find((item) => item.id === id)?.code || id).join(', ') : 'Chưa gán lớp'}</span></div>{canManage && <div className="live-toolbar"><div className="planning-class-picker">{selectedClasses.map((item) => <label className={assigned.includes(item.id) ? 'selected' : ''} key={item.id}><input type="checkbox" checked={assigned.includes(item.id)} onChange={(e) => toggleClass(detail.combination.id, item.id, e.target.checked)} /> {item.code}</label>)}</div><button className="live-btn secondary" onClick={() => assign(detail.combination.id)}><Save size={15} /> Lưu danh sách lớp</button></div>}</article>; })}</div>}</Async>
+    <Async paginate state={state} allowEmpty empty="Chưa có tổ hợp môn" itemLabel="tổ hợp môn" resetKey={grade}>{(items) => <div className="planning-combination-list">{items.map((detail) => { const assigned = classSelections[detail.combination.id] || []; return <article className="planning-combination" key={detail.combination.id}><header><div><strong>{detail.combination.name}</strong><small>{detail.combination.code} · {detail.subjectIds.length} môn · {assigned.length} lớp</small></div><StatusPill value={detail.combination.status} /></header><p>{detail.subjectIds.map((id) => subjects.find((item) => item.id === id)?.name || id).join(' · ')}</p><div className="combination-assignment-summary"><strong>Lớp đã gán:</strong><span>{assigned.length ? assigned.map((id) => selectedClasses.find((item) => item.id === id)?.code || id).join(', ') : 'Chưa gán lớp'}</span></div>{canManage && <div className="live-toolbar"><div className="planning-class-picker">{selectedClasses.map((item) => <label className={assigned.includes(item.id) ? 'selected' : ''} key={item.id}><input type="checkbox" checked={assigned.includes(item.id)} onChange={(e) => toggleClass(detail.combination.id, item.id, e.target.checked)} /> {item.code}</label>)}</div><button className="live-btn secondary" onClick={() => assign(detail.combination.id)}><Save size={15} /> Lưu danh sách lớp</button></div>}</article>; })}</div>}</Async>
   </Section>;
 }
 
@@ -210,8 +228,14 @@ function TeacherSubjectsPanel({ state, teachers, teacherId, setTeacherId, subjec
     try { await api.put(`/academic/education-planning/teachers/${teacherId}/subjects`, { teacherId, subjectIds: selected, primarySubjectId: primary || selected[0] }); state.reload(); notify('ok', 'Đã cập nhật chuyên môn và gửi thông báo tới tài khoản giáo viên.'); }
     catch (error) { notify('err', message(error)); }
   };
+  const autoConfigure = async () => {
+    try {
+      const result = await api.post<{ capabilitiesConfigured: number; homeroomAssignmentsAdjusted: number; assignmentsRebalanced: number }>('/academic/education-planning/teachers/auto-configure');
+      state.reload(); notify('ok', `Đã nhận diện chuyên môn ${result.capabilitiesConfigured} giáo viên, điều chỉnh ${result.homeroomAssignmentsAdjusted} phân công GVCN và cân bằng ${result.assignmentsRebalanced} phân công bộ môn. Có thể chỉnh thủ công từng giáo viên bên dưới.`);
+    } catch (error) { notify('err', message(error)); }
+  };
   return <Section title="Chuyên môn giáo viên" subtitle="Một giáo viên có thể dạy nhiều môn; một môn được đánh dấu là chuyên môn chính" wide>
-    <div className="live-toolbar academic-filter-bar"><UsersRound size={18} /><select className="live-select grow" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>{teachers.filter((item) => item.status === 'ACTIVE').map((item) => <option key={item.id} value={item.id}>{item.teacherCode} · {item.fullName}</option>)}</select>{canManage && <button className="live-btn" onClick={save}><Save size={15} /> Lưu chuyên môn</button>}</div>
+    <div className="live-toolbar academic-filter-bar"><UsersRound size={18} /><select className="live-select grow" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>{teachers.filter((item) => item.status === 'ACTIVE').map((item) => <option key={item.id} value={item.id}>{item.teacherCode} · {item.fullName}</option>)}</select>{canManage && <button className="live-btn secondary" onClick={autoConfigure}><Sparkles size={15} /> Tự nhận diện và cân bằng</button>}{canManage && <button className="live-btn" onClick={save}><Save size={15} /> Lưu chuyên môn</button>}</div>
     <div className="planning-chip-grid">{subjects.filter((item) => item.active && item.subjectType !== 'EDUCATIONAL_ACTIVITY').map((item) => { const checked = selected.includes(item.id); return <label className={`planning-choice ${checked ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={checked} disabled={!canManage} onChange={(e) => setSelected(e.target.checked ? [...selected, item.id] : selected.filter((id) => id !== item.id))} /><span>{item.name}</span>{checked && <input type="radio" name="primary-subject" checked={primary === item.id} disabled={!canManage} onChange={() => setPrimary(item.id)} title="Chuyên môn chính" />}</label>; })}</div>
   </Section>;
 }

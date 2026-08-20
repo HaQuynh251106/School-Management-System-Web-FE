@@ -9,7 +9,7 @@ import type {
   AcademicCurriculumItem, AcademicPlanDetail,
   AcademicPlanSubjectDetail, AcademicTrainingPlan, Semester, Subject,
 } from '../../api/types';
-import { Async, fmtDate } from './common';
+import { Async, fmtDate, PaginatedData } from './common';
 import { useConfirm } from '../../app/ConfirmDialog';
 
 type Notify = (type: 'ok' | 'err', message: string) => void;
@@ -260,9 +260,9 @@ export function TrainingPlanCurriculum({
                     {stageForm.id && <button className="icon-action" title="Hủy sửa" onClick={() => setStageForm({ ...blankStage })}><X size={16} /></button>}
                   </div>
                 )}
-                <table className="live-table">
+                <PaginatedData items={selected.stages} itemLabel="giai đoạn" resetKey={selected.subject.id}>{(pageItems) => <table className="live-table">
                   <thead><tr><th>Giai đoạn</th><th>Thời gian</th><th>Chỉ tiêu</th><th /></tr></thead>
-                  <tbody>{selected.stages.map((stage) => (
+                  <tbody>{pageItems.map((stage) => (
                     <tr key={stage.id}>
                       <td><strong>{stage.code} · {stage.name}</strong><small>Thứ tự {stage.sequence}</small></td>
                       <td>{fmtDate(stage.startDate)} - {fmtDate(stage.endDate)}</td>
@@ -273,7 +273,7 @@ export function TrainingPlanCurriculum({
                       </div>}</td>
                     </tr>
                   ))}</tbody>
-                </table>
+                </table>}</PaginatedData>
               </div>
             )}
 
@@ -341,9 +341,9 @@ export function TrainingPlanCurriculum({
                     {weekForm.id && <button className="icon-action" title="Hủy sửa" onClick={() => setWeekForm({ ...blankWeek })}><X size={16} /></button>}
                   </div>
                 )}
-                <table className="live-table">
+                <PaginatedData items={selected.specialWeeks} itemLabel="tuần đặc biệt" resetKey={selected.subject.id}>{(pageItems) => <table className="live-table">
                   <thead><tr><th>Loại tuần</th><th>Tuần số</th><th>Nội dung</th><th>Ghi chú</th><th /></tr></thead>
-                  <tbody>{selected.specialWeeks.map((week) => (
+                  <tbody>{pageItems.map((week) => (
                     <tr key={week.id}>
                       <td><strong>{week.weekType === 'EXAM' ? 'Kiểm tra' : 'Dự phòng'}</strong></td>
                       <td>Tuần {week.weekNumber}</td>
@@ -354,7 +354,7 @@ export function TrainingPlanCurriculum({
                       </div>}</td>
                     </tr>
                   ))}</tbody>
-                </table>
+                </table>}</PaginatedData>
               </div>
             )}
           </>

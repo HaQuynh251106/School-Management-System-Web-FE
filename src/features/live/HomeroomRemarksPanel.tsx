@@ -49,7 +49,7 @@ export function HomeroomRemarksPanel({ studentId, canEdit = false }: { studentId
       <div className="homeroom-remark-actions"><button className="live-btn subtle" disabled={saving} onClick={() => void save(false)}><Save size={14} /> Lưu nháp</button><button className="live-btn" disabled={saving} onClick={() => void save(true)}><CheckCircle2 size={14} /> Công bố</button></div>
     </div>}
     <Section title="Nhận xét GVCN" subtitle="Nhận xét được công bố theo từng học kỳ" wide>
-      <Async state={remarks} empty="Chưa có nhận xét được công bố">
+      <Async paginate state={remarks} empty="Chưa có nhận xét được công bố" itemLabel="nhận xét">
         {(items) => <div className="homeroom-remark-list">{items.map((item) => <article key={item.id}>
           <header><div><strong>{item.semesterName}</strong><small>{item.teacherName} · {fmtDateTime(item.updatedAt)}</small></div><Badge tone={item.status === 'PUBLISHED' ? 'green' : 'orange'}>{item.status === 'PUBLISHED' ? 'Đã công bố' : 'Bản nháp'}</Badge></header>
           <p>{item.body}</p>

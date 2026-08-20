@@ -4,7 +4,7 @@ import type {
   SubjectStaffingRow,
   TeacherStaffingAnalysis,
 } from '../../api/types';
-import { ErrorBlock, LoadingBlock } from './common';
+import { ErrorBlock, LoadingBlock, PaginatedData } from './common';
 
 type Props = {
   analysis: TeacherStaffingAnalysis | null;
@@ -44,6 +44,7 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
   const policy = analysis.policy;
   const hasCeilingWarning = !analysis.withinLegalCeiling;
   const countedSubjects = analysis.subjects.filter((item) => item.countedAsSubjectTeacher);
+  const staffingAdvisoryOnly = analysis.errors.length > 0 && readiness?.ready === true;
 
   return (
     <section className="staffing-analysis-panel staffing-analysis-v2" aria-labelledby="staffing-title">
@@ -90,9 +91,13 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
       </div>
 
       {analysis.errors.length > 0 && (
-        <div className="staffing-status invalid">
+        <div className={`staffing-status ${staffingAdvisoryOnly ? 'warning' : 'invalid'}`}>
           <AlertTriangle size={18} />
-          <div><strong>Chưa đủ nguồn lực để tạo thời khóa biểu</strong>{analysis.errors.map((message) => <small key={message}>{message}</small>)}</div>
+          <div>
+            <strong>{staffingAdvisoryOnly ? 'Cảnh báo định biên cần cân đối' : 'Chưa đủ nguồn lực để tạo thời khóa biểu'}</strong>
+            {staffingAdvisoryOnly && <small>Các số liệu dưới đây dùng để lập kế hoạch nhân sự và không chặn bộ giải vì phân công hiện tại vẫn đủ điều kiện kỹ thuật.</small>}
+            {analysis.errors.map((message) => <small key={message}>{message}</small>)}
+          </div>
         </div>
       )}
 
@@ -128,10 +133,12 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
       <details className="staffing-subject-details">
         <summary><span>Xem nhu cầu theo từng môn</span><small>{countedSubjects.length} môn bộ môn · bấm vào số nhu cầu để xem công thức</small></summary>
         <div className="live-table-scroll">
+          <PaginatedData items={analysis.subjects} itemLabel="môn học">
+          {(pageItems) =>
           <table className="live-table staffing-table">
             <thead><tr><th>Môn học</th><th>Số lớp</th><th>Tổng tiết/năm</th><th>Tiết học kỳ</th><th>Nhu cầu GV</th><th>GV đủ chuyên môn</th><th>GV đã phân công</th><th>Trạng thái</th></tr></thead>
             <tbody>
-              {analysis.subjects.map((item) => {
+              {pageItems.map((item) => {
                 const status = staffingStatus(item);
                 const calculation = calculationTitle(item, policy.weeklyTeachingNorm, policy.teachingWeeks);
                 return (
@@ -151,6 +158,8 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
               })}
             </tbody>
           </table>
+          }
+          </PaginatedData>
         </div>
       </details>
 

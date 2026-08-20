@@ -19,7 +19,6 @@ type RoleIntro = {
   title: string;
   description: string;
   facts: string[];
-  imageAlt: string;
   Icon: LucideIcon;
 };
 
@@ -29,7 +28,6 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
     title: 'Một góc nhìn, toàn bộ nhà trường',
     description: 'Theo dõi vận hành, học tập, nhân sự và tài chính bằng dữ liệu được cập nhật trực tiếp từ hệ thống.',
     facts: ['Phân quyền an toàn', 'Dữ liệu tập trung'],
-    imageAlt: 'Minh hoạ quản trị viên đang theo dõi dữ liệu nhà trường',
     Icon: ShieldCheck,
   },
   teacher: {
@@ -37,7 +35,6 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
     title: 'Tổ chức lớp học hiệu quả hơn mỗi ngày',
     description: 'Theo dõi lịch dạy, chuyên cần, điểm số và bài tập trong một không gian làm việc thống nhất.',
     facts: ['Lịch dạy rõ ràng', 'Dữ liệu lớp học trực tiếp'],
-    imageAlt: 'Minh hoạ giáo viên đang hướng dẫn học sinh trong lớp',
     Icon: School,
   },
   student: {
@@ -45,7 +42,6 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
     title: 'Nắm bắt tiến độ, chủ động học tập',
     description: 'Tổng hợp thời khóa biểu, kết quả học tập, chuyên cần và nhiệm vụ cần hoàn thành.',
     facts: ['Kết quả theo học kỳ', 'Bài tập và thông báo mới'],
-    imageAlt: 'Minh hoạ học sinh cùng nhau học tập',
     Icon: GraduationCap,
   },
   parent: {
@@ -53,7 +49,6 @@ const roleDashboardIntros: Record<RoleId, RoleIntro> = {
     title: 'Theo dõi việc học một cách dễ dàng',
     description: 'Cập nhật kết quả, chuyên cần, thông báo và học phí của từng học sinh được liên kết.',
     facts: ['Thông tin tập trung', 'Cập nhật từ nhà trường'],
-    imageAlt: 'Minh hoạ phụ huynh theo dõi thông tin học tập trên điện thoại',
     Icon: Users,
   },
 };
@@ -116,7 +111,6 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
             <strong><IntroIcon size={16} /> {today}</strong>
           </div>
         </div>
-        <div className={`portal-hero-art role-art role-art--${roleId}`} role="img" aria-label={intro.imageAlt} />
       </section>
 
       {loading && <DashboardSkeleton />}

@@ -4,7 +4,7 @@ import { useAuth } from '../../api/auth';
 import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass, PublishedEducationPlanView } from '../../api/types';
 import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
-import { Async, ATT_LABEL, fmtDate } from './common';
+import { Async, ATT_LABEL, fmtDate, PaginatedData } from './common';
 import { WeeklyTimetable } from './SharedLive';
 import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, MessageSquareText, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -254,9 +254,9 @@ export function PublishedEducationPlan({ studentId }: { studentId?: string }) {
           <div><small>Trạng thái</small><StatusPill value={data.plan.status} /><span>Công bố {data.plan.publishedAt ? fmtDate(data.plan.publishedAt) : '—'}</span></div>
         </div>
         <div className="planning-section-heading"><div><h3>Môn học và số tiết</h3><p>Số tiết được phân bổ theo hai học kỳ</p></div></div>
-        <table className="live-table"><thead><tr><th>Môn học</th><th>Loại môn</th><th>Học kỳ I</th><th>Học kỳ II</th><th>Cả năm</th></tr></thead><tbody>{data.subjects.map((item) => <tr key={item.subjectId}><td><strong>{item.subjectName}</strong></td><td>{PLAN_SUBJECT_TYPE_LABELS[item.subjectType] || item.subjectType}</td><td>{item.semester1Periods}</td><td>{item.semester2Periods}</td><td><strong>{item.annualPeriods}</strong></td></tr>)}</tbody></table>
+        <PaginatedData items={data.subjects} itemLabel="môn trong kế hoạch" resetKey={data.plan.id}>{(pageSubjects) => <table className="live-table"><thead><tr><th>Môn học</th><th>Loại môn</th><th>Học kỳ I</th><th>Học kỳ II</th><th>Cả năm</th></tr></thead><tbody>{pageSubjects.map((item) => <tr key={item.subjectId}><td><strong>{item.subjectName}</strong></td><td>{PLAN_SUBJECT_TYPE_LABELS[item.subjectType] || item.subjectType}</td><td>{item.semester1Periods}</td><td>{item.semester2Periods}</td><td><strong>{item.annualPeriods}</strong></td></tr>)}</tbody></table>}</PaginatedData>
         <div className="planning-section-heading"><div><h3>Kế hoạch kiểm tra dự kiến</h3><p>Lịch thi chính thức được hiển thị riêng tại tab Lịch thi</p></div></div>
-        {data.assessments.length === 0 ? <div className="live-empty">Chưa có kế hoạch kiểm tra</div> : <table className="live-table"><thead><tr><th>Học kỳ</th><th>Môn</th><th>Loại</th><th>Tuần</th><th>Thời lượng</th></tr></thead><tbody>{data.assessments.map((item) => <tr key={item.id}><td>{semesters.data?.find((semester) => semester.id === item.semesterId)?.name || item.semesterId}</td><td>{data.subjects.find((subject) => subject.subjectId === item.subjectId)?.subjectName || item.subjectId}</td><td>{PLAN_ASSESSMENT_TYPE_LABELS[item.assessmentType] || item.assessmentType}</td><td>{item.weekNumber}</td><td>{item.durationMinutes} phút</td></tr>)}</tbody></table>}
+        {data.assessments.length === 0 ? <div className="live-empty">Chưa có kế hoạch kiểm tra</div> : <PaginatedData items={data.assessments} itemLabel="kế hoạch kiểm tra" resetKey={data.plan.id}>{(pageAssessments) => <table className="live-table"><thead><tr><th>Học kỳ</th><th>Môn</th><th>Loại</th><th>Tuần</th><th>Thời lượng</th></tr></thead><tbody>{pageAssessments.map((item) => <tr key={item.id}><td>{semesters.data?.find((semester) => semester.id === item.semesterId)?.name || item.semesterId}</td><td>{data.subjects.find((subject) => subject.subjectId === item.subjectId)?.subjectName || item.subjectId}</td><td>{PLAN_ASSESSMENT_TYPE_LABELS[item.assessmentType] || item.assessmentType}</td><td>{item.weekNumber}</td><td>{item.durationMinutes} phút</td></tr>)}</tbody></table>}</PaginatedData>}
       </div>}
     </Async>
   </Section>;

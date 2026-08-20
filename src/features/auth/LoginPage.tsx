@@ -75,7 +75,7 @@ export function LoginPage() {
       </button>
       <main className="login-shell">
         <section className="login-visual" aria-label="Không gian học tập hiện đại">
-          <img src="/images/school-login-campus.png" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" />
+          <img src="/images/pngtree-ai-technology-education-background-with-circuit-board-and-graduation-hat-on-image_16382401.jpg" alt="Giáo viên và học sinh trong khuôn viên trường học hiện đại" loading="eager" />
           <div className="login-visual-shade" />
           <div className="login-visual-content">
             <span className="login-visual-kicker"><Sparkles size={15} /> Hệ sinh thái giáo dục số</span>
