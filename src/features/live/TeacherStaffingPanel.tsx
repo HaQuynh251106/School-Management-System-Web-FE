@@ -45,6 +45,8 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
   const hasCeilingWarning = !analysis.withinLegalCeiling;
   const countedSubjects = analysis.subjects.filter((item) => item.countedAsSubjectTeacher);
   const staffingAdvisoryOnly = analysis.errors.length > 0 && readiness?.ready === true;
+  const blockingClassIssues = (readiness?.issues || []).filter((item) =>
+    item.level === 'ERROR' && Boolean(item.classId));
 
   return (
     <section className="staffing-analysis-panel staffing-analysis-v2" aria-labelledby="staffing-title">
@@ -130,7 +132,24 @@ export function TeacherStaffingPanel({ analysis, loading, error, readiness }: Pr
         </div>
       )}
 
-      <details className="staffing-subject-details">
+      {blockingClassIssues.length > 0 && (
+        <details className="staffing-readiness-issues" open>
+          <summary>
+            <AlertTriangle size={16} />
+            <span>{blockingClassIssues.length} lỗi theo lớp cần xử lý</span>
+            <small>Hiển thị rõ lớp và môn còn thiếu trước khi tạo lịch</small>
+          </summary>
+          <div>
+            {blockingClassIssues.map((item, index) => (
+              <span key={`${item.code}-${item.classId}-${item.subjectId || index}`}>
+                {item.message}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
+
+      <details className="staffing-subject-details" open>
         <summary><span>Xem nhu cầu theo từng môn</span><small>{countedSubjects.length} môn bộ môn · bấm vào số nhu cầu để xem công thức</small></summary>
         <div className="live-table-scroll">
           <PaginatedData items={analysis.subjects} itemLabel="môn học">

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   AlertTriangle, CalendarCheck2, CalendarPlus2, Check, CheckCircle2, Clock3,
-  GripVertical, RefreshCw, Rocket, RotateCcw, Save, Search, Send, Sparkles, Trash2, UsersRound,
+  GraduationCap, GripVertical, LayoutDashboard, RefreshCw, Rocket, RotateCcw,
+  School, Search, Send, Sparkles, Trash2, UsersRound,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
@@ -73,18 +74,21 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
   const rooms = useApi<Room[]>('/rooms');
   const subjects = useApi<Subject[]>('/subjects');
   const toast = useToast();
-  const activeYear = years.data?.find((item) => item.status === 'ACTIVE');
+  const [academicYearId, setAcademicYearId] = useState('');
+  const selectedYear = years.data?.find((item) => item.id === academicYearId)
+    || years.data?.find((item) => item.status === 'ACTIVE');
   const activeSemesters = useMemo(
     () => (semesters.data || [])
-      .filter((item) => item.academicYearId === activeYear?.id)
+      .filter((item) => item.academicYearId === selectedYear?.id)
       .sort((a, b) => a.sequence - b.sequence),
-    [semesters.data, activeYear?.id],
+    [semesters.data, selectedYear?.id],
   );
   const schedules = useApi<TimetableSchedule[]>(semesterId ? `/timetable/schedules?semesterId=${encodeURIComponent(semesterId)}` : null);
   const [scheduleId, setScheduleId] = useState('');
   const selectedSchedule = schedules.data?.find((item) => item.id === scheduleId);
   const selectedGradeLevel = selectedSchedule?.scopeGradeLevel;
-  const scopedClasses = (classes.data || []).filter((item) => item.academicYearId === activeYear?.id
+  const scopedClasses = (classes.data || []).filter((item) => item.academicYearId === selectedYear?.id
+    && item.status !== 'INACTIVE'
     && (!selectedGradeLevel || item.gradeLevel === selectedGradeLevel));
   const [classId, setClassId] = useState('');
   const slots = useApi<TimetableDraftSlot[]>(scheduleId && classId ? `/timetable/schedules/${scheduleId}/slots?classId=${encodeURIComponent(classId)}` : null);
@@ -111,32 +115,37 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
     maxProgressGapDays: 2, maxProgressGapPeriods: 2, maxCurriculumGapLessons: 1,
     solveSeconds: 60,
   });
-  const readinessPath = activeYear && semesterId
-    ? `/timetable/schedules/generation-readiness?academicYearId=${encodeURIComponent(activeYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
+  const readinessPath = selectedYear && semesterId
+    ? `/timetable/schedules/generation-readiness?academicYearId=${encodeURIComponent(selectedYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
     : null;
   const readiness = useApi<ScheduleGenerationReadiness>(readinessPath);
-  const staffingPath = activeYear && semesterId
-    ? `/academic/teacher-staffing?academicYearId=${encodeURIComponent(activeYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
+  const staffingPath = selectedYear && semesterId
+    ? `/academic/teacher-staffing?academicYearId=${encodeURIComponent(selectedYear.id)}&semesterId=${encodeURIComponent(semesterId)}${form.scopeGradeLevel === 'ALL' ? '' : `&scopeGradeLevel=${encodeURIComponent(form.scopeGradeLevel)}`}`
     : null;
   const staffing = useApi<TeacherStaffingAnalysis>(staffingPath);
-  const [staffingPolicy, setStaffingPolicy] = useState({
-    schoolType: 'PUBLIC_REGULAR', weeklyTeachingNorm: 17, teachingWeeks: 35,
-  });
-  const [savingStaffingPolicy, setSavingStaffingPolicy] = useState(false);
+  const selectedYearClasses = useMemo(() => (classes.data || []).filter((item) =>
+    item.academicYearId === selectedYear?.id && item.status !== 'INACTIVE'),
+  [classes.data, selectedYear?.id]);
   const visibleSchedules = useMemo(() => (schedules.data || []).filter((item) =>
     form.scopeGradeLevel === 'ALL'
       ? !item.scopeGradeLevel
       : item.scopeGradeLevel === form.scopeGradeLevel), [schedules.data, form.scopeGradeLevel]);
   const generationIssues = useMemo(() => {
     const issues: string[] = [];
-    const targetClasses = (classes.data || []).filter((item) => item.academicYearId === activeYear?.id
+    const targetClasses = (classes.data || []).filter((item) => item.academicYearId === selectedYear?.id
+      && item.status !== 'INACTIVE'
       && (form.scopeGradeLevel === 'ALL' || item.gradeLevel === form.scopeGradeLevel));
-    if (!activeYear) issues.push('Chưa có năm học đang mở.');
+    if (!selectedYear) issues.push('Chọn năm học trước khi tạo lịch.');
+    if (selectedYear?.status === 'CLOSED' || selectedYear?.status === 'LOCKED') {
+      issues.push('Năm học đã đóng hoặc đã khóa nên không thể tạo thời khóa biểu mới.');
+    }
     if (!semesterId || !activeSemesters.some((item) => item.id === semesterId)) {
       issues.push('Chọn học kỳ thuộc năm học đang mở.');
     }
     if (!form.name.trim()) issues.push('Nhập tên bản lịch để dễ quản lý phiên bản.');
-    if (form.teachingDays.length === 0) issues.push('Chọn ít nhất một ngày dạy trong tuần.');
+    if (form.teachingDays.length !== 5 && form.teachingDays.length !== 6) {
+      issues.push('Chọn chế độ học từ thứ Hai đến thứ Sáu hoặc từ thứ Hai đến thứ Bảy.');
+    }
     if (form.firstPeriod < 1 || form.lastPeriod > 10 || form.firstPeriod > form.lastPeriod) {
       issues.push('Khoảng tiết học phải nằm từ tiết 1 đến tiết 10 và tiết đầu không được sau tiết cuối.');
     }
@@ -161,7 +170,7 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
         .map((item) => item.message));
     }
     return issues;
-  }, [activeYear, semesterId, activeSemesters, form, classes.data, classes.loading, classes.error,
+  }, [selectedYear, semesterId, activeSemesters, form, classes.data, classes.loading, classes.error,
     readiness.data, readiness.loading, readiness.error]);
   const groupedValidationIssues = useMemo(() => {
     const groups = new Map<string, { code: string; level: 'ERROR' | 'WARNING'; message: string; items: ScheduleValidation['issues'] }>();
@@ -198,7 +207,17 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
     ? `Đang tối ưu khối ${form.scopeGradeLevel.replace('K', '')}`
     : generationPercent < 34 ? 'Đang tối ưu khối 10'
       : generationPercent < 67 ? 'Đang tối ưu khối 11' : 'Đang tối ưu khối 12';
+  const finalTeachingDay = form.teachingDays.includes('SAT') ? 'T7' : 'T6';
+  const oppositeSessionDays = form.teachingDays.includes('SAT')
+    ? 'T2-T4-T6 hoặc T3-T5-T7'
+    : 'T2-T4-T6 hoặc T3-T5-T6';
 
+  useEffect(() => {
+    if (!years.data?.length) return;
+    if (!academicYearId || !years.data.some((item) => item.id === academicYearId)) {
+      setAcademicYearId(years.data.find((item) => item.status === 'ACTIVE')?.id || years.data[0].id);
+    }
+  }, [years.data, academicYearId]);
   useEffect(() => {
     if (activeSemesters.length && !activeSemesters.some((item) => item.id === semesterId)) {
       setSemesterId(activeSemesters[0].id);
@@ -206,21 +225,22 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
   }, [activeSemesters, semesterId, setSemesterId]);
   useEffect(() => {
     const semester = activeSemesters.find((item) => item.id === semesterId);
-    if (!activeYear || !semester) return;
+    if (!selectedYear || !semester) return;
     setForm((current) => current.name.trim()
       ? current
-      : { ...current, name: `TKB_${semester.code}_${activeYear.code}_Lan-01` });
-  }, [activeYear, activeSemesters, semesterId]);
+      : { ...current, name: `TKB_${semester.code}_${selectedYear.code}_Lan-01` });
+  }, [selectedYear, activeSemesters, semesterId]);
   useEffect(() => {
     if (!visibleSchedules.some((item) => item.id === scheduleId)) {
       setScheduleId(visibleSchedules[0]?.id || '');
     }
   }, [scheduleId, visibleSchedules]);
   useEffect(() => {
-    const availableClasses = (classes.data || []).filter((item) => item.academicYearId === activeYear?.id
+    const availableClasses = (classes.data || []).filter((item) => item.academicYearId === selectedYear?.id
+      && item.status !== 'INACTIVE'
       && (!selectedGradeLevel || item.gradeLevel === selectedGradeLevel));
     if (!availableClasses.some((item) => item.id === classId)) setClassId(availableClasses[0]?.id || '');
-  }, [classId, classes.data, activeYear?.id, selectedGradeLevel]);
+  }, [classId, classes.data, selectedYear?.id, selectedGradeLevel]);
   useEffect(() => {
     const semester = activeSemesters.find((item) => item.id === semesterId);
     if (semester?.startDate && semester?.endDate) {
@@ -252,12 +272,12 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
 
   const reload = () => { schedules.reload(); slots.reload(); validation.reload(); };
   const generate = async () => {
-    if (!activeYear || !semesterId || generationIssues.length > 0) return;
+    if (!selectedYear || !semesterId || generationIssues.length > 0) return;
     setGenerationElapsed(0);
     setGenerationStartedAt(Date.now());
     try {
       const result = await api.post<ScheduleGenerationResult>('/timetable/schedules/generate', {
-        ...form, academicYearId: activeYear.id, semesterId,
+        ...form, academicYearId: selectedYear.id, semesterId,
         scopeGradeLevel: form.scopeGradeLevel === 'ALL' ? null : form.scopeGradeLevel,
       });
       schedules.setData((current) => [
@@ -291,21 +311,6 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
       reload();
     } catch (error) { toast.show('err', err(error)); }
     finally { setBusy(false); }
-  };
-
-  const saveStaffingPolicy = async () => {
-    if (!activeYear) return;
-    setSavingStaffingPolicy(true);
-    try {
-      await api.put(`/academic/teacher-staffing/policy/${activeYear.id}`, {
-        ...staffingPolicy,
-        schoolType: 'PUBLIC_REGULAR',
-      });
-      toast.show('ok', 'Đã lưu định mức nhân sự và tính lại nhu cầu giáo viên.');
-      staffing.reload();
-      readiness.reload();
-    } catch (error) { toast.show('err', err(error)); }
-    finally { setSavingStaffingPolicy(false); }
   };
 
   const deleteDraft = async () => {
@@ -351,63 +356,61 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
       {toast.node}
       <div className="active-academic-year-strip">
         <CalendarCheck2 size={17} />
-        <span>Học kỳ đang thao tác</span>
-        <strong>{activeSemesters.find((item) => item.id === semesterId)?.name || 'Chưa chọn học kỳ'}</strong>
+        <span>Năm học và học kỳ đang thao tác</span>
+        <strong>{selectedYear
+          ? `${selectedYear.name} · ${activeSemesters.find((item) => item.id === semesterId)?.name || 'Chưa chọn học kỳ'}`
+          : 'Chưa chọn năm học'}</strong>
         <small>{activeSemesters.find((item) => item.id === semesterId)?.startDate && activeSemesters.find((item) => item.id === semesterId)?.endDate
-          ? `${fmtDate(activeSemesters.find((item) => item.id === semesterId)!.startDate)} đến ${fmtDate(activeSemesters.find((item) => item.id === semesterId)!.endDate)} · Đang hoạt động`
+          ? `${fmtDate(activeSemesters.find((item) => item.id === semesterId)!.startDate)} đến ${fmtDate(activeSemesters.find((item) => item.id === semesterId)!.endDate)} · ${selectedYear?.status === 'ACTIVE' ? 'Năm học đang mở' : 'Năm học không hoạt động'}`
           : 'Chọn học kỳ trước khi tạo lịch.'}</small>
       </div>
       <div className="auto-schedule-config">
+        <select aria-label="Năm học" value={selectedYear?.id || ''} onChange={(event) => {
+          setAcademicYearId(event.target.value);
+          setSemesterId('');
+          setScheduleId('');
+          setClassId('');
+          setForm((current) => ({ ...current, name: '' }));
+        }}>
+          <option value="">Chọn năm học</option>
+          {(years.data || []).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.status}</option>)}
+        </select>
         <select value={semesterId} onChange={(event) => setSemesterId(event.target.value)}>{activeSemesters.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.code}</option>)}</select>
         <select value={form.scopeGradeLevel} onChange={(event) => { const scopeGradeLevel = event.target.value; setForm({ ...form, scopeGradeLevel, solveSeconds: scopeGradeLevel === 'ALL' ? Math.max(60, form.solveSeconds) : form.solveSeconds }); }}><option value="ALL">Toàn trường</option><option value="K10">Khối 10</option><option value="K11">Khối 11</option><option value="K12">Khối 12</option></select>
+        <select aria-label="Số ngày học trong tuần" value={form.teachingDays.includes('SAT') ? 'SIX_DAYS' : 'FIVE_DAYS'} onChange={(event) => setForm({
+          ...form,
+          teachingDays: event.target.value === 'SIX_DAYS' ? DAY_OPTIONS : DAY_OPTIONS.slice(0, 5),
+        })}>
+          <option value="FIVE_DAYS">Học thứ Hai - thứ Sáu</option>
+          <option value="SIX_DAYS">Học thứ Hai - thứ Bảy</option>
+        </select>
         <input className="grow" placeholder="Tên bản lịch" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
         <label>{form.scopeGradeLevel === 'ALL' ? 'Thời gian/khối' : 'Thời gian giải'} <input type="number" min={form.scopeGradeLevel === 'ALL' ? 60 : 1} max={120} value={form.solveSeconds} onChange={(event) => setForm({ ...form, solveSeconds: Number(event.target.value) })} /> giây</label>
         <button className="live-btn" disabled={busy || generationBusy || readiness.loading || generationIssues.length > 0} onClick={generate}><Sparkles size={16} /> {generationBusy ? 'Đang tạo lịch…' : readiness.loading ? 'Đang kiểm tra…' : 'Tạo lịch tự động'}</button>
       </div>
+      <section className="timetable-overview" aria-labelledby="timetable-overview-title">
+        <header><LayoutDashboard size={19} /><div><strong id="timetable-overview-title">Tổng quan nguồn lực xếp lịch</strong><small>Quy mô toàn trường và cảnh báo theo đúng học kỳ, phạm vi đang chọn</small></div></header>
+        <div className="timetable-overview-metrics">
+          <article><UsersRound size={18} /><span><small>Giáo viên hoạt động</small><strong>{staffing.data?.currentActiveTeacherCount ?? '—'}</strong></span></article>
+          <article><GraduationCap size={18} /><span><small>Học sinh toàn trường</small><strong>{selectedYearClasses.reduce((total, item) => total + (item.studentCount || 0), 0).toLocaleString('vi-VN')}</strong></span></article>
+          <article><School size={18} /><span><small>Lớp toàn trường</small><strong>{selectedYearClasses.length}</strong></span></article>
+          <article><CalendarCheck2 size={18} /><span><small>Tiết cần xếp trong phạm vi</small><strong>{readiness.data?.requiredPeriods?.toLocaleString('vi-VN') ?? '—'}</strong></span></article>
+        </div>
+        <div className="timetable-overview-alerts">
+          <div><strong>Môn đang thiếu giáo viên</strong>{(staffing.data?.subjects || []).filter((item) => item.shortage > 0).length === 0
+            ? <span className="overview-ok"><CheckCircle2 size={15} /> Không thiếu môn</span>
+            : (staffing.data?.subjects || []).filter((item) => item.shortage > 0).map((item) => <span className="overview-error" key={item.subjectId}><AlertTriangle size={15} /> {item.subjectName}: thiếu {item.shortage} giáo viên</span>)}</div>
+          <div><strong>Lớp hoặc phân công cần xử lý</strong>{(readiness.data?.issues || []).filter((item) => item.level === 'ERROR').length === 0
+            ? <span className="overview-ok"><CheckCircle2 size={15} /> Không có lớp bị thiếu dữ liệu bắt buộc</span>
+            : (readiness.data?.issues || []).filter((item) => item.level === 'ERROR').slice(0, 8).map((item, index) => <span className="overview-error" key={`${item.code}-${item.classId || index}`}><AlertTriangle size={15} /> {item.message}</span>)}</div>
+        </div>
+      </section>
       <TeacherStaffingPanel
         analysis={staffing.data}
         loading={staffing.loading}
         error={staffing.error}
         readiness={readiness.data}
       />
-      <div className="staffing-analysis-panel staffing-analysis-legacy">
-        <header>
-          <div><UsersRound size={19} /><span><strong>Nhu cầu giáo viên để xếp lịch</strong><small>Tính từ kế hoạch GĐ3, tổ hợp môn và định mức của năm học</small></span></div>
-          <div className="staffing-policy-controls">
-            <select aria-label="Loại trường" value={staffingPolicy.schoolType} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, schoolType: event.target.value })}>
-              <option value="PUBLIC_REGULAR">THPT công lập thông thường</option>
-              <option value="ETHNIC_BOARDING">Phổ thông dân tộc nội trú</option>
-              <option value="SPECIALIZED">THPT chuyên</option>
-            </select>
-            <label>Định mức <input type="number" min={1} max={30} value={staffingPolicy.weeklyTeachingNorm} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, weeklyTeachingNorm: Number(event.target.value) })} /> tiết/tuần</label>
-            <label><input type="number" min={1} max={52} value={staffingPolicy.teachingWeeks} onChange={(event) => setStaffingPolicy({ ...staffingPolicy, teachingWeeks: Number(event.target.value) })} /> tuần/năm</label>
-            <button className="live-btn compact ghost" disabled={savingStaffingPolicy || !activeYear} onClick={saveStaffingPolicy}><Save size={14} /> {savingStaffingPolicy ? 'Đang lưu…' : 'Lưu định mức'}</button>
-          </div>
-        </header>
-        <Async state={staffing} empty="Chưa có dữ liệu để tính nhu cầu giáo viên.">
-          {(analysis) => <>
-            <div className="staffing-metrics">
-              <article><small>Tối thiểu theo kế hoạch năm</small><strong>{analysis.minimumSubjectTeachersForYear}</strong><span>giáo viên bộ môn</span></article>
-              <article><small>Tối thiểu trong học kỳ</small><strong>{analysis.minimumSubjectTeachersForSemester}</strong><span>{analysis.totalSelectedWeeklyPeriods} tiết/tuần</span></article>
-              <article><small>Hiện có</small><strong>{analysis.currentActiveTeacherCount}</strong><span>giáo viên đang hoạt động</span></article>
-              <article><small>Biên chế phù hợp</small><strong>{analysis.minimumWholeTeachers}–{analysis.maximumWholeTeachers}</strong><span>{analysis.schoolClassCount} lớp · 2,25–2,40 GV/lớp</span></article>
-            </div>
-            {(analysis.errors.length > 0 || analysis.warnings.length > 0) && <div className={`staffing-status ${analysis.errors.length ? 'invalid' : 'warning'}`}>
-              <AlertTriangle size={17} />
-              <div><strong>{analysis.errors.length ? 'Chưa đủ nhân sự để tạo lịch' : 'Có cảnh báo biên chế cần xem lại'}</strong>
-                {[...analysis.errors, ...analysis.warnings].map((message) => <small key={message}>{message}</small>)}</div>
-            </div>}
-            {analysis.errors.length === 0 && analysis.warnings.length === 0 && <div className="staffing-status valid"><CheckCircle2 size={17} /><div><strong>Đủ giáo viên đúng chuyên môn</strong><small>Có thể tiếp tục kiểm tra phân công từng lớp và tạo lịch.</small></div></div>}
-            <details className="staffing-subject-details">
-              <summary>Xem nhu cầu theo từng môn ({analysis.subjects.filter((item) => item.countedAsSubjectTeacher).length} môn)</summary>
-              <div className="live-table-scroll"><table className="live-table staffing-table"><thead><tr><th>Môn học</th><th>Lớp áp dụng</th><th>Tiết/năm</th><th>Tiết kỳ này</th><th>Tối thiểu</th><th>Đúng chuyên môn</th><th>Đã phân công</th><th>Kết quả</th></tr></thead><tbody>
-                {analysis.subjects.map((item) => <tr key={item.subjectId} className={item.shortage > 0 ? 'staffing-shortage-row' : ''}><td><strong>{item.subjectName}</strong><small>{item.subjectCode} · {item.countedAsSubjectTeacher ? 'Giáo viên bộ môn' : 'Hoạt động giáo dục'}</small></td><td>{item.applicableClassCount}</td><td>{item.annualPeriods.toLocaleString('vi-VN')}</td><td>{item.selectedSemesterPeriods.toLocaleString('vi-VN')}<small>{item.selectedWeeklyPeriods} tiết/tuần</small></td><td><strong>{item.minimumTeachersForYear}</strong><small>Kỳ này: {item.minimumTeachersForSemester}</small></td><td>{item.qualifiedTeacherCount}</td><td>{item.assignedTeacherCount}</td><td><span className={`staffing-result ${item.shortage > 0 ? 'shortage' : 'enough'}`}>{item.countedAsSubjectTeacher ? item.shortage > 0 ? `Thiếu ${item.shortage}` : 'Đủ' : 'GVCN phụ trách'}</span></td></tr>)}
-              </tbody></table></div>
-            </details>
-            <p className="staffing-legal-note">Nhu cầu theo tải môn dùng để kiểm tra khả năng xếp lịch; khoảng {analysis.minimumWholeTeachers}–{analysis.maximumWholeTeachers} GV dùng để kiểm tra quy mô nhân sự của trường công lập.</p>
-          </>}
-        </Async>
-      </div>
       <FormValidationSummary
         errors={generationIssues}
         success={generationIssues.length === 0 && readiness.data?.ready
@@ -422,8 +425,8 @@ export function AutomaticTimetableWorkspace({ semesterId, onSemesterChange: setS
       <div className="school-shift-policy">
         <article><strong>Ca sáng · tiết 1-5</strong><span>07:00 - 11:10</span><small>Khối 12 và lớp 11A6-11A10 học chính</small></article>
         <article><strong>Ca chiều · tiết 6-10</strong><span>13:30 - 17:45</span><small>Khối 10 và lớp 11A1-11A5 học chính</small></article>
-        <article><strong>Ba buổi đối ca</strong><span>T2-T4-T6 hoặc T3-T5-T7</span><small>Mỗi buổi một môn học liên tục 3 tiết</small></article>
-        <article><strong>Tiết cố định theo ca chính</strong><span>Sáng: T2 tiết 1 · T7 tiết 5</span><small>Chiều: T2 tiết 6 · T7 tiết 10</small></article>
+        <article><strong>Ba buổi đối ca</strong><span>{oppositeSessionDays}</span><small>Mỗi buổi một môn học liên tục 3 tiết</small></article>
+        <article><strong>Tiết cố định theo ca chính</strong><span>Sáng: T2 tiết 1 · {finalTeachingDay} tiết 5</span><small>Chiều: T2 tiết 6 · {finalTeachingDay} tiết 10</small></article>
       </div>
 
       <div className="auto-schedule-toolbar">

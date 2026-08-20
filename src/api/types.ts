@@ -104,6 +104,14 @@ export interface SchoolClass {
   homeroomAssignedAt?: string; homeroomAssignedBy?: string; studentCount: number;
   capacity?: number; maxStudents?: number; expectedStudentCount?: number; status?: string;
 }
+export interface ClassCountPlanRow {
+  gradeLevel: string; currentCount: number; targetCount: number;
+  classesToCreate: string[]; classesToReactivate: string[];
+  classesToDeactivate: string[]; blockingReasons: string[];
+}
+export interface ClassCountPlanResponse {
+  academicYearId: string; applicable: boolean; grades: ClassCountPlanRow[];
+}
 export interface Subject {
   id: string; code: string; name: string; coefficient: number; requiredRoomType?: string;
   subjectType?: 'MANDATORY' | 'OPTIONAL' | 'SPECIALIZED' | 'EDUCATIONAL_ACTIVITY';
