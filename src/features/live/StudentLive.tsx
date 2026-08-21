@@ -1,12 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { api } from '../../api/client';
 import { useApi } from '../../api/useApi';
 import { useAuth } from '../../api/auth';
+import { isAcademicPlanInvalidation, type DomainRealtimeEvent } from '../../api/domainRealtime';
 import type { Grade, Semester, AttendanceRecord, ExamCategory, SchoolClass, PublishedEducationPlanView } from '../../api/types';
 import { AttendanceExcusePanel } from './AttendanceExcusePanel';
 import { Section, FunctionTabs, StatusPill, viLabel } from '../../components/ui';
 import { Async, ATT_LABEL, fmtDate, PaginatedData } from './common';
 import { WeeklyTimetable } from './SharedLive';
-import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, MessageSquareText, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
+import { BarChart3, BookOpen, CalendarDays, CheckCircle2, ClipboardList, GraduationCap, IdCard, MapPin, MessageSquareText, RefreshCw, ShieldCheck, Trophy, UserRound, UsersRound } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatScore, gradeColumns, scoreTone, weightedAverage } from './gradebook';
 import { YearResultPanel } from './YearResultPanel';
@@ -245,7 +247,31 @@ export function PublishedEducationPlan({ studentId }: { studentId?: string }) {
   const query = studentId ? `?studentId=${encodeURIComponent(studentId)}` : '';
   const view = useApi<PublishedEducationPlanView>(`/academic/training-plans/published/me${query}`);
   const semesters = useApi<Semester[]>('/semesters');
-  return <Section title="Kế hoạch giáo dục đã công bố" subtitle="Môn học, số tiết và kế hoạch kiểm tra dự kiến của lớp" wide>
+  const reloadView = view.reload;
+
+  useEffect(() => {
+    const reload = () => reloadView();
+    const reloadWhenVisible = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    const subscription = api.streamSse<DomainRealtimeEvent>(
+      '/realtime/events',
+      (event) => {
+        if (isAcademicPlanInvalidation(event)) reload();
+      },
+    );
+
+    window.addEventListener('focus', reload);
+    document.addEventListener('visibilitychange', reloadWhenVisible);
+    return () => {
+      subscription.close();
+      window.removeEventListener('focus', reload);
+      document.removeEventListener('visibilitychange', reloadWhenVisible);
+    };
+  }, [reloadView]);
+
+  return <Section title="Kế hoạch giáo dục đã công bố" subtitle="Môn học, số tiết và kế hoạch kiểm tra dự kiến của lớp" wide
+    action={<button type="button" className="live-btn subtle" onClick={reloadView}><RefreshCw size={15} /> Tải lại</button>}>
     <Async state={view} empty="Nhà trường chưa công bố kế hoạch giáo dục cho lớp này">
       {(data) => <div className="published-plan-view">
         <div className="published-plan-summary">
