@@ -1081,7 +1081,6 @@ const schoolToday = () => new Intl.DateTimeFormat('sv-SE', {
 
 export function AdminFinanceLive() {
   const shortcut = useShortcutFilter('A7');
-  const { user: currentAdmin } = useAuth();
   const periods = useApi<FeePeriod[]>('/fee-periods');
   const invoices = useApi<Invoice[]>('/invoices');
   const paymentProofs = useApi<PaymentProof[]>('/payment-proofs');
@@ -1732,12 +1731,6 @@ export function AdminFinanceLive() {
   };
 
   const openRefundDecision = (refund: PaymentRefund, action: RefundDecisionEditor['action']) => {
-    if ((action === 'approve' || action === 'reject') && refund.requestedBy === currentAdmin?.id) {
-      return showIssues('Cần Admin thứ hai xử lý', [
-        'Admin tạo yêu cầu không được tự duyệt hoặc tự từ chối.',
-        'Hãy đăng nhập bằng tài khoản admin.finance để tiếp tục.',
-      ], 'Quy trình hoàn tiền bắt buộc tách người tạo và người kiểm tra.');
-    }
     setRefundDecision({ refund, action, method: 'MB_BANK_TRANSFER', reference: '', reason: '', verified: false });
   };
 
@@ -2334,14 +2327,14 @@ export function AdminFinanceLive() {
                       <td>
                         <StatusPill value={refund.status} />
                         <small>Yêu cầu: {refund.requestedByName || refund.requestedBy}</small>
-                        {refund.status === 'REQUESTED' && refund.requestedBy === currentAdmin?.id && <small className="finance-refund-checker-note">Cần Admin khác xử lý</small>}
+                        {refund.status === 'REQUESTED' && <small className="finance-refund-checker-note">Admin kiểm tra chứng từ trước khi xử lý</small>}
                         {refund.approvedBy && <small>Duyệt: {refund.approvedByName || refund.approvedBy}</small>}
                         {refund.refundMethod && <small>{REFUND_METHOD_LABEL[refund.refundMethod] || refund.refundMethod}{refund.refundReference ? ` · ${refund.refundReference}` : ''}</small>}
                         {refund.completedAt && <small>{fmtDateTime(refund.completedAt)}</small>}
                       </td>
                       <td>{refund.status === 'REQUESTED' ? <div className="finance-refund-actions">
-                        <button className="icon-inline-btn primary" title={refund.requestedBy === currentAdmin?.id ? 'Cần Admin khác duyệt' : 'Duyệt hoàn tiền'} aria-label={`Duyệt ${refund.refundNumber}`} disabled={!!busy || refund.requestedBy === currentAdmin?.id} onClick={() => openRefundDecision(refund, 'approve')}><CheckCircle2 size={15} /></button>
-                        <button className="icon-inline-btn" title={refund.requestedBy === currentAdmin?.id ? 'Cần Admin khác từ chối' : 'Từ chối yêu cầu'} aria-label={`Từ chối ${refund.refundNumber}`} disabled={!!busy || refund.requestedBy === currentAdmin?.id} onClick={() => openRefundDecision(refund, 'reject')}><Ban size={15} /></button>
+                        <button className="icon-inline-btn primary" title="Duyệt hoàn tiền" aria-label={`Duyệt ${refund.refundNumber}`} disabled={!!busy} onClick={() => openRefundDecision(refund, 'approve')}><CheckCircle2 size={15} /></button>
+                        <button className="icon-inline-btn" title="Từ chối yêu cầu" aria-label={`Từ chối ${refund.refundNumber}`} disabled={!!busy} onClick={() => openRefundDecision(refund, 'reject')}><Ban size={15} /></button>
                         <button className="icon-inline-btn" title="Hủy yêu cầu" aria-label={`Hủy ${refund.refundNumber}`} disabled={!!busy} onClick={() => openRefundDecision(refund, 'cancel')}><Trash2 size={15} /></button>
                       </div> : <span>—</span>}</td>
                     </tr>

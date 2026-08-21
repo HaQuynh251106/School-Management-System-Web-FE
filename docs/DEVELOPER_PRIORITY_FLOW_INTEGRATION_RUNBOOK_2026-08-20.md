@@ -16,7 +16,7 @@
 | 09 — Điểm | **FAIL optimistic concurrency P0** | Sửa điểm, HS/PH và change log đều cập nhật; GV ngoài scope 403; nhưng version cũ/giả vẫn trả 200 | Thêm `@Version`, `expectedVersion`, trả 409 và bắt consumer reload |
 | 10 — Bài tập | **PASS** | Draft ẩn; publish hiện; HS upload/nộp; GV thấy/chấm 8.75; PH thấy; xin nộp lại mở submission | MinIO là dependency bắt buộc; giữ test file scope và RBAC |
 | 11 — Chat/thông báo | **PASS** | PH→GVCN, unread=1, đọc về 0, GV reply; PH→Admin bị 403 | Bổ sung automation reconnect/duplicate SSE nếu sửa realtime |
-| 14 — Tài chính | **PASS** | Target 1 HS; sinh invoice idempotent; thu CASH; cùng Admin tự duyệt refund bị 409; Admin thứ hai duyệt; PH thấy công nợ 90.000 | Giữ nguyên nguyên tắc 2 người và idempotency |
+| 14 — Tài chính | **PASS** | Target 1 HS; sinh invoice idempotent; thu CASH; Admin chính duyệt refund sau xác minh; PH thấy công nợ 90.000 | Giữ xác nhận, reference, audit và idempotency |
 | 17 — Tổng kết/chuyển lớp | **PASS phần guard; BLOCKED phần execute** | Preview 10A1/11A1/12A1 trả 200 và blocker chính xác; promotion preview `canExecute=false` | Chỉ execute trên DB snapshot sau khi năm nguồn CLOSED, kết quả đã finalized/published và năm đích ACTIVE |
 
 ### Automation đã chạy
@@ -75,7 +75,7 @@ Không dùng mock server. Nếu dừng Backend hoặc MinIO, UI phải báo lỗ
 | Biến | Username | Password | Phạm vi |
 |---|---|---|---|
 | `ADMIN_TOKEN` | `admin` | `admin@123` | Producer chính |
-| `APPROVER_TOKEN` | `admin.finance` | `admin2@123` | Duyệt refund độc lập |
+| `ADMIN_TOKEN` | `admin` | `admin@123` | Tạo, đối soát và xử lý refund |
 | `MATH_TEACHER_TOKEN` | `demo.gv.math.02` | `teacher@123` | Toán 11A1 |
 | `HOMEROOM_TOKEN` | `gv.gdcd` | `teacher@123` | GVCN 11A1 |
 | `OUTSIDE_TEACHER_TOKEN` | `gv.toan` | `teacher@123` | RBAC âm |
@@ -92,7 +92,7 @@ login() {
 }
 
 export ADMIN_TOKEN="$(login admin admin@123)"
-export APPROVER_TOKEN="$(login admin.finance admin2@123)"
+export APPROVER_TOKEN="$ADMIN_TOKEN"
 export MATH_TEACHER_TOKEN="$(login demo.gv.math.02 teacher@123)"
 export HOMEROOM_TOKEN="$(login gv.gdcd teacher@123)"
 export OUTSIDE_TEACHER_TOKEN="$(login gv.toan teacher@123)"
@@ -314,7 +314,7 @@ Admin POST /payments method=CASH
 Admin POST /payments/{id}/cash-confirm           -> payment SUCCESS, invoice PAID
 Admin POST /payments/{id}/refunds amount=10000
 Cùng Admin POST /payment-refunds/{id}/approve    -> 409
-Admin thứ hai POST approve method=CASH           -> COMPLETED
+Admin chính POST approve method=CASH sau xác minh -> COMPLETED
 PH GET invoices                                  -> paidAmount=90000,status=PARTIAL
 ```
 

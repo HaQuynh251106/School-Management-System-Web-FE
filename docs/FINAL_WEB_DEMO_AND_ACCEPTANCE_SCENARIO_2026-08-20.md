@@ -110,7 +110,6 @@ Số liệu dưới đây lấy từ PostgreSQL `sse_quangthai` trước khi t�
 | Vai trò | Tài khoản | Mật khẩu | Dùng để demo |
 |---|---|---|---|
 | Admin chính | `admin` | `admin@123` | Cơ cấu, kế hoạch, TKB, khảo thí, người dùng, báo cáo |
-| Admin tài chính | `admin.finance` | `admin2@123` | Đợt thu, đối soát, duyệt hoàn tiền theo nguyên tắc 2 người |
 | GV Toán lớp 11A1 | `demo.gv.math.02` | `teacher@123` | Điểm, bài tập, điểm danh môn Toán của `hs.minh` |
 | GVCN 11A1 | `gv.gdcd` | `teacher@123` | GVCN của `hs.minh`, duyệt giải trình chuyên cần, nhận xét, liên lạc PH |
 | GV kiểm tra độc lập | `gv.toan` | `teacher@123` | Dạy Toán 10A1 và các lớp khác; kiểm tra không được sửa dữ liệu 11A1 |
@@ -447,7 +446,7 @@ Giữ tab Network mở khi chạy các luồng chính. Ghi request bị lỗi nh
 
 ## WEB-FINAL-14 — Đợt thu, hóa đơn, học phí, biên nhận và hoàn tiền
 
-**Actor:** `admin` tạo; `ph.nguyen` thanh toán; `admin.finance` đối soát/duyệt.
+**Actor:** `admin` tạo và đối soát; `ph.nguyen` thanh toán; Admin xử lý hoàn tiền sau khi kiểm tra chứng từ.
 
 ### 14.1. Tạo đợt thu và hóa đơn
 
@@ -480,12 +479,12 @@ Giữ tab Network mở khi chạy các luồng chính. Ghi request bị lỗi nh
 1. Mở Lịch sử giao dịch, tạo biên nhận; tải lại vẫn thấy receipt và đúng số tiền.
 2. Chạy Đối soát theo ngày/phương thức/trạng thái; tổng gross, refund, net phải khớp chi tiết.
 3. `admin` tạo yêu cầu hoàn một phần 100.000đ với lý do.
-4. Chính `admin` không được tự duyệt yêu cầu của mình.
-5. `admin.finance` duyệt, nhập reference chuyển khoản và xác nhận đã đối chiếu.
+4. `admin` mở lại yêu cầu, kiểm tra hóa đơn, giao dịch và chứng từ hoàn tiền.
+5. `admin` duyệt, nhập reference chuyển khoản, tích xác nhận tiền đã hoàn thực tế và kiểm tra audit.
 6. PH thấy PARTIALLY_REFUNDED và lịch sử hoàn; hoàn phần còn lại chuyển REFUNDED.
 7. Test Reject/Cancel với lý do; không hoàn vượt số đã thanh toán; trạng thái CANCELLED/REFUNDED là terminal.
 
-**PASS khi:** invoice state machine đúng, không cộng tiền hai lần, proof/IPN idempotent, duyệt hoàn theo nguyên tắc hai người và báo cáo doanh thu cập nhật.
+**PASS khi:** invoice state machine đúng, không cộng tiền hai lần, proof/IPN idempotent, hoàn tiền có xác nhận + reference + audit và báo cáo doanh thu cập nhật.
 
 ## WEB-FINAL-15 — Báo cáo, bộ lọc và xuất tệp
 
@@ -571,7 +570,7 @@ Chạy sau các luồng trên cho cả 4 vai trò:
 | LINK-11 | Admin | Publish lịch thi | GV coi thi, HS/PH dự thi | ≤5 giây/refresh |
 | LINK-12 | PH | Gửi biên lai | Admin thấy hàng chờ đối soát | ≤5 giây/refresh |
 | LINK-13 | Admin | Xác nhận thanh toán | PH, invoice, report, receipt | ≤5 giây/refresh |
-| LINK-14 | Admin A/B | Tạo và duyệt hoàn | PH, report, reconciliation | ≤5 giây/refresh |
+| LINK-14 | Admin | Tạo, kiểm tra và duyệt hoàn | PH, report, reconciliation | ≤5 giây/refresh |
 | LINK-15 | Admin | Publish kết quả năm | HS, PH | ≤5 giây/refresh |
 
 Không case nào trong LINK-01…15 được PASS nếu chỉ kiểm tra response thành công ở producer mà chưa đăng nhập consumer để xác nhận.
@@ -595,7 +594,7 @@ Không case nào trong LINK-01…15 được PASS nếu chỉ kiểm tra respons
 | Hóa đơn không thuộc con | 403 |
 | Payment callback sai chữ ký/lặp | Từ chối hoặc idempotent, không cộng tiền |
 | Hoàn quá số tiền đã thu | Bị chặn |
-| Người yêu cầu tự duyệt hoàn | Bị chặn |
+| Duyệt hoàn thiếu xác nhận hoặc reference bắt buộc | Bị chặn |
 | Role không hợp lệ | Không fallback sang Admin |
 | Backend dừng | Hiện lỗi thật, không dữ liệu mock |
 

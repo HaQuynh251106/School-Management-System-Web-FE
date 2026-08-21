@@ -13,8 +13,7 @@ const env = (import.meta as any).env || {};
 const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
   || (env.DEV && env.VITE_SHOW_DEMO_ACCOUNTS !== 'false');
 const demos = showDemoAccounts ? [
-  { label: 'Admin tạo', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Admin duyệt', username: env.VITE_DEMO_FINANCE_ADMIN_USERNAME || 'admin.finance', password: env.VITE_DEMO_FINANCE_ADMIN_PASSWORD || 'admin2@123', Icon: ShieldCheck, color: '#047857' },
+  { label: 'Admin', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
   { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.toan', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
   { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.minh', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
   { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.nguyen', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },

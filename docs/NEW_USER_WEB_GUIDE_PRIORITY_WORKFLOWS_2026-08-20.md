@@ -542,13 +542,12 @@ Nếu kết nối mạng gián đoạn, tải lại trang sau khi kết nối tr
 
 ## 9. WEB-FINAL-14 — Đợt thu, hóa đơn, thanh toán và hoàn tiền
 
-### 9.1. Hai vai trò cần phối hợp
+### 9.1. Vai trò tham gia
 
-- **Admin tạo:** lập đợt thu, phát hành hóa đơn, tạo yêu cầu hoàn tiền.
-- **Admin duyệt độc lập:** kiểm tra và duyệt yêu cầu hoàn tiền do Admin khác tạo.
+- **Admin:** tạo đợt thu, đối soát, yêu cầu và xử lý hoàn tiền trong cùng khu vực quản trị; mọi quyết định vẫn bắt buộc có chứng từ, xác nhận và audit.
 - **Phụ huynh:** xem hóa đơn, chuyển khoản, gửi biên lai và tải biên nhận.
 
-Một Admin không được tự duyệt yêu cầu hoàn tiền do chính mình tạo.
+Việc tạo yêu cầu và duyệt/từ chối là hai bước riêng. Admin phải mở lại yêu cầu, kiểm tra chứng từ, xác nhận tiền đã hoàn thực tế và nhập mã tham chiếu khi phương thức không phải tiền mặt.
 
 ### 9.2. Tạo đợt thu
 
@@ -576,7 +575,7 @@ Không bấm Phát hành khi số học sinh hoặc tổng tiền xem trước c
 6. Quét VietQR hoặc chuyển khoản theo thông tin hiển thị.
 7. Tải ảnh biên lai đúng định dạng/dung lượng.
 8. Gửi xác nhận.
-9. Chờ Admin đối soát; giao diện chỉ chuyển Đã thanh toán sau khi nhà trường xác nhận.
+9. Chờ Admin nhà trường đối soát; giao diện chỉ chuyển Đã thanh toán sau khi nhà trường xác nhận.
 
 Nếu Admin yêu cầu thanh toán lại, Phụ huynh đọc lý do, thực hiện lại và gửi biên lai mới.
 
@@ -601,7 +600,7 @@ Nếu Admin yêu cầu thanh toán lại, Phụ huynh đọc lý do, thực hi�
 1. Admin tạo mở giao dịch đủ điều kiện hoàn.
 2. Chọn **Tạo yêu cầu hoàn tiền**.
 3. Chọn hoàn một phần/toàn phần, nhập số tiền và lý do.
-4. Admin thứ hai đăng nhập và mở **Đối soát & hoàn tiền**.
+4. Admin mở **Đối soát & hoàn tiền**, kiểm tra chứng từ và số dư trước khi xử lý.
 5. Kiểm tra yêu cầu, nhập thông tin tham chiếu chuyển tiền và duyệt hoặc từ chối.
 6. Phụ huynh mở Học phí để xem trạng thái và lịch sử hoàn.
 
