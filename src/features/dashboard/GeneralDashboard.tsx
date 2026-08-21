@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 import { useAuth } from '../../api/auth';
 import { useApi } from '../../api/useApi';
 import type {
-  ApiUser, DashboardChart, DashboardMetric, DashboardResponse, Notification, SchoolClass,
+  AcademicYear, ApiUser, DashboardChart, DashboardMetric, DashboardResponse, Notification, SchoolClass,
 } from '../../api/types';
 import { BarList, ChartCard, ColumnChart, MetricCard } from '../../components/charts';
 import { Section, StatusPill, viLabel } from '../../components/ui';
@@ -73,6 +73,7 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
   const dashboard = useApi<DashboardResponse>('/dashboard');
   const users = useApi<ApiUser[]>(roleId === 'admin' ? '/users' : null);
   const classes = useApi<SchoolClass[]>(roleId === 'admin' ? '/classes' : null);
+  const years = useApi<AcademicYear[]>(roleId === 'admin' ? '/academic-years' : null);
   const notifications = useApi<Notification[]>('/notifications');
   const reloadDashboard = dashboard.reload;
   const reloadDashboardNotifications = notifications.reload;
@@ -84,7 +85,11 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
   const today = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   }).format(new Date());
-  const error = dashboard.error || users.error || classes.error || notifications.error;
+  const activeYearId = years.data?.find((year) => year.status === 'ACTIVE')?.id;
+  const currentClasses = activeYearId
+    ? (classes.data ?? []).filter((schoolClass) => schoolClass.academicYearId === activeYearId)
+    : (classes.data ?? []);
+  const error = dashboard.error || users.error || classes.error || years.error || notifications.error;
   const loading = dashboard.loading;
 
   useEffect(() => {
@@ -138,7 +143,7 @@ export function GeneralDashboard({ roleId }: { roleId: RoleId }) {
       )}
 
       {roleId === 'admin' && (
-        <AdminDashboardTables users={users.data ?? []} classes={classes.data ?? []} notifications={notifications.data ?? []} />
+        <AdminDashboardTables users={users.data ?? []} classes={currentClasses} notifications={notifications.data ?? []} />
       )}
     </div>
   );
@@ -172,6 +177,9 @@ function AdminDashboardTables({ users, classes, notifications }: {
   classes: SchoolClass[];
   notifications: Notification[];
 }) {
+  const teacherNames = new Map(users
+    .filter((user) => user.role === 'TEACHER')
+    .map((teacher) => [teacher.id, teacher.fullName]));
   return (
     <>
       <div className="admin-dashboard-table-grid">
@@ -193,7 +201,7 @@ function AdminDashboardTables({ users, classes, notifications }: {
               <thead><tr><th>Lớp</th><th>Khối</th><th>Giáo viên chủ nhiệm</th><th>Sĩ số</th></tr></thead>
               <tbody>{items.map((item) => <tr key={item.id}>
                 <td><strong>{item.code}</strong><small>{item.name}</small></td>
-                <td>{item.gradeLevel}</td><td>{item.homeroomTeacherName || 'Chưa phân công'}</td><td><strong>{item.studentCount}</strong> học sinh</td>
+                <td>{item.gradeLevel}</td><td>{item.homeroomTeacherName || teacherNames.get(item.homeroomTeacherId || '') || 'Chưa phân công'}</td><td><strong>{item.studentCount}</strong> học sinh</td>
               </tr>)}</tbody>
             </table></div>}
           </PaginatedData>

@@ -15,6 +15,7 @@ import type {
 import { StatusPill } from '../../components/ui';
 import { useConfirm } from '../../app/ConfirmDialog';
 import { Async, PaginatedData } from './common';
+import { normalizeResponsibleTeacherIds } from './workflowHelpers';
 
 type Notify = (type: 'ok' | 'err', message: string) => void;
 type ValidationFilter = 'ALL' | 'ERROR' | 'WARNING';
@@ -184,10 +185,12 @@ export function EducationPlanCompletionPanel({ plan, planSubjects, semesters, su
       return notify('err', 'Nhập đủ học kỳ, môn học và tên bài đánh giá.');
     }
     try {
+      const teacherIds = normalizeResponsibleTeacherIds(assessmentForm.teacherIds);
       const payload = {
         ...assessmentForm,
         classId: assessmentForm.classId || null,
-        teacherId: assessmentForm.teacherIds[0] || null,
+        teacherIds,
+        teacherId: teacherIds[0] || null,
       };
       if (editingAssessmentId) await api.put(`/academic/training-plans/${plan.id}/assessments/${editingAssessmentId}`, payload);
       else await api.post(`/academic/training-plans/${plan.id}/assessments`, payload);
@@ -204,7 +207,7 @@ export function EducationPlanCompletionPanel({ plan, planSubjects, semesters, su
       curriculumItemIds: item.curriculumItemIds?.split(',').filter(Boolean) || [],
       resultMethod: item.resultMethod || 'SCORE', weekNumber: item.weekNumber,
       durationMinutes: item.durationMinutes,
-      teacherIds: item.teacherIds?.length ? item.teacherIds : item.teacherId ? [item.teacherId] : [],
+      teacherIds: normalizeResponsibleTeacherIds(item.teacherIds, item.teacherId),
       notes: item.notes || '' });
   };
   const deleteAssessment = async (id: string) => {

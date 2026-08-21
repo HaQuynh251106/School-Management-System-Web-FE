@@ -19,6 +19,7 @@ import { TrainingPlanCurriculum } from './TrainingPlanCurriculum';
 import { EducationPlanningCatalogWorkspace } from './EducationPlanningCatalogWorkspace';
 import { EducationPlanCompletionPanel } from './EducationPlanCompletionPanel';
 import { useConfirm } from '../../app/ConfirmDialog';
+import { resolveNewPlanProgramId } from './workflowHelpers';
 
 const GRADES = ['K10', 'K11', 'K12'] as const;
 type PlanSection = 'overview' | 'curriculum' | 'distribution' | 'assessment' | 'approval';
@@ -503,14 +504,16 @@ function PlansTab(props: {
   ).size;
   useEffect(() => setPlanSection('overview'), [currentPlan?.id]);
   useEffect(() => {
-    if (currentPlan) {
-      setPlanName(currentPlan.name);
-      setMaxGap(currentPlan.maxProgressGapDays);
-      setProgramId(currentPlan.programId || '');
-      setDescription(currentPlan.description || '');
-    } else if (!programId && programs.data?.length) {
-      setProgramId(programs.data.find((item) => item.status === 'ACTIVE')?.id || programs.data[0].id);
-    }
+    if (!currentPlan) return;
+    setPlanName(currentPlan.name);
+    setMaxGap(currentPlan.maxProgressGapDays);
+    setProgramId(currentPlan.programId || '');
+    setDescription(currentPlan.description || '');
+  }, [currentPlan]);
+  useEffect(() => {
+    if (currentPlan || !programs.data?.length) return;
+    const resolved = resolveNewPlanProgramId(programs.data, programId);
+    if (resolved !== programId) setProgramId(resolved);
   }, [currentPlan, programId, programs.data]);
   useEffect(() => {
     if (currentPlan) return;

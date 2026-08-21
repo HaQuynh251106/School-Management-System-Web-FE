@@ -16,6 +16,7 @@ import { ExamScheduleWorkspace } from './ExamScheduleWorkspace';
 import { GradeConfigurationWorkspace } from './GradeConfigurationWorkspace';
 import { School, CalendarDays, DoorOpen, BookOpen, CircleDollarSign } from 'lucide-react';
 import { useShortcutFilter } from '../../api/shortcutFilter';
+import { matchesStudentLinkSearch, mergeLinkedStudentIds } from './workflowHelpers';
 
 /* ============ A1 — Người dùng (phân trang + modal tạo) ============ */
 const BLANK_USER = {
@@ -178,7 +179,7 @@ export function AdminUsersLive() {
 
   const linkChildren = async () => {
     if (!editingUser || !linkedStudentIds.length) return;
-    const nextChildren = [...new Set([...(editingUser.childrenIds ?? []), ...linkedStudentIds])];
+    const nextChildren = mergeLinkedStudentIds(editingUser.childrenIds ?? [], linkedStudentIds);
     try {
       await api.put(`/users/${editingUser.id}/children`, {
         studentIds: nextChildren,
@@ -456,8 +457,7 @@ export function AdminUsersLive() {
                 </div>
                 <PaginatedData items={(students.data ?? []).filter((student) => {
                   if ((editingUser.childrenIds ?? []).includes(student.id) || student.status === 'DELETED') return false;
-                  const keyword = studentLinkSearch.trim().toLowerCase();
-                  return !keyword || `${student.fullName} ${student.studentCode || ''} ${student.username} ${student.className || ''}`.toLowerCase().includes(keyword);
+                  return matchesStudentLinkSearch(student, studentLinkSearch);
                 })} itemLabel="học sinh có thể liên kết" resetKey={`${editingUser.id}|${studentLinkSearch}|${(editingUser.childrenIds ?? []).join(',')}`}>
                   {(pageItems) => <div className="parent-child-candidates">{pageItems.map((student) => <label className={linkedStudentIds.includes(student.id) ? 'selected' : ''} key={student.id}><input type="checkbox" checked={linkedStudentIds.includes(student.id)} onChange={(event) => setLinkedStudentIds((current) => event.target.checked ? [...new Set([...current, student.id])] : current.filter((id) => id !== student.id))} /><span><strong>{student.fullName}</strong><small>{student.studentCode || student.username} · {student.className || 'Chưa xếp lớp'}</small></span></label>)}</div>}
                 </PaginatedData>

@@ -13,10 +13,10 @@ const env = (import.meta as any).env || {};
 const showDemoAccounts = env.VITE_SHOW_DEMO_ACCOUNTS === 'true'
   || (env.DEV && env.VITE_SHOW_DEMO_ACCOUNTS !== 'false');
 const demos = showDemoAccounts ? [
-  { label: 'Admin', username: env.VITE_DEMO_ADMIN_USERNAME || 'admin', password: env.VITE_DEMO_ADMIN_PASSWORD || 'admin@123', Icon: UserRoundCog, color: '#2563eb' },
-  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'gv.toan', password: env.VITE_DEMO_TEACHER_PASSWORD || 'teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
-  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'hs.minh', password: env.VITE_DEMO_STUDENT_PASSWORD || 'student@123', Icon: GraduationCap, color: '#7c3aed' },
-  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'ph.nguyen', password: env.VITE_DEMO_PARENT_PASSWORD || 'parent@123', Icon: RefreshCcw, color: '#c2410c' },
+  { label: 'Admin', username: env.VITE_DEMO_ADMIN_USERNAME || 'demo.admin.01', password: env.VITE_DEMO_ADMIN_PASSWORD || 'Admin@123', Icon: UserRoundCog, color: '#2563eb' },
+  { label: 'Giáo viên', username: env.VITE_DEMO_TEACHER_USERNAME || 'demo.gv.001', password: env.VITE_DEMO_TEACHER_PASSWORD || 'Teacher@123', Icon: ClipboardCheck, color: '#0f766e' },
+  { label: 'Học sinh', username: env.VITE_DEMO_STUDENT_USERNAME || 'HS270001', password: env.VITE_DEMO_STUDENT_PASSWORD || 'Student@123', Icon: GraduationCap, color: '#7c3aed' },
+  { label: 'Phụ huynh', username: env.VITE_DEMO_PARENT_USERNAME || 'demo.ph.001', password: env.VITE_DEMO_PARENT_PASSWORD || 'Parent@123', Icon: RefreshCcw, color: '#c2410c' },
 ].filter((account) => account.username && account.password) : [];
 
 type View = 'login' | 'forgot' | 'reset';
