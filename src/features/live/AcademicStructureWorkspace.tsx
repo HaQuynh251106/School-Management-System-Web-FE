@@ -317,12 +317,13 @@ function ClassesTab(props: {
   onChanged: () => void; notify: Notify;
 }) {
   const [form, setForm] = useState({ code: '', name: '', maxStudents: 45, homeroomTeacherId: '', homeRoomId: '' });
+  const [showReserveClasses, setShowReserveClasses] = useState(false);
   const filtered = useMemo(() => props.classes.filter((item) => (
     item.academicYearId === props.selectedYearId
     && item.gradeLevel === props.selectedGrade
-    && item.status !== 'INACTIVE'
+    && (showReserveClasses || item.status !== 'INACTIVE')
     && (!props.classSearch || `${item.code} ${item.name}`.toLowerCase().includes(props.classSearch.toLowerCase()))
-  )), [props.classes, props.selectedYearId, props.selectedGrade, props.classSearch]);
+  )), [props.classes, props.selectedYearId, props.selectedGrade, props.classSearch, showReserveClasses]);
   const selectedClass = props.classes.find((item) => item.id === props.selectedClassId);
   const createClass = async () => {
     if (!form.code || !props.selectedYearId) return props.notify('err', 'Nhập mã lớp và chọn năm học.');
@@ -398,6 +399,7 @@ function ClassesTab(props: {
         <select className="live-select" value={props.selectedYearId} onChange={(event) => props.setSelectedYearId(event.target.value)}>{props.years.map((year) => <option key={year.id} value={year.id}>{year.code}</option>)}</select>
         <select className="live-select" value={props.selectedGrade} onChange={(event) => props.setSelectedGrade(event.target.value)}>{GRADES.map((grade) => <option key={grade} value={grade}>Khối {grade.slice(1)}</option>)}</select>
         <label className="academic-search"><Search size={15} /><input value={props.classSearch} onChange={(event) => props.setClassSearch(event.target.value)} placeholder="Tìm mã hoặc tên lớp" /></label>
+        <label className="academic-check"><input type="checkbox" checked={showReserveClasses} onChange={(event) => setShowReserveClasses(event.target.checked)} /> Hiện lớp dự kiến</label>
       </div>
       {props.canManageStructure && <div className="live-toolbar academic-create-bar">
         <input className="live-input" placeholder="10A1" value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} />
@@ -410,9 +412,9 @@ function ClassesTab(props: {
       <div className="academic-class-layout">
         <div className="academic-class-list">
           <PaginatedData items={filtered} itemLabel="lớp học" resetKey={`${props.selectedYearId}|${props.selectedGrade}|${props.classSearch}`}>
-          {(pageItems) => <table className="live-table"><thead><tr><th>Lớp</th><th>Sĩ số</th><th>Phòng cố định</th><th>GVCN</th></tr></thead><tbody>
-            {pageItems.map((item) => <tr key={item.id} className={props.selectedClassId === item.id ? 'selected' : ''} onClick={() => props.setSelectedClassId(item.id)}>
-              <td><strong>{item.code}</strong><small>{item.name}</small></td>
+          {(pageItems) => <table className="live-table"><thead><tr><th>Lớp</th><th>Trạng thái</th><th>Sĩ số</th><th>Phòng cố định</th><th>GVCN</th></tr></thead><tbody>
+            {pageItems.map((item) => <tr key={item.id} className={`${props.selectedClassId === item.id ? 'selected' : ''} ${item.status === 'INACTIVE' ? 'is-reserve' : ''}`} onClick={() => item.status !== 'INACTIVE' && props.setSelectedClassId(item.id)}>
+              <td><strong>{item.code}</strong><small>{item.name}</small></td><td><StatusPill value={item.status === 'INACTIVE' ? 'Dự kiến' : item.status || 'ACTIVE'} /></td>
               <td>{props.canManageStructure ? <span className="inline-capacity"><strong>{item.studentCount}/</strong><input aria-label={`Sĩ số tối đa lớp ${item.code}`} className="coefficient-input" type="number" min={item.studentCount || 1} max={100} defaultValue={item.maxStudents || item.studentCount} onClick={(event) => event.stopPropagation()} onBlur={(event) => { const value = Number(event.target.value); if (value !== item.maxStudents) updateClassCapacity(item, value); }} /></span> : `${item.studentCount}/${item.maxStudents || '—'}`}</td>
               <td>{props.canManageStructure ? <select className="live-select" value={item.homeRoomId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeRoom(item.id, event.target.value)}>{availableHomeRooms(item.id, item.studentCount).map((room) => <option key={room.id} value={room.id}>{room.code} · {room.capacity} chỗ</option>)}</select> : props.rooms.find((room) => room.id === item.homeRoomId)?.code || 'Chưa gán'}</td>
               <td>{props.canManageStructure ? <select className="live-select" value={item.homeroomTeacherId || ''} onClick={(event) => event.stopPropagation()} onChange={(event) => assignHomeroom(item.id, event.target.value)}><option value="">Chưa gán</option>{props.teachers.filter((teacher) => teacher.status === 'ACTIVE').map((teacher) => { const conflict = teacherConflict(teacher.id, item.id); return <option key={teacher.id} value={teacher.id} disabled={!!conflict}>{teacher.fullName}{conflict ? ` · đang chủ nhiệm ${conflict.code}` : ''}</option>; })}</select> : props.teachers.find((teacher) => teacher.id === item.homeroomTeacherId)?.fullName || 'Chưa gán'}</td>

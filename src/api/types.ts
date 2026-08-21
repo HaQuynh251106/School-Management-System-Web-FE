@@ -181,7 +181,8 @@ export interface AcademicAssessmentPlan {
   subjectId: string; assessmentType: string; weekNumber: number;
   name: string; assessmentForm: string; curriculumItemIds?: string | null;
   resultMethod: string;
-  durationMinutes: number; teacherId?: string | null; notes?: string | null;
+  durationMinutes: number; teacherId?: string | null; teacherIds?: string[];
+  notes?: string | null;
 }
 
 export interface AcademicPlanApprovalHistory {

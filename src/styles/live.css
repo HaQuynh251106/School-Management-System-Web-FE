@@ -843,6 +843,33 @@
   margin-top: 12px;
 }
 
+.parent-child-link-toolbar { align-items: center; }
+.parent-child-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 260px;
+  margin-top: 10px;
+  overflow: auto;
+}
+.parent-child-candidates label {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #dbe4ef;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+}
+.parent-child-candidates label.selected {
+  border-color: #60a5fa;
+  background: #eff6ff;
+}
+.parent-child-candidates label span { display: grid; gap: 3px; min-width: 0; }
+.parent-child-candidates label small { color: var(--muted); overflow-wrap: anywhere; }
+
 .linked-student-list > div,
 .login-history-list > div {
   display: grid;
@@ -3170,7 +3197,7 @@
 .academic-semester-cards article > span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 8px; background: #e0f2fe; color: #0369a1; font-size: 12px; font-weight: 800; }
 .academic-semester-cards article > div { display: grid; gap: 3px; min-width: 0; }
 .academic-semester-cards small { color: var(--muted); }
-.academic-class-layout { display: grid; grid-template-columns: minmax(460px, .9fr) minmax(480px, 1.1fr); gap: 18px; align-items: start; }
+.academic-class-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .academic-class-list, .academic-roster { min-width: 0; overflow-x: auto; border-top: 1px solid var(--line); }
 .academic-class-list .live-table tr { cursor: pointer; }
 .academic-class-list .live-table tr.selected td { background: #eef6ff; }
@@ -3203,6 +3230,7 @@
 }
 
 @media (max-width: 760px) {
+  .parent-child-candidates { grid-template-columns: 1fr; }
   .academic-grade-grid, .academic-candidates, .academic-semester-cards { grid-template-columns: 1fr; }
   .academic-grade-grid article { border-right: 0; border-bottom: 1px solid var(--line); }
   .academic-grade-grid article:last-child { border-bottom: 0; }
@@ -4180,6 +4208,38 @@
 .planning-workflow textarea { width: 100%; min-height: 70px; resize: vertical; }
 .planning-workflow .live-toolbar { margin-top: 9px; }
 .assessment-form { align-items: end; }
+.assessment-teacher-picker {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+.assessment-teacher-picker legend { padding: 0 6px; color: #475569; font-size: 12px; font-weight: 700; }
+.assessment-teacher-picker > small { color: #64748b; }
+.assessment-teacher-picker > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 7px;
+  max-height: 210px;
+  overflow: auto;
+}
+.assessment-teacher-picker label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.assessment-teacher-picker label.selected { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
+.assessment-teacher-picker label span { min-width: 0; }
+.assessment-teacher-picker label small { display: block; margin-top: 2px; color: #64748b; }
 .assessment-content-picker {
   flex: 1 1 100%;
   display: flex;

@@ -45,7 +45,8 @@ export function AdminUsersLive() {
   const [editingUser, setEditingUser] = useState<ApiUser | null>(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...BLANK_USER });
-  const [linkedStudentId, setLinkedStudentId] = useState('');
+  const [linkedStudentIds, setLinkedStudentIds] = useState<string[]>([]);
+  const [studentLinkSearch, setStudentLinkSearch] = useState('');
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<StudentImportResult | null>(null);
   const [resetTarget, setResetTarget] = useState<ApiUser | null>(null);
@@ -70,6 +71,8 @@ export function AdminUsersLive() {
   const closeEditor = () => {
     setShowEditor(false);
     setEditingUser(null);
+    setLinkedStudentIds([]);
+    setStudentLinkSearch('');
     setForm({ ...BLANK_USER });
   };
 
@@ -173,13 +176,18 @@ export function AdminUsersLive() {
     } catch (e: any) { toast.show('err', e.message); }
   };
 
-  const linkChild = async () => {
-    if (!editingUser || !linkedStudentId) return;
+  const linkChildren = async () => {
+    if (!editingUser || !linkedStudentIds.length) return;
+    const nextChildren = [...new Set([...(editingUser.childrenIds ?? []), ...linkedStudentIds])];
     try {
-      await api.post(`/users/${editingUser.id}/children`, { studentId: linkedStudentId, primaryContact: true });
-      setEditingUser({ ...editingUser, childrenIds: [...new Set([...(editingUser.childrenIds ?? []), linkedStudentId])] });
-      setLinkedStudentId('');
-      toast.show('ok', 'Đã liên kết học sinh với phụ huynh');
+      await api.put(`/users/${editingUser.id}/children`, {
+        studentIds: nextChildren,
+        primaryContact: true,
+      });
+      setEditingUser({ ...editingUser, childrenIds: nextChildren });
+      setLinkedStudentIds([]);
+      setStudentLinkSearch('');
+      toast.show('ok', `Đã liên kết ${nextChildren.length} học sinh với phụ huynh`);
       users.reload();
     } catch (e: any) { toast.show('err', e.message); }
   };
@@ -196,12 +204,16 @@ export function AdminUsersLive() {
 
   const openCreate = () => {
     setEditingUser(null);
+    setLinkedStudentIds([]);
+    setStudentLinkSearch('');
     setForm({ ...BLANK_USER });
     setShowEditor(true);
   };
 
   const openEdit = (user: ApiUser) => {
     setEditingUser(user);
+    setLinkedStudentIds([]);
+    setStudentLinkSearch('');
     setForm({
       ...BLANK_USER,
       username: user.username,
@@ -437,16 +449,18 @@ export function AdminUsersLive() {
 
             {form.role === 'PARENT' && editingUser && (
               <section className="admin-user-form-section">
-                <header><span><Link2 size={18} /></span><div><h4>Liên kết học sinh</h4><p>Phụ huynh chỉ xem được dữ liệu của các học sinh đã liên kết</p></div></header>
-                <div className="live-toolbar">
-                  <select className="live-select grow" value={linkedStudentId} onChange={(e) => setLinkedStudentId(e.target.value)}>
-                    <option value="">— Chọn học sinh —</option>
-                    {(students.data ?? []).filter((student) => !(editingUser.childrenIds ?? []).includes(student.id)).map((student) => (
-                      <option key={student.id} value={student.id}>{student.fullName} · {student.studentCode || student.username} · {student.className || 'Chưa xếp lớp'}</option>
-                    ))}
-                  </select>
-                  <button type="button" className="live-btn" onClick={linkChild} disabled={!linkedStudentId}><Link2 size={14} /> Liên kết</button>
+                <header><span><Link2 size={18} /></span><div><h4>Liên kết học sinh</h4><p>Tìm theo tên, mã hoặc lớp và chọn nhiều học sinh trong một lần</p></div></header>
+                <div className="live-toolbar parent-child-link-toolbar">
+                  <label className="academic-search grow"><Search size={15} /><input value={studentLinkSearch} onChange={(event) => setStudentLinkSearch(event.target.value)} placeholder="Tìm tên, mã học sinh hoặc lớp" /></label>
+                  <button type="button" className="live-btn" onClick={linkChildren} disabled={!linkedStudentIds.length}><Link2 size={14} /> Liên kết ({linkedStudentIds.length})</button>
                 </div>
+                <PaginatedData items={(students.data ?? []).filter((student) => {
+                  if ((editingUser.childrenIds ?? []).includes(student.id) || student.status === 'DELETED') return false;
+                  const keyword = studentLinkSearch.trim().toLowerCase();
+                  return !keyword || `${student.fullName} ${student.studentCode || ''} ${student.username} ${student.className || ''}`.toLowerCase().includes(keyword);
+                })} itemLabel="học sinh có thể liên kết" resetKey={`${editingUser.id}|${studentLinkSearch}|${(editingUser.childrenIds ?? []).join(',')}`}>
+                  {(pageItems) => <div className="parent-child-candidates">{pageItems.map((student) => <label className={linkedStudentIds.includes(student.id) ? 'selected' : ''} key={student.id}><input type="checkbox" checked={linkedStudentIds.includes(student.id)} onChange={(event) => setLinkedStudentIds((current) => event.target.checked ? [...new Set([...current, student.id])] : current.filter((id) => id !== student.id))} /><span><strong>{student.fullName}</strong><small>{student.studentCode || student.username} · {student.className || 'Chưa xếp lớp'}</small></span></label>)}</div>}
+                </PaginatedData>
                 <div className="linked-student-list">
                   {(editingUser.childrenIds ?? []).length === 0 && <span>Chưa liên kết học sinh nào.</span>}
                   {(editingUser.childrenIds ?? []).map((id) => {

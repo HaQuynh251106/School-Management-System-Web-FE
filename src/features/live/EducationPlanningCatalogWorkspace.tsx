@@ -132,11 +132,16 @@ function ProgramsPanel({ programs, programSubjects, programId, setProgramId, gra
   const activateProgram = async () => {
     if (!selectedProgram) return;
     try {
+      const configured = await api.post<{ created: number; grades: string[] }>(
+        `/academic/education-planning/programs/${selectedProgram.id}/subjects/auto-configure`,
+        {},
+      );
       await api.put(`/academic/education-planning/programs/${selectedProgram.id}`, {
         ...selectedProgram, status: 'ACTIVE',
       });
       programs.reload();
-      notify('ok', `Đã áp dụng ${selectedProgram.name}. Chương trình áp dụng trước đó đã được lưu trữ.`);
+      programSubjects.reload();
+      notify('ok', `Đã cấu hình đủ ${configured.grades.join(', ')} và áp dụng ${selectedProgram.name}. Chương trình trước đó đã được lưu trữ.`);
     } catch (error) { notify('err', message(error)); }
   };
   const semester1Total = (programSubjects.data || []).reduce((sum, row) => sum + row.semester1Periods, 0);
@@ -229,14 +234,8 @@ function TeacherSubjectsPanel({ state, teachers, teacherId, setTeacherId, subjec
     try { await api.put(`/academic/education-planning/teachers/${teacherId}/subjects`, { teacherId, subjectIds: selected, primarySubjectId: primary || selected[0] }); state.reload(); notify('ok', 'Đã cập nhật chuyên môn và gửi thông báo tới tài khoản giáo viên.'); }
     catch (error) { notify('err', message(error)); }
   };
-  const autoConfigure = async () => {
-    try {
-      const result = await api.post<{ capabilitiesConfigured: number; homeroomAssignmentsAdjusted: number; assignmentsRebalanced: number }>('/academic/education-planning/teachers/auto-configure');
-      state.reload(); notify('ok', `Đã nhận diện chuyên môn ${result.capabilitiesConfigured} giáo viên, điều chỉnh ${result.homeroomAssignmentsAdjusted} phân công GVCN và cân bằng ${result.assignmentsRebalanced} phân công bộ môn. Có thể chỉnh thủ công từng giáo viên bên dưới.`);
-    } catch (error) { notify('err', message(error)); }
-  };
   return <Section title="Chuyên môn giáo viên" subtitle="Một giáo viên có thể dạy nhiều môn; một môn được đánh dấu là chuyên môn chính" wide>
-    <div className="live-toolbar academic-filter-bar"><UsersRound size={18} /><select className="live-select grow" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>{teachers.filter((item) => item.status === 'ACTIVE').map((item) => <option key={item.id} value={item.id}>{item.teacherCode} · {item.fullName}</option>)}</select>{canManage && <button className="live-btn secondary" onClick={autoConfigure}><Sparkles size={15} /> Tự nhận diện và cân bằng</button>}{canManage && <button className="live-btn" onClick={save}><Save size={15} /> Lưu chuyên môn</button>}</div>
+    <div className="live-toolbar academic-filter-bar"><UsersRound size={18} /><select className="live-select grow" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>{teachers.filter((item) => item.status === 'ACTIVE').map((item) => <option key={item.id} value={item.id}>{item.teacherCode} · {item.fullName}</option>)}</select>{canManage && <button className="live-btn" onClick={save}><Save size={15} /> Lưu chuyên môn</button>}</div>
     <div className="planning-chip-grid">{subjects.filter((item) => item.active && item.subjectType !== 'EDUCATIONAL_ACTIVITY').map((item) => { const checked = selected.includes(item.id); return <label className={`planning-choice ${checked ? 'selected' : ''}`} key={item.id}><input type="checkbox" checked={checked} disabled={!canManage} onChange={(e) => setSelected(e.target.checked ? [...selected, item.id] : selected.filter((id) => id !== item.id))} /><span>{item.name}</span>{checked && <input type="radio" name="primary-subject" checked={primary === item.id} disabled={!canManage} onChange={() => setPrimary(item.id)} title="Chuyên môn chính" />}</label>; })}</div>
   </Section>;
 }
